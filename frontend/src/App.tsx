@@ -1,0 +1,52 @@
+import { useEffect, useState } from 'react'
+import { Flex, Spin, Typography } from 'antd'
+import { SettingsService } from './api'
+import SetupWizard from './views/SetupWizard'
+import MainLayout from './views/MainLayout'
+
+// App 负责“免登录 + 首启引导”:没有任何模型服务商配置时,全屏配置向导拦住入口。
+function App() {
+  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [error, setError] = useState('')
+
+  const check = async () => {
+    try {
+      const has = await SettingsService.HasProviders()
+      setConfigured(has)
+      setError('')
+    } catch (err) {
+      setError(String(err))
+      setConfigured(false)
+    }
+  }
+
+  useEffect(() => {
+    void check()
+  }, [])
+
+  if (configured === null) {
+    return (
+      <Flex align="center" justify="center" style={{ height: '100vh' }}>
+        <Spin size="large" tip="BlankMind 启动中…">
+          <div style={{ padding: 24 }} />
+        </Spin>
+      </Flex>
+    )
+  }
+
+  if (error) {
+    return (
+      <Flex align="center" justify="center" style={{ height: '100vh' }}>
+        <Typography.Text type="danger">初始化失败:{error}</Typography.Text>
+      </Flex>
+    )
+  }
+
+  if (!configured) {
+    return <SetupWizard onDone={() => void check()} />
+  }
+
+  return <MainLayout />
+}
+
+export default App
