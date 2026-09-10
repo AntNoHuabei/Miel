@@ -11,6 +11,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 func TestKnowledgeOnlySkillOptionsDoNotExposeWorkspaceExec(t *testing.T) {
@@ -39,6 +41,24 @@ func TestKnowledgeOnlySkillOptionsDoNotExposeWorkspaceExec(t *testing.T) {
 	}
 	if !names["list_todos"] {
 		t.Error("list_todos is absent")
+	}
+}
+
+func TestChatAgentToolsPreserveApplicationToolsWhenMemoryEnabled(t *testing.T) {
+	memoryTool := function.NewFunctionTool(
+		func(context.Context, struct{}) (string, error) { return "", nil },
+		function.WithName("memory_search"),
+	)
+	names := make(map[string]bool)
+	for _, agentTool := range chatAgentTools([]tool.Tool{memoryTool}) {
+		if declaration := agentTool.Declaration(); declaration != nil {
+			names[declaration.Name] = true
+		}
+	}
+	for _, name := range []string{"list_todos", "todo_stats", "memory_search"} {
+		if !names[name] {
+			t.Errorf("%s is absent when memory tools are enabled", name)
+		}
 	}
 }
 

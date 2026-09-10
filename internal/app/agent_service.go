@@ -19,6 +19,7 @@ import (
 	aguirunner "trpc.group/trpc-go/trpc-agent-go/server/agui/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
 
 	aguievents "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/events"
 	aguitypes "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/types"
@@ -214,19 +215,19 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	gc := model.GenerationConfig{Stream: true}
 	applyReasoning(&gc, p.Kind, p.Model, req.Reasoning)
 
+	agentTools := chatAgentTools(nil)
+	if memoryEnabled {
+		agentTools = chatAgentTools(s.memory.Tools())
+	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(m),
 		llmagent.WithInstruction(systemInstruction),
-		llmagent.WithTools(append(append(todoAgentTools(todoSvc), officeTools(todoSvc)...),
-			reminderAgentTools()...)),
+		llmagent.WithTools(agentTools),
 		llmagent.WithGenerationConfig(gc),
 		llmagent.WithAddCurrentTime(true),
 	}
 	if memoryEnabled {
-		opts = append(opts,
-			llmagent.WithTools(s.memory.Tools()),
-			llmagent.WithPreloadMemory(8),
-		)
+		opts = append(opts, llmagent.WithPreloadMemory(8))
 	}
 	// skills/<name>/SKILL.md 即插即用
 	if repo, err := skill.NewFSRepository(skillsDir()); err == nil {
@@ -322,6 +323,11 @@ func knowledgeOnlySkillOptions(repo skill.Repository) []llmagent.Option {
 		llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly),
 		llmagent.WithWorkspaceExecSurfaceEnabled(false),
 	}
+}
+
+func chatAgentTools(memoryTools []tool.Tool) []tool.Tool {
+	tools := append(append(todoAgentTools(todoSvc), officeTools(todoSvc)...), reminderAgentTools()...)
+	return append(tools, memoryTools...)
 }
 
 // ServiceShutdown closes the snapshot runner and the persistent AG-UI session store.
