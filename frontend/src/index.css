@@ -51,3 +51,129 @@ body {
     background-color 0.2s ease,
     color 0.2s ease;
 }
+
+.bm-window-shell {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--bm-text, #1f2329);
+  background: var(--bm-app-bg, #f5f6f8);
+}
+
+.bm-window-titlebar {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--bm-divider, #dfe3e8);
+  background: var(--bm-header-bg, #fff);
+  user-select: none;
+}
+
+.bm-window-title-actions,
+.bm-window-controls {
+  display: flex;
+  align-items: center;
+}
+
+.bm-window-title-actions {
+  padding-left: 6px;
+  --wails-draggable: no-drag;
+}
+
+.bm-window-title-actions .ant-btn,
+.bm-window-controls .ant-btn {
+  display: grid;
+  width: 42px;
+  height: 43px;
+  padding: 0;
+  place-items: center;
+  appearance: none;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  color: var(--bm-text, #1f2329);
+  background: transparent;
+  box-shadow: none !important;
+}
+
+.bm-window-title-actions .ant-btn:hover,
+.bm-window-title-actions .ant-btn:active {
+  border: 0 !important;
+  outline: 0 !important;
+  color: var(--bm-text, #1f2329) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bm-window-title-actions .ant-btn .ant-btn-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.bm-window-title-actions .ant-btn:hover .ant-btn-icon {
+  background: var(--bm-hover-bg, #f3f4f6);
+}
+
+.bm-window-title-actions .ant-btn:active .ant-btn-icon {
+  background: var(--bm-selected-bg, #e8edf3);
+}
+
+.bm-window-controls .ant-btn:hover,
+.bm-window-controls .ant-btn:active {
+  border: 0 !important;
+  outline: 0 !important;
+  color: var(--bm-text, #1f2329) !important;
+  background: var(--bm-hover-bg, #f3f4f6) !important;
+  box-shadow: none !important;
+}
+
+.bm-window-controls .ant-btn:focus-visible {
+  background: transparent !important;
+  box-shadow: inset 0 -2px 0 var(--bm-signal, #1677ff) !important;
+}
+
+.bm-window-title-actions .ant-btn:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bm-window-title-actions .ant-btn:focus-visible .ant-btn-icon {
+  background: var(--bm-hover-bg, #f3f4f6);
+  box-shadow: inset 0 0 0 1px var(--bm-signal, #1677ff);
+}
+
+.bm-window-title-name {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bm-window-title-drag {
+  flex: 1;
+  min-width: 40px;
+  --wails-draggable: drag;
+  --wails-non-client-region: caption;
+}
+
+.bm-window-controls {
+  --wails-draggable: no-drag;
+}
+
+.bm-window-controls .is-close:hover,
+.bm-window-controls .is-close:active {
+  color: #fff !important;
+  background: #c42b1c !important;
+}
+
+.bm-window-body {
+  min-height: 0;
+  flex: 1;
+}

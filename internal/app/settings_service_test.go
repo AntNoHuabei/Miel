@@ -96,3 +96,50 @@ func TestProviderModelsReturns(t *testing.T) {
 		t.Fatalf("ProviderModels() = %#v", models)
 	}
 }
+
+func TestModelMutationsNotifyAndRefreshOptions(t *testing.T) {
+	db := newSettingsTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO providers (id, name, kind, base_url, api_key, model, is_default, created_at)
+		VALUES (1, 'test', 'custom', 'http://localhost/v1', '', 'model-a', 1, 1);
+		INSERT INTO provider_models (provider_id, model, label, custom, created_at)
+		VALUES (1, 'model-a', 'Model A', 1, 1);`); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewSettingsService(db)
+	events := 0
+	service.setNotify(func(name string, _ any) {
+		if name == "models.changed" {
+			events++
+		}
+	})
+
+	if err := service.EnableModel(1, "model-b", "Model B", true); err != nil {
+		t.Fatal(err)
+	}
+	options, err := service.ModelOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 2 {
+		t.Fatalf("ModelOptions after enable returned %d items, want 2", len(options))
+	}
+
+	if err := service.SetProviderModel(1, "model-b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DisableModel(1, "model-a"); err != nil {
+		t.Fatal(err)
+	}
+	options, err = service.ModelOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 1 || options[0].Model != "model-b" || !options[0].IsDefault {
+		t.Fatalf("ModelOptions after mutations = %#v", options)
+	}
+	if events != 3 {
+		t.Fatalf("models.changed events = %d, want 3", events)
+	}
+}

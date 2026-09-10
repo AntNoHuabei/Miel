@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, Flex, Layout, Popover, Space, Tooltip, Typography } from 'antd'
+import type { MouseEvent } from 'react'
+import { Button, Tooltip } from 'antd'
 import {
-  BellOutlined,
-  BgColorsOutlined,
-  CheckSquareOutlined,
-  CommentOutlined,
-  FlagOutlined,
-  SettingOutlined,
+  BorderOutlined,
+  CloseOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  MinusOutlined,
+  PlusOutlined,
 } from '@ant-design/icons'
 import SettingsView from './SettingsView'
 import RemindersView from './RemindersView'
@@ -15,9 +16,7 @@ import TodosView from './TodosView'
 import MilestonesView from './MilestonesView'
 import ScreenshotModal from '../components/ScreenshotModal'
 import { useWailsEvent } from '../api'
-import { BM_THEMES, useBMTheme } from '../theme/ThemeContext'
-
-const { Sider, Header, Content } = Layout
+import { Window as WailsWindow } from '@wailsio/runtime'
 
 type ViewKey = 'chat' | 'todos' | 'milestones' | 'reminders' | 'settings'
 
@@ -38,12 +37,13 @@ const viewLabel: Record<ViewKey, string> = {
   settings: '设置',
 }
 
-// 极简窄侧栏:上部为功能菜单(图标),下部为皮肤切换与设置。
+// 窗口外壳:标题栏 + 所有功能共享的应用侧栏与内容区。
 export default function MainLayout() {
   const [view, setView] = useState<ViewKey>('chat')
   const [reminders, setReminders] = useState<ReminderLite[]>([])
   const [unread, setUnread] = useState(0)
-  const { theme } = useBMTheme()
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false)
+  const [newChatRequest, setNewChatRequest] = useState(0)
 
   // 申请系统通知权限(用于到期提醒的系统通知通道)
   useEffect(() => {
@@ -70,113 +70,77 @@ export default function MainLayout() {
     }, []),
   )
 
-  const nav = (key: ViewKey, icon: React.ReactNode, tip: string, count?: number) => (
-    <Tooltip title={tip} placement="right">
-      <Button
-        type={view === key ? 'primary' : 'text'}
-        shape={view === key ? undefined : 'circle'}
-        icon={count ? <Badge count={count} size="small" offset={[2, -2]}>{icon}</Badge> : icon}
-        onClick={() => {
-          setView(key)
-          if (key === 'reminders') setUnread(0)
-        }}
-      />
-    </Tooltip>
-  )
+  const navigate = useCallback((key: ViewKey) => {
+    setView(key)
+    if (key === 'reminders') setUnread(0)
+  }, [])
+
+  const featureContent =
+    view === 'todos' ? (
+      <TodosView />
+    ) : view === 'milestones' ? (
+      <MilestonesView onGoTodos={() => navigate('todos')} />
+    ) : view === 'reminders' ? (
+      <RemindersView items={reminders} onClear={() => setReminders([])} />
+    ) : view === 'settings' ? (
+      <SettingsView />
+    ) : undefined
 
   return (
-    <Layout style={{ height: '100vh', background: 'var(--bm-app-bg)' }}>
-      <Sider
-        width={64}
-        theme={theme.dark ? 'dark' : 'light'}
-        style={{ borderRight: '1px solid var(--bm-border)' }}
-      >
-        <Flex vertical justify="space-between" style={{ height: '100%' }}>
-          {/* 上部:标识 + 功能菜单 */}
-          <Flex vertical align="center" gap={6} style={{ paddingTop: 14 }}>
-            <div style={{ fontSize: 22, lineHeight: 1, marginBottom: 10 }}>🧠</div>
-            <Space direction="vertical" size={6}>
-              {nav('chat', <CommentOutlined />, '对话')}
-              {nav('todos', <CheckSquareOutlined />, '待办')}
-              {nav('milestones', <FlagOutlined />, '里程碑')}
-              {nav('reminders', <BellOutlined />, '提醒', unread)}
-            </Space>
-          </Flex>
-
-          {/* 下部:皮肤切换 + 设置 */}
-          <Flex vertical align="center" gap={6} style={{ paddingBottom: 14 }}>
-            <ThemeSwitcher />
-            {nav('settings', <SettingOutlined />, '设置')}
-          </Flex>
-        </Flex>
-      </Sider>
-
-      <Layout style={{ background: 'var(--bm-content-bg)' }}>
-        <Header
-          style={{
-            background: 'var(--bm-header-bg)',
-            padding: '0 16px',
-            borderBottom: '1px solid var(--bm-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: 44,
-            lineHeight: '44px',
-          }}
-        >
-          <Typography.Text strong style={{ fontSize: 14 }}>
-            {viewLabel[view]}
-          </Typography.Text>
-        </Header>
-        <Content style={{ overflow: 'auto', background: 'var(--bm-content-bg)' }}>
-          {/* 对话页保持挂载,切换功能时保留输入框、当前会话和流式 UI 状态。 */}
-          <div
-            style={{
-              display: view === 'chat' ? 'block' : 'none',
-              height: '100%',
-            }}
-          >
-            <ChatView />
-          </div>
-          {view === 'todos' && <TodosView />}
-          {view === 'milestones' && <MilestonesView onGoTodos={() => setView('todos')} />}
-          {view === 'reminders' && (
-            <RemindersView items={reminders} onClear={() => setReminders([])} />
+    <div className="bm-window-shell">
+      <header className="bm-window-titlebar">
+        <div className="bm-window-title-actions">
+          <Tooltip title={chatSidebarOpen ? '收起侧栏' : '展开侧栏'}>
+            <Button
+              type="text"
+              aria-label={chatSidebarOpen ? '收起侧栏' : '展开侧栏'}
+              icon={chatSidebarOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
+              onMouseUp={releaseMouseFocus}
+              onClick={() => setChatSidebarOpen((open) => !open)}
+            />
+          </Tooltip>
+          {!chatSidebarOpen && (
+            <Tooltip title="新建会话">
+              <Button
+                type="text"
+                aria-label="新建会话"
+                icon={<PlusOutlined />}
+                onMouseUp={releaseMouseFocus}
+                onClick={() => setNewChatRequest((request) => request + 1)}
+              />
+            </Tooltip>
           )}
-          {view === 'settings' && <SettingsView />}
-        </Content>
-      </Layout>
+          <span className="bm-window-title-name">BlankMind</span>
+        </div>
+        <div className="bm-window-title-drag" />
+        <div className="bm-window-controls" aria-label="窗口控制">
+          <Button type="text" className="is-minimise" aria-label="最小化" icon={<MinusOutlined />} onMouseUp={releaseMouseFocus} onClick={() => runWindowAction(() => WailsWindow.Minimise())} />
+          <Button type="text" className="is-maximise" aria-label="最大化" icon={<BorderOutlined />} onMouseUp={releaseMouseFocus} onClick={() => runWindowAction(() => WailsWindow.ToggleMaximise())} />
+          <Button type="text" className="is-close" aria-label="关闭" icon={<CloseOutlined />} onMouseUp={releaseMouseFocus} onClick={() => runWindowAction(() => WailsWindow.Close())} />
+        </div>
+      </header>
+
+      <div className="bm-window-body">
+        <ChatView
+          activeView={view}
+          featureTitle={viewLabel[view]}
+          featureContent={featureContent}
+          reminderCount={unread}
+          onNavigate={navigate}
+          sidebarOpen={chatSidebarOpen}
+          newChatRequest={newChatRequest}
+        />
+      </div>
       <ScreenshotModal />
-    </Layout>
+    </div>
   )
 }
 
-// 皮肤快速切换(侧栏底部):弹出面板列出全部内置主题。
-function ThemeSwitcher() {
-  const { themeId, setTheme } = useBMTheme()
-  const panel = (
-    <Flex vertical gap={4}>
-      <Typography.Text type="secondary" style={{ fontSize: 12, padding: '0 4px 4px' }}>
-        选择皮肤
-      </Typography.Text>
-      {BM_THEMES.map((t) => (
-        <Button
-          key={t.id}
-          size="small"
-          type={themeId === t.id ? 'primary' : 'text'}
-          style={{ justifyContent: 'flex-start' }}
-          onClick={() => void setTheme(t.id)}
-        >
-          {t.dark ? '🌙' : '☀️'} {t.name}
-        </Button>
-      ))}
-    </Flex>
-  )
-  return (
-    <Tooltip title="皮肤" placement="right">
-      <Popover content={panel} placement="rightBottom" trigger="click">
-        <Button type="text" icon={<BgColorsOutlined />} style={{ color: 'inherit' }} />
-      </Popover>
-    </Tooltip>
-  )
+function runWindowAction(action: () => Promise<void>) {
+  const runtime = (window as typeof window & { _wails?: { environment?: unknown } })._wails
+  if (runtime?.environment) void action()
+}
+
+function releaseMouseFocus(event: MouseEvent<HTMLButtonElement>) {
+  event.currentTarget.blur()
 }

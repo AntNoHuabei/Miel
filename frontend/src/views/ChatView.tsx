@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   App as AntApp,
   Button,
@@ -16,21 +17,28 @@ import {
   ArrowRightOutlined,
   BulbOutlined,
   CameraOutlined,
+  CheckOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
+  EditOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
   LoadingOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   PlusOutlined,
   SendOutlined,
   ToolOutlined,
   WarningOutlined,
+  CheckSquareOutlined,
+  FlagOutlined,
+  BellOutlined,
+  SettingOutlined,
+  BgColorsOutlined,
+  RightOutlined,
 } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AgentService, SettingsService, useWailsEvent } from '../api'
+import { BM_THEMES, useBMTheme } from '../theme/ThemeContext'
 import type {
   AGUIMessageLite,
   AGUIMessagesSnapshotLite,
@@ -115,9 +123,29 @@ function readPersistedConversationId() {
 // Codex 风格 Agent 对话页:
 // 左侧历史会话 aside + 右侧消息流(Markdown)与 Composer。
 // Composer 内集中:工作区、模型切换、思考(档位随模型能力)、发送。
-export default function ChatView() {
+type ChatViewProps = {
+  activeView: 'chat' | 'todos' | 'milestones' | 'reminders' | 'settings'
+  featureTitle: string
+  featureContent?: ReactNode
+  reminderCount: number
+  onNavigate?: (view: 'chat' | 'todos' | 'milestones' | 'reminders' | 'settings') => void
+  sidebarOpen: boolean
+  newChatRequest: number
+}
+
+export default function ChatView({
+  activeView,
+  featureTitle,
+  featureContent,
+  reminderCount,
+  onNavigate,
+  sidebarOpen,
+  newChatRequest,
+}: ChatViewProps) {
   const { message } = AntApp.useApp()
   const [convs, setConvs] = useState<{ id: number; title: string }[]>([])
+  const [workspaceOpen, setWorkspaceOpen] = useState(true)
+  const [sidebarScrolled, setSidebarScrolled] = useState(false)
   const [current, setCurrent] = useState(() => readPersistedConversationId()) // 0 = 新对话
   const [msgs, setMsgs] = useState<AGUIMessageLite[]>([])
   const [input, setInput] = useState('')
@@ -127,7 +155,6 @@ export default function ChatView() {
   const [agentPhase, setAgentPhase] = useState<AgentPhase>('idle')
   const [reasoningTrace, setReasoningTrace] = useState('')
   const [toolCalls, setToolCalls] = useState<ToolCallUI[]>([])
-  const [historyOpen, setHistoryOpen] = useState(false)
 
   // 模型与工作区
   const [providers, setProviders] = useState<ProviderLite[]>([])
@@ -288,6 +315,7 @@ export default function ChatView() {
     setReasoningTrace('')
     setToolCalls([])
     void loadMessages(id)
+    onNavigate?.('chat')
   }
 
   const newChat = () => {
@@ -300,6 +328,15 @@ export default function ChatView() {
     setReasoningTrace('')
     setToolCalls([])
   }
+
+  useEffect(() => {
+    if (newChatRequest > 0) {
+      newChat()
+      onNavigate?.('chat')
+    }
+    // newChatRequest is an imperative request counter owned by the window title bar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newChatRequest, onNavigate])
 
   const send = async () => {
     const text = input.trim()
@@ -470,6 +507,14 @@ export default function ChatView() {
     useCallback(() => void reloadConvs(), [reloadConvs]),
   )
 
+  useWailsEvent<string>(
+    'models.changed',
+    useCallback(() => {
+      void reloadProviders()
+      void reloadModelOpts()
+    }, [reloadProviders, reloadModelOpts]),
+  )
+
   useEffect(() => {
     requestAnimationFrame(() => {
       const el = scrollRef.current
@@ -500,7 +545,6 @@ export default function ChatView() {
     }
   }
 
-  const currentTitle = convs.find((c) => c.id === current)?.title
   const showAgentProcess = sending || reasoningTrace.length > 0 || toolCalls.length > 0
   // 回答落库后 msgs 会追加 assistant 消息,过程块应留在该回答之前。
   const processBeforeIndex =
@@ -513,106 +557,118 @@ export default function ChatView() {
     return names
   }, [msgs])
 
-  return (
-    <Flex vertical className="bm-chat" style={{ height: '100%' }}>
-      <Flex className="bm-chat-workspace" style={{ flex: 1, minHeight: 0 }}>
-        <aside
-          className={`bm-chat-history-sidebar ${historyOpen ? 'is-open' : 'is-collapsed'}`}
-          aria-label="历史会话"
-        >
-          {historyOpen ? (
-            <>
-            <Flex align="center" justify="space-between" className="bm-chat-history-heading">
-              <Flex align="center" gap={8} style={{ minWidth: 0 }}>
-                <HistoryOutlined />
-                <Text strong ellipsis style={{ fontSize: 13 }}>
-                  历史会话
-                </Text>
-              </Flex>
-              <Space size={0}>
-                {current > 0 && (
-                  <Tooltip title="删除当前会话">
-                    <Button
-                      type="text"
-                      size="small"
-                      aria-label="删除当前会话"
-                      icon={<DeleteOutlined />}
-                      onClick={() => void delCurrent()}
-                    />
-                  </Tooltip>
-                )}
-                <Tooltip title="收起历史会话">
-                <Button
-                  type="text"
-                  size="small"
-                  aria-label="收起历史会话"
-                  icon={<MenuFoldOutlined />}
-                  onClick={() => setHistoryOpen(false)}
-                />
-                </Tooltip>
-              </Space>
-            </Flex>
-            <Button
-              block
-              type="default"
-              icon={<PlusOutlined />}
-              style={{ marginBottom: 10, justifyContent: 'flex-start' }}
-              onClick={newChat}
-            >
-              新对话
-            </Button>
-            <div className="bm-chat-history-list">
-              {convs.length === 0 ? (
-                <Text type="secondary" style={{ display: 'block', padding: '8px 10px', fontSize: 12 }}>
-                  暂无历史会话
-                </Text>
-              ) : (
-                convs.map((conversation) => (
-                  <Button
-                    key={conversation.id}
-                    type="text"
-                    block
-                    className={conversation.id === current ? 'is-active' : undefined}
-                    style={{ justifyContent: 'flex-start', textAlign: 'left', marginBottom: 2 }}
-                    onClick={() => openConv(conversation.id)}
-                  >
-                    <span className="bm-chat-history-item-label">
-                      <HistoryOutlined />
-                      {conversation.title}
-                    </span>
-                  </Button>
-                ))
-              )}
-            </div>
-            </>
-          ) : (
-            <>
-              <Tooltip title="新对话" placement="right">
-                <Button
-                  type="text"
-                  size="small"
-                  aria-label="新对话"
-                  icon={<PlusOutlined />}
-                  onClick={newChat}
-                />
-              </Tooltip>
-              <Tooltip title="展开历史会话" placement="right">
-                <Button
-                  type="text"
-                  size="small"
-                  aria-label="展开历史会话"
-                  icon={<MenuUnfoldOutlined />}
-                  onClick={() => setHistoryOpen(true)}
-                />
-              </Tooltip>
-              <span
-                className={`bm-chat-history-collapsed-marker ${current > 0 ? 'has-current' : ''}`}
-                aria-label={currentTitle ? `当前会话:${currentTitle}` : '暂无当前会话'}
-              />
-            </>
-          )}
-        </aside>
+  const navItems = [
+    { key: 'todos' as const, label: '待办', icon: <CheckSquareOutlined />, count: 0 },
+    { key: 'milestones' as const, label: '里程碑', icon: <FlagOutlined />, count: 0 },
+    { key: 'reminders' as const, label: '提醒中心', icon: <BellOutlined />, count: reminderCount },
+  ]
 
+  return (
+    <div className={`bm-chat bm-chat-shell ${sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-collapsed'}`}>
+      <aside className="bm-chat-app-sidebar" aria-label="应用导航与会话">
+        <Button
+          type="text"
+          className="bm-chat-new-session"
+          icon={<EditOutlined />}
+          onClick={() => {
+            newChat()
+            onNavigate?.('chat')
+          }}
+        >
+          <span>新建对话</span>
+        </Button>
+
+        <div
+          className={`bm-chat-sidebar-scroll ${sidebarScrolled ? 'is-scrolled' : ''}`}
+          onScroll={(event) => setSidebarScrolled(event.currentTarget.scrollTop > 0)}
+        >
+          <nav className="bm-chat-app-nav" aria-label="功能菜单">
+            {navItems.map((item) => (
+              <Button
+                key={item.key}
+                type="text"
+                className={item.key === activeView ? 'is-active' : undefined}
+                icon={item.icon}
+                onClick={() => onNavigate?.(item.key)}
+              >
+                <span>{item.label}</span>
+                {!!item.count && <span className="bm-chat-nav-count">{item.count}</span>}
+              </Button>
+            ))}
+          </nav>
+
+          <div className="bm-chat-workspace-list">
+            <div className="bm-chat-sidebar-section-label">工作空间</div>
+            <Button
+              type="text"
+              className="bm-chat-workspace-item"
+              aria-expanded={workspaceOpen}
+              aria-controls="bm-chat-workspace-conversations"
+              onClick={() => setWorkspaceOpen((open) => !open)}
+            >
+              <RightOutlined className="bm-chat-workspace-chevron" />
+              <FolderOpenOutlined />
+              <span>BlankMind</span>
+            </Button>
+
+            {workspaceOpen && (
+              <div className="bm-chat-history-list" id="bm-chat-workspace-conversations">
+                {convs.length === 0 ? (
+                  <Text type="secondary" className="bm-chat-empty-history">暂无历史会话</Text>
+                ) : (
+                  convs.map((conversation) => {
+                    const isActive = conversation.id === current
+                    return (
+                      <div
+                        key={conversation.id}
+                        className={`bm-chat-history-item ${isActive ? 'is-active' : ''}`}
+                      >
+                        <Button
+                          type="text"
+                          className="bm-chat-history-open"
+                          aria-current={isActive ? 'page' : undefined}
+                          onClick={() => openConv(conversation.id)}
+                        >
+                          <span className="bm-chat-history-item-label">
+                            <HistoryOutlined />
+                            <span>{conversation.title}</span>
+                          </span>
+                        </Button>
+                        {isActive && (
+                          <Tooltip title="删除当前会话">
+                            <Button
+                              type="text"
+                              className="bm-chat-history-delete"
+                              aria-label="删除当前会话"
+                              icon={<DeleteOutlined />}
+                              onClick={() => void delCurrent()}
+                            />
+                          </Tooltip>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bm-chat-sidebar-footer">
+          <ThemeSwitcher />
+          <Button
+            type="text"
+            className={activeView === 'settings' ? 'is-active' : undefined}
+            icon={<SettingOutlined />}
+            onClick={() => onNavigate?.('settings')}
+          >
+            <span>设置</span>
+          </Button>
+        </div>
+      </aside>
+
+      <Flex vertical className="bm-chat-main-shell" style={{ minWidth: 0, minHeight: 0 }}>
+        {activeView === 'chat' ? (
         <Flex vertical className="bm-chat-main" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           {/* 消息流 */}
           <div
@@ -622,34 +678,34 @@ export default function ChatView() {
           >
           <Flex vertical style={{ maxWidth: 800, margin: '0 auto', padding: '8px 24px 24px' }}>
             {msgs.length === 0 && !streaming && (
-              <Flex vertical align="flex-start" gap={8} className="bm-chat-empty-state">
-                <span className="bm-chat-empty-kicker">BLANKMIND / READY</span>
-                <Text strong className="bm-chat-empty-title">
-                  从一个问题开始
-                </Text>
-                <Text type="secondary" className="bm-chat-empty-copy">
-                  记录待办、安排里程碑、生成周报,或创建文档与表格。
-                </Text>
-                <Flex vertical className="bm-chat-quick-list">
-                  {QUICK.map((q) => (
+              <section className="bm-chat-empty-state" aria-labelledby="bm-chat-empty-title">
+                <div className="bm-chat-empty-intro">
+                  <Typography.Title level={1} id="bm-chat-empty-title" className="bm-chat-empty-title">
+                    你好，我是 BlankMind
+                  </Typography.Title>
+                  <Text type="secondary" className="bm-chat-empty-copy">
+                    可以让我记录待办、安排里程碑、生成周报，或创建文档与表格。
+                  </Text>
+                </div>
+                <div className="bm-chat-quick-list">
+                  {QUICK.map((prompt) => (
                     <Button
-                      key={q}
+                      key={prompt}
                       type="text"
                       className="bm-chat-quick-item"
                       onClick={() => {
-                        setInput(q)
+                        setInput(prompt)
                         void (document.querySelector('#bm-chat-input') as
                           | HTMLTextAreaElement
                           | null)?.focus()
                       }}
                     >
-                      <span className="bm-chat-quick-index">0{QUICK.indexOf(q) + 1}</span>
-                      <span>{q}</span>
+                      <span>{prompt}</span>
                       <ArrowRightOutlined className="bm-chat-quick-arrow" />
                     </Button>
                   ))}
-                </Flex>
-              </Flex>
+                </div>
+              </section>
             )}
 
             {msgs.map((m, i) => (
@@ -885,8 +941,56 @@ export default function ChatView() {
         </Flex>
           </div>
         </Flex>
+        ) : (
+          <Flex vertical className="bm-feature-page">
+            <header className="bm-feature-header">
+              <Text strong>{featureTitle}</Text>
+            </header>
+            <div className="bm-feature-content">{featureContent}</div>
+          </Flex>
+        )}
       </Flex>
+    </div>
+  )
+}
+
+function ThemeSwitcher() {
+  const { themeId, setTheme } = useBMTheme()
+  const panel = (
+    <Flex vertical gap={4} className="bm-theme-panel">
+      <Typography.Text type="secondary" className="bm-theme-panel-title">
+        选择主题
+      </Typography.Text>
+      {BM_THEMES.map((theme) => (
+        <Button
+          key={theme.id}
+          size="small"
+          type="text"
+          className={`bm-theme-option ${theme.id === themeId ? 'is-active' : ''}`}
+          aria-pressed={theme.id === themeId}
+          onClick={() => void setTheme(theme.id)}
+        >
+          <span
+            className="bm-theme-swatch"
+            style={{
+              backgroundColor: theme.vars['sidebar-bg'],
+              borderColor: theme.vars.divider,
+            }}
+          >
+            <span style={{ backgroundColor: theme.vars.signal }} />
+          </span>
+          <span className="bm-theme-option-label">{theme.name}</span>
+          {theme.id === themeId && <CheckOutlined className="bm-theme-option-check" />}
+        </Button>
+      ))}
     </Flex>
+  )
+  return (
+    <Popover content={panel} placement="rightBottom" trigger="click">
+      <Button type="text" icon={<BgColorsOutlined />}>
+        <span>主题</span>
+      </Button>
+    </Popover>
   )
 }
 

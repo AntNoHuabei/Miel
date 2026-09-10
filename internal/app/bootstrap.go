@@ -37,6 +37,7 @@ func Bootstrap() (*Services, error) {
 
 	// 服务 → 事件总线:间接引用 var Emit,main 注入后同样生效
 	notify := func(name string, data any) { Emit(name, data) }
+	settings.setNotify(notify)
 	todo.Notify = notify
 	agent.SetNotify(notify)
 	shot.SetNotify(notify)

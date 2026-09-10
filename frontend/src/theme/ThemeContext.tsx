@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import type { ReactNode } from 'react'
@@ -17,6 +18,24 @@ import { BM_THEMES, DEFAULT_THEME_ID, themeById } from './themes'
 import type { BMTheme } from './themes'
 
 dayjs.locale('zh-cn')
+
+const THEME_STORAGE_KEY = 'blankmind.theme'
+
+function readCachedThemeId(): string {
+  try {
+    return themeById(window.localStorage.getItem(THEME_STORAGE_KEY)).id
+  } catch {
+    return DEFAULT_THEME_ID
+  }
+}
+
+function cacheThemeId(id: string) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, id)
+  } catch {
+    // WebView storage can be unavailable in restricted environments.
+  }
+}
 
 interface ThemeCtxValue {
   themeId: string
@@ -40,19 +59,27 @@ export function useBMTheme(): ThemeCtxValue {
 //  3. 通过 ConfigProvider 把 antd token 应用到全组件树;
 //  4. 提供 setTheme(id) 热切换并落盘。
 export default function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themeId, setThemeId] = useState<string>(DEFAULT_THEME_ID)
+  const [themeId, setThemeId] = useState<string>(readCachedThemeId)
+  const selectionVersion = useRef(0)
   const theme = useMemo(() => themeById(themeId), [themeId])
 
   // 启动恢复
   useEffect(() => {
+    const cachedId = readCachedThemeId()
+    const initialSelectionVersion = selectionVersion.current
+    void WindowThemeService.SetTheme(cachedId).catch(() => undefined)
+
     SettingsService.GetSetting('theme')
       .then((v: string) => {
-        const id = themeById(v || DEFAULT_THEME_ID).id
+        if (selectionVersion.current !== initialSelectionVersion) return
+        const id = themeById(v || cachedId).id
         setThemeId(id)
+        cacheThemeId(id)
         void WindowThemeService.SetTheme(id).catch(() => undefined)
+        if (!v) void SettingsService.SetSetting('theme', id).catch(() => undefined)
       })
       .catch(() => {
-        void WindowThemeService.SetTheme(DEFAULT_THEME_ID).catch(() => undefined)
+        void WindowThemeService.SetTheme(cachedId).catch(() => undefined)
       })
   }, [])
 
@@ -67,7 +94,9 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback(async (id: string) => {
     const t = themeById(id)
+    selectionVersion.current += 1
     setThemeId(t.id)
+    cacheThemeId(t.id)
     try {
       await SettingsService.SetSetting('theme', t.id)
     } catch {

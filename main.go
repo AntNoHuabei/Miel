@@ -62,9 +62,10 @@ func main() {
 	wailsApp = instance
 
 	mainWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "BlankMind",
-		Width:  1000,
-		Height: 618,
+		Title:     "BlankMind",
+		Width:     1000,
+		Height:    618,
+		Frameless: true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,

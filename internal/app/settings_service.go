@@ -40,12 +40,24 @@ func resolveSecret(p *Provider) bool {
 //
 // 同时向 Agent 层暴露“默认 Provider”查询,供模型路由使用。
 type SettingsService struct {
-	db *sql.DB
+	db     *sql.DB
+	notify func(name string, data any)
 }
 
 // NewSettingsService 构造 SettingsService。
 func NewSettingsService(db *sql.DB) *SettingsService {
 	return &SettingsService{db: db}
+}
+
+// setNotify 注入模型配置变更事件出口。
+func (s *SettingsService) setNotify(fn func(name string, data any)) {
+	s.notify = fn
+}
+
+func (s *SettingsService) notifyModelsChanged() {
+	if s.notify != nil {
+		s.notify("models.changed", "")
+	}
 }
 
 // ErrNotFound 表示目标记录不存在。
@@ -243,7 +255,12 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 	if err := tx.Commit(); err != nil {
 		return Provider{}, err
 	}
-	return s.getProvider(id)
+	provider, err := s.getProvider(id)
+	if err != nil {
+		return Provider{}, err
+	}
+	s.notifyModelsChanged()
+	return provider, nil
 }
 
 // ProviderModels 返回服务商已启用的模型集合。
@@ -322,7 +339,11 @@ func (s *SettingsService) SetProviderModel(providerID int64, model string) error
 		"UPDATE providers SET model = ?, is_default = 1 WHERE id = ?", model, providerID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.notifyModelsChanged()
+	return nil
 }
 
 // EnableModel 启用某服务商下的一个模型(设置页即时开关用)。
@@ -359,7 +380,11 @@ func (s *SettingsService) EnableModel(providerID int64, model, label string, cus
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.notifyModelsChanged()
+	return nil
 }
 
 // DisableModel 停用某服务商下的一个模型;停用其“当前模型”时自动切到其它启用模型,
@@ -399,7 +424,11 @@ func (s *SettingsService) DisableModel(providerID int64, model string) error {
 		DELETE FROM provider_models WHERE provider_id = ? AND model = ?`, providerID, model); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.notifyModelsChanged()
+	return nil
 }
 
 // getProvider 按 ID 读取单个 Provider。
@@ -432,6 +461,7 @@ func (s *SettingsService) DeleteProvider(id int64) error {
 	}
 	// 清理系统凭据(尽力而为,不存在也不报错)
 	_ = credential.Delete(credentialTarget(id))
+	s.notifyModelsChanged()
 	return nil
 }
 

@@ -18,10 +18,16 @@ type nativeThemeColour struct {
 }
 
 var nativeThemeColours = map[string]nativeThemeColour{
-	"light":  {background: rgbHex("#ffffff"), text: rgbHex("#1f2329"), border: rgbHex("#f0f0f0")},
-	"dark":   {dark: true, background: rgbHex("#1a1f2a"), text: rgbHex("#e8edf5"), border: rgbHex("#2a3140")},
-	"forest": {background: rgbHex("#ffffff"), text: rgbHex("#203126"), border: rgbHex("#e2ecdf")},
-	"nebula": {dark: true, background: rgbHex("#1b1730"), text: rgbHex("#f0ebff"), border: rgbHex("#2c2547")},
+	"light":    {background: rgbHex("#ffffff"), text: rgbHex("#1f2329"), border: rgbHex("#dfe3e8")},
+	"dark":     {dark: true, background: rgbHex("#1a1f2a"), text: rgbHex("#e8edf5"), border: rgbHex("#343d4d")},
+	"forest":   {background: rgbHex("#ffffff"), text: rgbHex("#203126"), border: rgbHex("#cfdccc")},
+	"nebula":   {dark: true, background: rgbHex("#1b1730"), text: rgbHex("#f0ebff"), border: rgbHex("#3b3357")},
+	"graphite": {background: rgbHex("#ffffff"), text: rgbHex("#242424"), border: rgbHex("#d5d5d2")},
+	"celadon":  {background: rgbHex("#fbfdfc"), text: rgbHex("#1c302d"), border: rgbHex("#bdd4cf")},
+	"cinnabar": {background: rgbHex("#fffdfc"), text: rgbHex("#332725"), border: rgbHex("#dfcfcb")},
+	"amber":    {dark: true, background: rgbHex("#1d1b14"), text: rgbHex("#f4f0e5"), border: rgbHex("#45402f")},
+	"abyss":    {dark: true, background: rgbHex("#11201e"), text: rgbHex("#e4f2f0"), border: rgbHex("#294541")},
+	"contrast": {dark: true, background: rgbHex("#000000"), text: rgbHex("#ffffff"), border: rgbHex("#595959")},
 }
 
 // applyNativeWindowTheme 使用 DWM 更新 Windows 原生标题栏。

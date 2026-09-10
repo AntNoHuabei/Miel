@@ -333,12 +333,24 @@ export default function SettingsView() {
               <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
                 选择界面主题,即时生效并自动保存;所有颜色跟随皮肤切换。
               </Text>
-              <Flex gap={8} wrap>
+              <Flex gap={8} wrap className="bm-settings-theme-list">
                 {BM_THEMES.map((t) => (
                   <Tooltip key={t.id} title={`${t.desc}(${t.dark ? '深色' : '浅色'})`}>
                     <Button
-                      type={themeId === t.id ? 'primary' : 'default'}
-                      icon={<span>{t.dark ? '🌙' : '☀️'}</span>}
+                      type="default"
+                      className={`bm-settings-theme-button ${themeId === t.id ? 'is-active' : ''}`}
+                      aria-pressed={themeId === t.id}
+                      icon={(
+                        <span
+                          className="bm-theme-swatch"
+                          style={{
+                            backgroundColor: t.vars['sidebar-bg'],
+                            borderColor: t.vars.divider,
+                          }}
+                        >
+                          <span style={{ backgroundColor: t.vars.signal }} />
+                        </span>
+                      )}
                       onClick={() => void setTheme(t.id)}
                     >
                       {t.name}
