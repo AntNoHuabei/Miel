@@ -8,6 +8,7 @@ export const AgentService = Services.AgentService
 export const SettingsService = Services.SettingsService
 export const TodoService = Services.TodoService
 export const ScreenshotService = Services.ScreenshotService
+export const WindowThemeService = Services.WindowThemeService
 export { Events }
 
 // 前端自用的轻量类型(与 Go 侧 json tag 对齐,不依赖 bindings JSDoc 推导)。

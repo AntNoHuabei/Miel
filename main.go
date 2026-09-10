@@ -6,6 +6,7 @@ import (
 
 	"github.com/AntNoHuabei/blankmind/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -31,6 +32,7 @@ func main() {
 	if err != nil {
 		log.Fatal("bootstrap:", err)
 	}
+	windowTheme := app.NewWindowThemeService()
 
 	// 事件总线:服务发事件 → wails 应用实例(创建后生效)
 	var wailsApp *application.App
@@ -45,6 +47,7 @@ func main() {
 		Description: "A local-first AI office agent",
 		Services: []application.Service{
 			application.NewService(svcs.Settings),
+			application.NewService(windowTheme),
 			application.NewService(svcs.Todo),
 			application.NewService(svcs.Agent),
 			application.NewService(svcs.Screenshot),
@@ -69,6 +72,10 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
+	})
+	app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
+	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
 	})
 
 	setupSystemTray(instance, mainWin)

@@ -12,7 +12,7 @@ import type { ThemeConfig } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
-import { SettingsService } from '../api'
+import { SettingsService, WindowThemeService } from '../api'
 import { BM_THEMES, DEFAULT_THEME_ID, themeById } from './themes'
 import type { BMTheme } from './themes'
 
@@ -47,9 +47,13 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     SettingsService.GetSetting('theme')
       .then((v: string) => {
-        if (v) setThemeId(v)
+        const id = themeById(v || DEFAULT_THEME_ID).id
+        setThemeId(id)
+        void WindowThemeService.SetTheme(id).catch(() => undefined)
       })
-      .catch(() => undefined)
+      .catch(() => {
+        void WindowThemeService.SetTheme(DEFAULT_THEME_ID).catch(() => undefined)
+      })
   }, [])
 
   // 注入 CSS 变量
@@ -68,6 +72,11 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
       await SettingsService.SetSetting('theme', t.id)
     } catch {
       // 持久化失败不阻塞切换
+    }
+    try {
+      await WindowThemeService.SetTheme(t.id)
+    } catch {
+      // 原生标题栏不可用时不阻塞 WebView 皮肤切换
     }
   }, [])
 

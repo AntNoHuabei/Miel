@@ -5,11 +5,13 @@ import * as AgentService from "./agentservice.js";
 import * as ScreenshotService from "./screenshotservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as TodoService from "./todoservice.js";
+import * as WindowThemeService from "./windowthemeservice.js";
 export {
     AgentService,
     ScreenshotService,
     SettingsService,
-    TodoService
+    TodoService,
+    WindowThemeService
 };
 
 export type {
