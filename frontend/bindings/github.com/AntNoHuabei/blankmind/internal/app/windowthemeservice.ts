@@ -3,7 +3,7 @@
 
 /**
  * WindowThemeService 把前端皮肤选择同步给宿主窗口。
- * 具体的窗口 API 由 main 包按平台绑定,业务层不依赖 Windows 实现。
+ * 具体的窗口 API 由 Windows 实现绑定到原生 HWND。
  * @module
  */
 

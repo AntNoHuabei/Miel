@@ -24,6 +24,9 @@ func init() {
 	application.RegisterEvent[map[string]any]("agent.start")
 	application.RegisterEvent[map[string]any]("agent.agui")
 	application.RegisterEvent[string]("conversations.changed")
+	application.RegisterEvent[string]("models.changed")
+	application.RegisterEvent[string]("memory.changed")
+	application.RegisterEvent[app.MemoryStatus]("memory.status")
 }
 
 // main 只负责:装配业务(app.Bootstrap)→ 接事件总线 → 建窗/托盘/热键 → 运行。
@@ -47,6 +50,7 @@ func main() {
 		Description: "A local-first AI office agent",
 		Services: []application.Service{
 			application.NewService(svcs.Settings),
+			application.NewService(svcs.Memory),
 			application.NewService(windowTheme),
 			application.NewService(svcs.Todo),
 			application.NewService(svcs.Agent),
@@ -55,22 +59,14 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
-		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
-		},
 	})
 	wailsApp = instance
 
 	mainWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "BlankMind",
-		Width:     1000,
-		Height:    618,
-		Frameless: true,
-		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 50,
-			Backdrop:                application.MacBackdropTranslucent,
-			TitleBar:                application.MacTitleBarHiddenInset,
-		},
+		Title:            "BlankMind",
+		Width:            1000,
+		Height:           618,
+		Frameless:        true,
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
 	})

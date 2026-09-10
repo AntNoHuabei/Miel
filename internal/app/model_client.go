@@ -266,3 +266,12 @@ func (s *SettingsService) DefaultProvider() (Provider, error) {
 	}
 	return p, nil
 }
+
+// DefaultModelSupportsVision 按当前默认模型及目录能力判断是否支持图片输入。
+func (s *SettingsService) DefaultModelSupportsVision() (bool, error) {
+	p, err := s.DefaultProvider()
+	if err != nil {
+		return false, err
+	}
+	return providerSupportsVision(p), nil
+}

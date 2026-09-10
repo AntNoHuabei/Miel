@@ -19,6 +19,7 @@ import {
 import type { MenuProps } from 'antd'
 import {
   BgColorsOutlined,
+  BulbOutlined,
   CloudServerOutlined,
   FolderOpenOutlined,
   PlusOutlined,
@@ -32,11 +33,12 @@ import type {
   ProviderTemplateLite,
 } from '../api'
 import ProviderFormModal from '../components/ProviderFormModal'
+import MemorySettingsPanel from '../components/MemorySettingsPanel'
 import { BM_THEMES, useBMTheme } from '../theme/ThemeContext'
 
 const { Title, Text } = Typography
 
-type SectionKey = 'models' | 'appearance' | 'data'
+type SectionKey = 'models' | 'memory' | 'appearance' | 'data'
 
 // 设置页:左侧大分类导航,右侧对应详细设置。
 export default function SettingsView() {
@@ -213,6 +215,7 @@ export default function SettingsView() {
 
   const menuItems: MenuProps['items'] = [
     { key: 'models', icon: <CloudServerOutlined />, label: '模型服务商' },
+    { key: 'memory', icon: <BulbOutlined />, label: '记忆' },
     { key: 'appearance', icon: <BgColorsOutlined />, label: '外观与皮肤' },
     { key: 'data', icon: <FolderOpenOutlined />, label: '数据与导出' },
   ]
@@ -361,6 +364,8 @@ export default function SettingsView() {
             </Card>
           </>
         )}
+
+        {section === 'memory' && <MemorySettingsPanel />}
 
         {section === 'data' && (
           <>

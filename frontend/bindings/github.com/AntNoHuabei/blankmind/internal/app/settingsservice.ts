@@ -24,6 +24,13 @@ export function DataDir(): $CancellablePromise<string> {
 }
 
 /**
+ * DefaultModelSupportsVision 按当前默认模型及目录能力判断是否支持图片输入。
+ */
+export function DefaultModelSupportsVision(): $CancellablePromise<boolean> {
+    return $Call.ByID(3641007329);
+}
+
+/**
  * DefaultProvider 返回当前默认服务商;无配置时返回错误(首启向导据此拦截入口)。
  */
 export function DefaultProvider(): $CancellablePromise<$models.Provider> {

@@ -1,0 +1,5 @@
+# WinLibs appends default-manifest.o to every executable. Wails already embeds
+# the application manifest, so keep the normal GCC terminator without the
+# duplicate resource object.
+*endfile:
+crtend.o%s

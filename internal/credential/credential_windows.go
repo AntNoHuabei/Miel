@@ -1,5 +1,4 @@
-// Package credential 提供系统级凭据管理(Windows Credential Manager)。
-// 平台不支持的调用返回错误,由调用方决定回退策略。
+// Package credential 提供 Windows Credential Manager 凭据管理。
 package credential
 
 import (

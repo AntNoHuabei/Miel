@@ -40,7 +40,11 @@ type AgentService struct {
 	notify      func(name string, data any)
 	sessions    session.Service
 	snapshotter aguirunner.MessagesSnapshotter
+	snapshotRun runner.Runner
+	memory      *memoryRuntime
 	historyMu   sync.Mutex
+	closeOnce   sync.Once
+	closeErr    error
 }
 
 // SetNotify 注入事件广播回调(main 装配时设置)。
@@ -63,7 +67,9 @@ const systemInstruction = `你是 BlankMind,运行在本地的办公 Agent,通�
 6. 可加载用户 skills 目录中的技能来完成任务。
 7. 用户要求“生成周报/周总结/本周汇报”时调用 generate_weekly_report。
 8. 用户要求生成文档(纪要/草稿/方案)或表格(排期/清单/预算)时,
-   调用 create_document / create_table 并保存为文件;需要导出待办时用 export_todos。`
+   调用 create_document / create_table 并保存为文件;需要导出待办时用 export_todos。
+9. memory_search 用于查询与当前请求有关的长期记忆;仅当用户明确要求记住时调用 memory_add。
+   不保存凭据、密钥、密码、隐私秘密、模型推测或工具输出。`
 
 // ChatRequest 一次对话入参。
 type ChatRequest struct {
@@ -168,6 +174,16 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if err != nil {
 		return ChatResult{}, err
 	}
+	memoryConfig := MemoryConfig{}
+	memoryEnabled := false
+	if s.memory != nil && settingsSvc != nil {
+		if cfg, cfgErr := settingsSvc.memoryConfig(); cfgErr == nil {
+			memoryConfig = cfg
+			memoryEnabled = cfg.Enabled
+		} else {
+			log.Println("load memory config:", cfgErr)
+		}
+	}
 
 	convID := req.ConversationID
 	if convID == 0 {
@@ -206,6 +222,12 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		llmagent.WithGenerationConfig(gc),
 		llmagent.WithAddCurrentTime(true),
 	}
+	if memoryEnabled {
+		opts = append(opts,
+			llmagent.WithTools(s.memory.Tools()),
+			llmagent.WithPreloadMemory(8),
+		)
+	}
 	// skills/<name>/SKILL.md 即插即用
 	if repo, err := skill.NewFSRepository(skillsDir()); err == nil {
 		opts = append(opts, llmagent.WithSkills(repo))
@@ -213,7 +235,11 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		log.Println("load skills repo:", err)
 	}
 	agent := llmagent.New("blankmind", opts...)
-	baseR := runner.NewRunner("blankmind-app", agent, runner.WithSessionService(s.sessions))
+	runnerOpts := []runner.Option{runner.WithSessionService(s.sessions)}
+	if memoryEnabled {
+		runnerOpts = append(runnerOpts, runner.WithMemoryService(s.memory))
+	}
+	baseR := runner.NewRunner("blankmind-app", agent, runnerOpts...)
 	defer baseR.Close()
 
 	// AG-UI 协议化:内部 runner 事件经 agui/runner 翻译成标准 AG-UI 事件
@@ -277,10 +303,32 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if out == "" {
 		return ChatResult{}, errors.New("模型未返回有效内容")
 	}
-	_ = s.saveMessage(convID, "assistant", out)
+	if err := s.saveMessage(convID, "assistant", out); err != nil {
+		return ChatResult{}, err
+	}
 	s.emit("agent.done", map[string]any{"conversationId": convID, "answer": out})
 	s.emit("conversations.changed", "updated")
+	if memoryEnabled && memoryConfig.AutoExtract {
+		if err := s.memory.enqueue(m, memoryConfig, msg, out); err != nil {
+			log.Println("enqueue memory extraction:", err)
+		}
+	}
 	return ChatResult{ConversationID: convID, Answer: out}, nil
+}
+
+// ServiceShutdown closes the snapshot runner and the persistent AG-UI session store.
+func (s *AgentService) ServiceShutdown() error {
+	s.closeOnce.Do(func() {
+		if s.snapshotRun != nil {
+			s.closeErr = s.snapshotRun.Close()
+		}
+		if s.sessions != nil {
+			if err := s.sessions.Close(); s.closeErr == nil {
+				s.closeErr = err
+			}
+		}
+	})
+	return s.closeErr
 }
 
 // skillsDir 返回用户 skills 目录;不存在则创建。

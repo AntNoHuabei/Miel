@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 办公助手桌面应用:**免登录、数据全在本机、托盘后台常驻**,通过对话 + 工具 + Skill 完成待办管理、截图处理、周报生成与文档/表格产出。
 
-技术栈:Wails3(Go)+ React 18 + TypeScript + Vite + Ant Design + SQLite(modernc.org/sqlite,纯 Go)。
+技术栈:Wails3(Go)+ React 18 + TypeScript + Vite + Ant Design + SQLite。BlankMind 仅支持 Windows，长期记忆使用 CGO SQLite。
 
 ## ✨ 功能
 
@@ -19,14 +19,18 @@
   - 周报 `generate_weekly_report`:聚合一周完成/新增/里程碑/逾期/操作流水,自动落盘
   - 文档 `create_document`(markdown)、表格 `create_table`(CSV)、待办导出 `export_todos`(md/csv 带 BOM)
 - **Skill 扩展**:数据目录 `skills/<name>/SKILL.md` 即插即用(trpc-agent-go 加载),无需改代码。
+- **长期记忆**:基于 trpc-agent-go SQLite Memory，支持跨会话召回、自动提取策略、自定义提示词和本地记忆管理。
 - **皮肤系统**:内置明亮 / 暗夜 / 护眼绿 / 极客紫,设置页一键热切换并持久化。
 - **后台常驻**:关窗进系统托盘(显示/隐藏/退出),数据目录可从设置页一键打开。
 
 ## 🚀 开发与运行
 
-```bash
-wails3 dev        # 开发模式(前后端热重载)
-wails3 build      # 生产构建(需系统 WebView2 与平台编译链)
+前置条件：Windows 10/11、WebView2、Go、Node.js，以及 MinGW-w64 GCC。`go env CC` 必须指向可执行的 `gcc.exe`。
+
+```powershell
+wails3 task dev          # 开发模式(前后端热重载)
+wails3 task build        # Windows 生产构建，默认 CGO_ENABLED=1
+wails3 task package      # NSIS（默认）或 MSIX 安装包
 ```
 
 前端单独调试:
@@ -37,17 +41,20 @@ npm install
 npm run build     # tsc + vite 生产打包
 ```
 
-> 本机若无 C 编译链/WebView2,可用 `go build .` 验证后端编译,前端用 `npm run build` 验证。
+> 长期记忆依赖 `github.com/mattn/go-sqlite3`，因此 Windows 构建不能关闭 CGO。缺少 GCC 时 Taskfile 会在编译前给出明确错误。
 
 ## 🗂 数据目录(Windows:`%LOCALAPPDATA%\BlankMind`)
 
 | 路径 | 内容 |
 | --- | --- |
 | `blankmind.db` | SQLite:providers / todos / events / conversations / messages / screenshots / settings |
+| `agui.db` | trpc-agent-go 会话与 AG-UI 消息轨迹 |
+| `memory.db` | 跨会话长期记忆，作用域为 `blankmind-app/user` |
 | `screenshots/` | 截图原图 |
 | `outputs/reports/` | 生成的周报(markdown) |
 | `outputs/documents/` | 生成的文档(markdown) |
 | `outputs/tables/` | 生成的表格(CSV)与待办导出 |
+| `outputs/memories/` | 设置页导出的完整记忆 JSON |
 | `skills/` | 用户 Skill 目录(`<name>/SKILL.md`) |
 
 ## 🧩 添加自定义 Skill
@@ -71,8 +78,10 @@ npm run build     # tsc + vite 生产打包
 | `system_service.go` | 系统托盘与全局快捷键注册 |
 | `outputs.go` | 产物目录与“打开数据目录” |
 | `model_client.go` | OpenAI 兼容模型客户端构建 / Ping |
+| `memory_runtime.go` | SQLite Memory、召回工具与后台提取队列 |
+| `memory_service.go` | 记忆设置、管理与 JSON 导出 API |
 
 ## 📌 说明
 
-- 全局热键与截屏当前以 Windows 为主实现;Linux/macOS 截屏为占位(需按平台补实现)。
+- BlankMind 当前仅支持 Windows；构建、凭据、窗口主题、托盘和截图实现均按 Windows 维护。
 - 视觉能力(截图转待办/问答)依赖配置**多模态**模型(设置中勾选"多模态")。

@@ -1,6 +1,6 @@
 //go:build windows
 
-// Package capture 提供平台截屏能力(当前仅 Windows 主屏捕获)。
+// Package capture 提供 Windows 主屏捕获能力。
 package capture
 
 import (

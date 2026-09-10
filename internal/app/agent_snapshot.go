@@ -26,7 +26,7 @@ const (
 )
 
 // NewAgentService 创建持久化 AG-UI 会话服务。模型 runner 仍按每轮配置动态构建。
-func NewAgentService() (*AgentService, error) {
+func NewAgentService(memoryRuntime *memoryRuntime) (*AgentService, error) {
 	db, err := sql.Open("sqlite", filepath.Join(dataDir(), "agui.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open AG-UI session store: %w", err)
@@ -37,7 +37,12 @@ func NewAgentService() (*AgentService, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize AG-UI session store: %w", err)
 	}
-	return newAgentService(sessions)
+	service, err := newAgentService(sessions)
+	if err != nil {
+		return nil, err
+	}
+	service.memory = memoryRuntime
+	return service, nil
 }
 
 func newAgentService(sessions session.Service) (*AgentService, error) {
@@ -60,7 +65,7 @@ func newAgentService(sessions session.Service) (*AgentService, error) {
 		_ = sessions.Close()
 		return nil, errors.New("AG-UI runner does not support message snapshots")
 	}
-	return &AgentService{sessions: sessions, snapshotter: snapshotter}, nil
+	return &AgentService{sessions: sessions, snapshotter: snapshotter, snapshotRun: base}, nil
 }
 
 func aguiSessionKey(conversationID int64) session.Key {

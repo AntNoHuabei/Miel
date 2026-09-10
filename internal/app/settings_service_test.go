@@ -143,3 +143,21 @@ func TestModelMutationsNotifyAndRefreshOptions(t *testing.T) {
 		t.Fatalf("models.changed events = %d, want 3", events)
 	}
 }
+
+func TestDefaultModelSupportsVisionUsesCurrentCatalogModel(t *testing.T) {
+	db := newSettingsTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO providers (id, name, kind, base_url, api_key, model, multimodal, is_default, created_at)
+		VALUES (1, 'DeepSeek', 'deepseek', 'https://api.deepseek.com', '',
+			'deepseek-v4-flash-vision-exp', 0, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	supported, err := NewSettingsService(db).DefaultModelSupportsVision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !supported {
+		t.Fatal("DeepSeek Vision should be detected from the current catalog model")
+	}
+}

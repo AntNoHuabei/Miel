@@ -104,6 +104,69 @@ export interface ExtractedTodo {
     "dueDate": string;
 }
 
+export interface MemoryConfig {
+    "enabled": boolean;
+    "autoExtract": boolean;
+    "strategy": string;
+    "customPrompt": string;
+}
+
+export type MemoryConfigInput = MemoryConfig;
+
+export interface MemoryInput {
+    "content": string;
+    "topics": string[] | null;
+    "kind": string;
+    "eventTime": string;
+    "participants": string[] | null;
+    "location": string;
+}
+
+export interface MemoryItem {
+    "id": string;
+    "content": string;
+    "topics": string[] | null;
+    "kind": string;
+    "eventTime": string;
+    "participants": string[] | null;
+    "location": string;
+    "createdAt": string;
+    "updatedAt": string;
+}
+
+export interface MemorySettingsView {
+    "config": MemoryConfig;
+    "strategies": MemoryStrategyDefinition[] | null;
+    "effectivePrompt": string;
+    "currentModel": string;
+    "status": MemoryStatus;
+}
+
+export interface MemoryStatus {
+    "state": string;
+    "pendingJobs": number;
+    "lastSuccessAt": string;
+    "lastError": string;
+}
+
+export interface MemoryStrategyDefinition {
+    "id": string;
+    "name": string;
+    "description": string;
+    "risk": string;
+    "prompt": string;
+}
+
+export interface MemoryUpdateInput {
+    "id": string;
+    "content": string;
+    "topics": string[] | null;
+    "kind": string;
+    "eventTime": string;
+    "participants": string[] | null;
+    "location": string;
+}
+
 /**
  * ModelOption 模型切换下拉的扁平选项(provider × 启用模型)。
  */

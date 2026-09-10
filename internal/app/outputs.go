@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -61,15 +60,7 @@ func (s *SettingsService) DataDir() string { return dataDir() }
 // OpenDataDir 在系统文件管理器中打开应用数据目录。
 func (s *SettingsService) OpenDataDir() error {
 	dir := dataDir()
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("explorer", dir)
-	case "darwin":
-		cmd = exec.Command("open", dir)
-	default:
-		cmd = exec.Command("xdg-open", dir)
-	}
+	cmd := exec.Command("explorer", dir)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("打开数据目录失败: %w", err)
 	}

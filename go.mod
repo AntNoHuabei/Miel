@@ -5,9 +5,11 @@ go 1.25.0
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260514093510-e9e910b230b9
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/wailsapp/wails/v3 v3.0.0-beta.10
 	modernc.org/sqlite v1.58.0
 	trpc.group/trpc-go/trpc-agent-go v1.11.2
+	trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.11.0
 )
@@ -19,6 +21,7 @@ require (
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-ego/gse v1.0.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -37,6 +40,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/vcaesar/cedar v0.20.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.40.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.29.0 // indirect

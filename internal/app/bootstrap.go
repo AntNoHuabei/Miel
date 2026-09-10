@@ -9,6 +9,7 @@ var Emit = func(_ string, _ any) {}
 // Services 是装配产物,供 main 注册为 wails 服务。
 type Services struct {
 	Settings   *SettingsService
+	Memory     *MemoryService
 	Todo       *TodoService
 	Agent      *AgentService
 	Screenshot *ScreenshotService
@@ -28,8 +29,14 @@ func Bootstrap() (*Services, error) {
 	settingsSvc = settings
 	todoSvc = todo
 
-	agent, err := NewAgentService()
+	memoryRuntime, err := newMemoryRuntime()
 	if err != nil {
+		return nil, err
+	}
+	memoryService := NewMemoryService(memoryRuntime, settings)
+	agent, err := NewAgentService(memoryRuntime)
+	if err != nil {
+		_ = memoryRuntime.Close()
 		return nil, err
 	}
 	shot := NewScreenshotService(store)
@@ -40,11 +47,13 @@ func Bootstrap() (*Services, error) {
 	settings.setNotify(notify)
 	todo.Notify = notify
 	agent.SetNotify(notify)
+	memoryRuntime.setNotify(notify)
 	shot.SetNotify(notify)
 
 	rem.Start(context.Background())
 	return &Services{
 		Settings:   settings,
+		Memory:     memoryService,
 		Todo:       todo,
 		Agent:      agent,
 		Screenshot: shot,

@@ -44,7 +44,7 @@ export default function ScreenshotModal() {
   const [shot, setShot] = useState<ScreenshotCaptured | null>(null)
   const [open, setOpen] = useState(false)
   const [stage, setStage] = useState<Stage>('menu')
-  const [visionOK, setVisionOK] = useState(true)
+  const [visionOK, setVisionOK] = useState<boolean | null>(null)
   const [askMode, setAskMode] = useState(false)
 
   // 转待办
@@ -62,8 +62,7 @@ export default function ScreenshotModal() {
   // 判断是否配置了支持图片输入的模型(决定“转待办/问答”可用性)
   const checkVision = useCallback(async () => {
     try {
-      const list = (await SettingsService.ListProviders()) ?? []
-      setVisionOK(list.some((p) => p.multimodal))
+      setVisionOK(await SettingsService.DefaultModelSupportsVision())
     } catch {
       setVisionOK(false)
     }
@@ -72,6 +71,11 @@ export default function ScreenshotModal() {
   useEffect(() => {
     void checkVision()
   }, [checkVision])
+
+  useWailsEvent<string>(
+    'models.changed',
+    useCallback(() => void checkVision(), [checkVision]),
+  )
 
   const reset = useCallback(() => {
     setStage('menu')
@@ -185,9 +189,12 @@ export default function ScreenshotModal() {
     }
   }
 
-  const visionTip = visionOK
-    ? ''
-    : '当前没有支持图片输入的模型,无法“转待办/问答”;可“仅保存”,或在设置中启用多模态模型并设为默认'
+  const visionReady = visionOK === true
+  const visionTip = visionOK === null
+    ? '正在检查当前模型的图片能力…'
+    : visionReady
+      ? ''
+      : '当前模型不支持图片输入,无法“转待办/问答”;可“仅保存”,或在设置中启用多模态模型并设为当前模型'
 
   const renderBody = () => {
     if (!shot) {
@@ -293,22 +300,22 @@ export default function ScreenshotModal() {
             }}
           />
         </Flex>
-        {!visionOK && <Alert type="warning" showIcon message={visionTip} />}
+        {visionOK === false && <Alert type="warning" showIcon message={visionTip} />}
         <Flex gap={8} wrap>
-          <Tooltip title={visionOK ? 'AI 提取为待办,勾选后入库' : visionTip}>
+          <Tooltip title={visionReady ? 'AI 提取为待办,勾选后入库' : visionTip}>
             <Button
               icon={<ScanOutlined />}
-              disabled={!visionOK}
+              disabled={!visionReady}
               loading={busy}
               onClick={extract}
             >
               转待办
             </Button>
           </Tooltip>
-          <Tooltip title={visionOK ? '针对截图内容提问' : visionTip}>
+          <Tooltip title={visionReady ? '针对截图内容提问' : visionTip}>
             <Button
               icon={<MessageOutlined />}
-              disabled={!visionOK}
+              disabled={!visionReady}
               onClick={() => setAskMode((v) => !v)}
             >
               问答

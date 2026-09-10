@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as app$0 from "../../../../AntNoHuabei/blankmind/internal/app/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
@@ -13,6 +17,9 @@ declare module "@wailsio/runtime" {
             "agent.done": { [_ in string]?: any } | null;
             "agent.start": { [_ in string]?: any } | null;
             "conversations.changed": string;
+            "memory.changed": string;
+            "memory.status": app$0.MemoryStatus;
+            "models.changed": string;
             "reminders.changed": string;
             "screenshot.captured": { [_ in string]?: any } | null;
             "screenshot.processed": { [_ in string]?: any } | null;

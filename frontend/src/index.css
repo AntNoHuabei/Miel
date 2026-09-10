@@ -177,3 +177,220 @@ body {
   min-height: 0;
   flex: 1;
 }
+
+/* Swiss information bands for memory settings: continuous rules, no cards or shadows. */
+.bm-memory-settings {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.bm-settings-heading {
+  display: flex;
+  min-height: 70px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-heading h4,
+.bm-memory-band h5,
+.bm-memory-list-heading h5 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.bm-memory-band {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-memory-index {
+  padding-top: 22px;
+  border-right: 1px solid var(--bm-divider);
+  color: var(--bm-signal);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-memory-band-body {
+  min-width: 0;
+  padding: 22px 0 24px 22px;
+}
+
+.bm-memory-band-body > h5 {
+  margin-bottom: 16px;
+}
+
+.bm-memory-setting-row,
+.bm-memory-danger-row {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid var(--bm-divider);
+}
+
+.bm-memory-setting-row > div,
+.bm-memory-danger-row > div,
+.bm-memory-runtime-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bm-memory-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 14px 0;
+  border: 1px solid var(--bm-divider);
+  background: var(--bm-divider);
+}
+
+.bm-memory-runtime-grid > div {
+  min-height: 72px;
+  justify-content: center;
+  padding: 12px;
+  background: var(--bm-content-bg);
+}
+
+.bm-memory-status {
+  color: var(--bm-text);
+}
+
+.bm-memory-status.is-extracting {
+  color: var(--bm-signal);
+}
+
+.bm-memory-status.is-error {
+  color: var(--ant-color-error);
+}
+
+.bm-memory-strategy-description {
+  display: block;
+  margin: 10px 0 14px;
+}
+
+.bm-memory-prompt-preview,
+.bm-memory-prompt-editor {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--bm-divider);
+}
+
+.bm-memory-prompt-preview .ant-typography {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+}
+
+.bm-memory-list-heading {
+  margin-bottom: 14px;
+}
+
+.bm-memory-list-heading > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bm-memory-filters {
+  margin-bottom: 12px;
+}
+
+.bm-memory-filters .ant-input-group-wrapper {
+  min-width: 180px;
+  flex: 1;
+}
+
+.bm-memory-filters .ant-select {
+  width: 128px;
+}
+
+.bm-memory-list {
+  border-top: 1px solid var(--bm-divider);
+}
+
+.bm-memory-item {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-memory-item-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.bm-memory-item-main > .ant-typography {
+  margin: 8px 0 6px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.bm-memory-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 5px;
+  color: var(--bm-muted);
+  font-size: 12px;
+}
+
+.bm-memory-updated {
+  font-size: 11px;
+}
+
+.bm-memory-item-actions .ant-btn:hover {
+  border-color: transparent !important;
+  background: var(--bm-hover-bg) !important;
+}
+
+.bm-memory-settings .ant-pagination {
+  margin-top: 14px;
+}
+
+.bm-memory-danger-row {
+  margin-top: 22px;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-memory-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bm-memory-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+@media (max-width: 720px) {
+  .bm-memory-band {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .bm-memory-band-body {
+    padding-left: 14px;
+  }
+
+  .bm-memory-runtime-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bm-memory-filters {
+    flex-wrap: wrap;
+  }
+
+  .bm-memory-filters .ant-select {
+    width: 100%;
+  }
+}

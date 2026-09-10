@@ -104,6 +104,20 @@ func TestMessagesSnapshotPersistsInSQLiteSession(t *testing.T) {
 	}
 }
 
+func TestAgentServiceShutdownIsIdempotent(t *testing.T) {
+	sessions := inmemory.NewSessionService()
+	service, err := newAgentService(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ServiceShutdown(); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ServiceShutdown(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func decodeMessagesSnapshot(t *testing.T, snapshot map[string]any) struct {
 	Type     string              `json:"type"`
 	Messages []aguitypes.Message `json:"messages"`

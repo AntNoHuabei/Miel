@@ -93,6 +93,8 @@ github.com/tidwall/sjson v1.2.5 h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=
 github.com/tidwall/sjson v1.2.5/go.mod h1:Fvgq9kS/6ociJEDnK0Fk1cpYF4FIW6ZF7LAe+6jwd28=
 github.com/vcaesar/cedar v0.20.2 h1:TDx7AdZhilKcfE1WvdToTJf5VrC/FXcUOW+KY1upLZ4=
 github.com/vcaesar/cedar v0.20.2/go.mod h1:lyuGvALuZZDPNXwpzv/9LyxW+8Y6faN7zauFezNsnik=
+github.com/vcaesar/tt v0.20.1 h1:D/jUeeVCNbq3ad8M7hhtB3J9x5RZ6I1n1eZ0BJp7M+4=
+github.com/vcaesar/tt v0.20.1/go.mod h1:cH2+AwGAJm19Wa6xvEa+0r+sXDJBT0QgNQey6mwqLeU=
 github.com/wailsapp/wails/v3 v3.0.0-beta.10 h1:xF8iGQrs7QPdP6KQ5/dQABAKOzjCuxitkI2TZGcIYAg=
 github.com/wailsapp/wails/v3 v3.0.0-beta.10/go.mod h1:zKZYhB3WjrN5LhJWbnOAVMN0Xf8qTozbw2nf5micKl4=
 github.com/yuin/goldmark v1.7.16 h1:n+CJdUxaFMiDUNnWC3dMWCIQJSkxH4uz3ZwQBkAlVNE=
@@ -187,6 +189,8 @@ trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb h1:hW6SMv4qf
 trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb/go.mod h1:7nbGA66/9AZ2j8+juvl7IsH0FC9jEdrxgsmBLrdKnLw=
 trpc.group/trpc-go/trpc-agent-go v1.11.2 h1:qBgrX48JXvgf+k6cq1BSWR4oPfFXxp8/boYydAs4PNM=
 trpc.group/trpc-go/trpc-agent-go v1.11.2/go.mod h1:bIZcN4N9sGpA42sWfE98XCPl9ZgMi6fMDLGYOaXNe9A=
+trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0 h1:Xb5/BLdIhS0FPEdqDdtq5Mm3I3wQaytFYiGq+F24ln8=
+trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0/go.mod h1:0DTbqSROnJ5JDSBLHy+b+EeXcB46BnjDkL3i89/DtYA=
 trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0 h1:ZPAAPDYcbirj0NjFffNzv9q0kRcH9QyUedr0L95imvQ=
 trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0/go.mod h1:g+PJqsyPyctAZ3dnoaVp4bx4q1R/524RiBAEgbE0Uso=
 trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.11.0 h1:LI5KVBWuG4JBt7advdO6osb+DmyqA9WvH8bxJ2E6uW8=
