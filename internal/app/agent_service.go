@@ -230,7 +230,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	}
 	// skills/<name>/SKILL.md 即插即用
 	if repo, err := skill.NewFSRepository(skillsDir()); err == nil {
-		opts = append(opts, llmagent.WithSkills(repo))
+		opts = append(opts, knowledgeOnlySkillOptions(repo)...)
 	} else {
 		log.Println("load skills repo:", err)
 	}
@@ -314,6 +314,14 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		}
 	}
 	return ChatResult{ConversationID: convID, Answer: out}, nil
+}
+
+func knowledgeOnlySkillOptions(repo skill.Repository) []llmagent.Option {
+	return []llmagent.Option{
+		llmagent.WithSkills(repo),
+		llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly),
+		llmagent.WithWorkspaceExecSurfaceEnabled(false),
+	}
 }
 
 // ServiceShutdown closes the snapshot runner and the persistent AG-UI session store.

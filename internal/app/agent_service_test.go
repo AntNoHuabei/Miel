@@ -8,8 +8,39 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
+	"trpc.group/trpc-go/trpc-agent-go/skill"
 )
+
+func TestKnowledgeOnlySkillOptionsDoNotExposeWorkspaceExec(t *testing.T) {
+	repo, err := skill.NewFSRepository(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := []llmagent.Option{
+		llmagent.WithTools(todoAgentTools(nil)),
+	}
+	opts = append(opts, knowledgeOnlySkillOptions(repo)...)
+	agent := llmagent.New("test", opts...)
+
+	names := make(map[string]bool)
+	for _, agentTool := range agent.Tools() {
+		if declaration := agentTool.Declaration(); declaration != nil {
+			names[declaration.Name] = true
+		}
+	}
+	if !names["skill_load"] {
+		t.Error("skill_load is absent")
+	}
+	if names["workspace_exec"] {
+		t.Error("workspace_exec must not be exposed")
+	}
+	if !names["list_todos"] {
+		t.Error("list_todos is absent")
+	}
+}
 
 func TestApplyReasoningOff(t *testing.T) {
 	tests := []struct {
