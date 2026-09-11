@@ -54,9 +54,10 @@ type quickWindowController struct {
 	main  application.Window
 	quick application.Window
 
-	mu    sync.Mutex
-	mode  string
-	ready bool
+	mu     sync.Mutex
+	mode   string
+	ready  bool
+	active string
 }
 
 // deferredMainActivation bridges the single-instance callback with window
@@ -92,7 +93,7 @@ func (a *deferredMainActivation) bind(show func()) {
 }
 
 func newQuickWindowController(inst *application.App, main, quick application.Window) *quickWindowController {
-	return &quickWindowController{inst: inst, main: main, quick: quick}
+	return &quickWindowController{inst: inst, main: main, quick: quick, active: "main"}
 }
 
 func (c *quickWindowController) show(mode string) {
@@ -101,6 +102,7 @@ func (c *quickWindowController) show(mode string) {
 	}
 	c.mu.Lock()
 	c.mode = mode
+	c.active = "quick"
 	ready := c.ready
 	c.mu.Unlock()
 
@@ -119,14 +121,32 @@ func (c *quickWindowController) show(mode string) {
 }
 
 func (c *quickWindowController) showMain() {
+	c.mu.Lock()
+	c.active = "main"
+	c.mu.Unlock()
 	c.quick.Hide()
 	c.main.Show()
 	c.main.Focus()
 }
 
 func (c *quickWindowController) hideAll() {
+	c.mu.Lock()
+	c.active = ""
+	c.mu.Unlock()
 	c.quick.Hide()
 	c.main.Hide()
+}
+
+func (c *quickWindowController) currentWindow() application.Window {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == "quick" {
+		return c.quick
+	}
+	if c.active == "main" {
+		return c.main
+	}
+	return nil
 }
 
 func (c *quickWindowController) runtimeReady() {

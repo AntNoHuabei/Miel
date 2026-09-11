@@ -224,10 +224,13 @@ export default function MemorySettingsPanel() {
 
   return (
     <div className="bm-memory-settings">
-      <header className="bm-settings-heading">
-        <div>
-          <Title level={4}>记忆</Title>
-          <Text type="secondary">跨会话保留稳定信息，并在后续对话中召回。</Text>
+      <header className="bm-settings-heading bm-settings-page-heading">
+        <div className="bm-memory-heading-title">
+          <span className="bm-settings-section-number">02</span>
+          <div>
+            <Title level={3}>记忆</Title>
+            <Text type="secondary">跨会话保留稳定信息，并在后续对话中召回。</Text>
+          </div>
         </div>
         <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!dirty} onClick={() => void saveSettings()}>
           保存

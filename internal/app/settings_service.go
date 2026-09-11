@@ -470,8 +470,8 @@ func (s *SettingsService) ProviderTemplates() []ProviderTemplate {
 	return []ProviderTemplate{
 		{
 			Name: "DeepSeek", Kind: "deepseek",
-			BaseURL: "https://api.deepseek.com", Model: "deepseek-chat",
-			Multimodal: false, DocsURL: "https://platform.deepseek.com",
+			BaseURL: "https://api.deepseek.com", Model: "deepseek-flash",
+			Multimodal: true, DocsURL: "https://platform.deepseek.com",
 		},
 		{
 			Name: "OpenAI", Kind: "openai",

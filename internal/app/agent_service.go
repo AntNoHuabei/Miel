@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -46,12 +48,15 @@ type AgentService struct {
 	snapshotter aguirunner.MessagesSnapshotter
 	snapshotRun runner.Runner
 	memory      *memoryRuntime
+	attachments *ChatAttachmentService
 	historyMu   sync.Mutex
 	closeOnce   sync.Once
 	closeErr    error
 }
 
 // SetNotify 注入事件广播回调(main 装配时设置)。
+//
+//wails:ignore
 func (s *AgentService) SetNotify(fn func(name string, data any)) { s.notify = fn }
 
 func (s *AgentService) emit(name string, data any) {
@@ -77,10 +82,11 @@ const systemInstruction = `你是 BlankMind,运行在本地的办公 Agent,通�
 
 // ChatRequest 一次对话入参。
 type ChatRequest struct {
-	ConversationID int64  `json:"conversationId"` // 0 = 新建会话
-	Message        string `json:"message"`
-	Reasoning      string `json:"reasoning"` // 思考档位:"" 关闭 | low | medium | high | max | on
-	RequestID      string `json:"requestId"`
+	ConversationID int64    `json:"conversationId"` // 0 = 新建会话
+	Message        string   `json:"message"`
+	Reasoning      string   `json:"reasoning"` // 思考档位:"" 关闭 | low | medium | high | max | on
+	RequestID      string   `json:"requestId"`
+	AttachmentIDs  []string `json:"attachmentIds"`
 }
 
 // applyReasoning 把思考档位映射到 GenerationConfig。
@@ -166,7 +172,7 @@ type ChatResult struct {
 // Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
 func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	msg := strings.TrimSpace(req.Message)
-	if msg == "" {
+	if msg == "" && len(req.AttachmentIDs) == 0 {
 		return ChatResult{}, errors.New("消息不能为空")
 	}
 	if store == nil {
@@ -175,6 +181,17 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	p, err := settingsSvc.DefaultProvider()
 	if err != nil {
 		return ChatResult{}, errors.New("尚未配置模型服务商,请先在设置中配置后重试")
+	}
+	if len(req.AttachmentIDs) > 0 {
+		if s.attachments == nil {
+			return ChatResult{}, errors.New("图片附件服务未初始化")
+		}
+		if !providerSupportsVision(p) {
+			return ChatResult{}, errors.New("当前模型不支持图片输入，请切换到支持图片的模型")
+		}
+		if _, err := s.attachments.validateDrafts(req.AttachmentIDs); err != nil {
+			return ChatResult{}, err
+		}
 	}
 	m, err := buildModel(p)
 	if err != nil {
@@ -192,17 +209,15 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	}
 
 	convID := req.ConversationID
-	if convID == 0 {
-		c, err := s.newConversation(msg)
-		if err != nil {
-			return ChatResult{}, err
-		}
-		convID = c.ID
-	}
-	userMessageID, err := s.saveMessage(convID, "user", msg, "", nil)
+	convID, userMessageID, err := s.saveUserMessage(convID, msg, req.AttachmentIDs)
 	if err != nil {
 		return ChatResult{}, err
 	}
+	s.emit("agent.input.saved", map[string]any{
+		"conversationId": convID,
+		"messageId":      userMessageID,
+		"requestId":      req.RequestID,
+	})
 
 	// 以库中历史(含刚保存的用户消息)seed 本次运行,保持多轮上下文
 	hist, err := s.loadMessages(convID)
@@ -279,15 +294,11 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	threadID := "conv-" + strconv.FormatInt(convID, 10)
 	aguiMsgs := make([]aguitypes.Message, 0, len(hist))
 	for _, h := range hist {
-		role := aguitypes.RoleUser
-		if h.Role == "assistant" {
-			role = aguitypes.RoleAssistant
+		aguiMessage, err := aguiMessageFromChatMessage(h)
+		if err != nil {
+			return ChatResult{}, err
 		}
-		aguiMsgs = append(aguiMsgs, aguitypes.Message{
-			ID:      "m" + strconv.FormatInt(h.ID, 10),
-			Role:    role,
-			Content: h.Content,
-		})
+		aguiMsgs = append(aguiMsgs, aguiMessage)
 	}
 	input := &adapter.RunAgentInput{
 		ThreadID: threadID,
@@ -310,6 +321,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		if b, mErr := ev.ToJSON(); mErr == nil {
 			var event map[string]any
 			if json.Unmarshal(b, &event) == nil {
+				redactAGUIBinaryContent(event)
 				s.emit("agent.agui", map[string]any{
 					"conversationId": convID,
 					"requestId":      req.RequestID,
@@ -337,7 +349,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	}
 	s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
 	s.emit("conversations.changed", "updated")
-	if memoryEnabled && memoryConfig.AutoExtract {
+	if memoryEnabled && memoryConfig.AutoExtract && msg != "" {
 		if err := s.memory.enqueue(m, memoryConfig, msg, out); err != nil {
 			log.Println("enqueue memory extraction:", err)
 		}
@@ -434,6 +446,64 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 	return Conversation{ID: id, Title: title, CreatedAt: now(), UpdatedAt: now()}, nil
 }
 
+func (s *AgentService) saveUserMessage(conversationID int64, content string, attachmentIDs []string) (int64, int64, error) {
+	tx, err := store.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	createdConversation := conversationID == 0
+	if createdConversation {
+		title := strings.TrimSpace(content)
+		if title == "" {
+			title = "图片对话"
+		}
+		if r := []rune(title); len(r) > 24 {
+			title = string(r[:24]) + "…"
+		}
+		result, err := tx.Exec(
+			"INSERT INTO conversations (title, created_at, updated_at) VALUES (?, ?, ?)",
+			title, now(), now())
+		if err != nil {
+			return 0, 0, err
+		}
+		conversationID, err = result.LastInsertId()
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	result, err := tx.Exec(`
+		INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, 'user', ?, ?)`,
+		conversationID, content, now())
+	if err != nil {
+		return 0, 0, err
+	}
+	messageID, err := result.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+	finalize := func(bool) {}
+	if len(attachmentIDs) > 0 {
+		finalize, err = s.attachments.attachDrafts(tx, messageID, attachmentIDs)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	committed := false
+	defer func() { finalize(committed) }()
+	if _, err := tx.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now(), conversationID); err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	committed = true
+	if createdConversation {
+		s.emit("conversations.changed", "created")
+	}
+	return conversationID, messageID, nil
+}
+
 // saveMessage 追加消息并更新时间戳。
 func (s *AgentService) saveMessage(convID int64, role, content, aguiMessageID string, metrics *ChatMetrics) (int64, error) {
 	tx, err := store.Begin()
@@ -491,7 +561,74 @@ func (s *AgentService) loadMessages(convID int64) ([]ChatMessage, error) {
 		}
 		items = append(items, m)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	attachments, err := loadConversationAttachments(convID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Attachments = attachments[items[i].ID]
+	}
+	return items, nil
+}
+
+func loadConversationAttachments(conversationID int64) (map[int64][]MessageAttachment, error) {
+	rows, err := store.Query(`
+		SELECT ma.id, ma.message_id, ma.kind, ma.file_path, ma.thumbnail_path,
+			ma.mime_type, ma.original_name, ma.width, ma.height, ma.size_bytes,
+			ma.position, ma.created_at
+		FROM message_attachments ma
+		JOIN messages m ON m.id = ma.message_id
+		WHERE m.conversation_id = ?
+		ORDER BY ma.message_id, ma.position`, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+	result := make(map[int64][]MessageAttachment)
+	for rows.Next() {
+		var item MessageAttachment
+		if err := rows.Scan(
+			&item.ID, &item.MessageID, &item.Kind, &item.FilePath, &item.ThumbnailPath,
+			&item.MIMEType, &item.OriginalName, &item.Width, &item.Height,
+			&item.SizeBytes, &item.Position, &item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result[item.MessageID] = append(result[item.MessageID], item)
+	}
+	return result, rows.Err()
+}
+
+func aguiMessageFromChatMessage(message ChatMessage) (aguitypes.Message, error) {
+	role := aguitypes.RoleUser
+	if message.Role == "assistant" {
+		role = aguitypes.RoleAssistant
+	}
+	result := aguitypes.Message{
+		ID: "m" + strconv.FormatInt(message.ID, 10), Role: role, Content: message.Content,
+	}
+	if message.Role != "user" || len(message.Attachments) == 0 {
+		return result, nil
+	}
+	contents := make([]aguitypes.InputContent, 0, len(message.Attachments)+1)
+	if message.Content != "" {
+		contents = append(contents, aguitypes.InputContent{Type: aguitypes.InputContentTypeText, Text: message.Content})
+	}
+	for _, attachment := range message.Attachments {
+		data, err := readLimitedFile(attachment.FilePath, maxChatAttachmentBytes)
+		if err != nil {
+			return aguitypes.Message{}, fmt.Errorf("读取聊天图片 %q 失败: %w", attachment.OriginalName, err)
+		}
+		contents = append(contents, aguitypes.InputContent{
+			Type: aguitypes.InputContentTypeBinary, MimeType: attachment.MIMEType,
+			Data: base64.StdEncoding.EncodeToString(data), Filename: attachment.OriginalName,
+		})
+	}
+	result.Content = contents
+	return result, nil
 }
 
 // ListConversations 返回会话列表(近期在前)。
@@ -518,6 +655,10 @@ func (s *AgentService) ListConversations() ([]Conversation, error) {
 
 // DeleteConversation 删除会话及其消息。
 func (s *AgentService) DeleteConversation(conversationID int64) error {
+	attachments, err := loadConversationAttachments(conversationID)
+	if err != nil {
+		return err
+	}
 	tx, err := store.Begin()
 	if err != nil {
 		return err
@@ -525,6 +666,12 @@ func (s *AgentService) DeleteConversation(conversationID int64) error {
 	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.Exec(`
 		DELETE FROM message_metrics WHERE message_id IN (
+			SELECT id FROM messages WHERE conversation_id = ?
+		)`, conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM message_attachments WHERE message_id IN (
 			SELECT id FROM messages WHERE conversation_id = ?
 		)`, conversationID); err != nil {
 		return err
@@ -537,6 +684,12 @@ func (s *AgentService) DeleteConversation(conversationID int64) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	for _, items := range attachments {
+		for _, attachment := range items {
+			_ = os.Remove(attachment.FilePath)
+			_ = os.Remove(attachment.ThumbnailPath)
+		}
 	}
 	if s.sessions != nil {
 		if err := s.sessions.DeleteSession(context.Background(), aguiSessionKey(conversationID)); err != nil {

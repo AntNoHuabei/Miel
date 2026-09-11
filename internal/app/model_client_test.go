@@ -1,10 +1,15 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestModelsEndpoint(t *testing.T) {
@@ -70,5 +75,70 @@ func TestFetchProviderModelsReturnsHTTPError(t *testing.T) {
 	_, err := service.FetchProviderModels(ProviderInput{BaseURL: server.URL})
 	if err == nil {
 		t.Fatal("FetchProviderModels() error = nil, want HTTP error")
+	}
+}
+
+func TestBuildModelSendsImageForDeepSeekFlash(t *testing.T) {
+	bodyCh := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		bodyCh <- payload
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"test","object":"chat.completion","created":1,"model":"deepseek-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := buildModel(Provider{
+		Name: "test", Kind: "deepseek", BaseURL: server.URL,
+		Model: "deepseek-flash", Multimodal: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := model.NewRequest([]model.Message{{
+		Role:    model.RoleUser,
+		Content: "describe",
+		ContentParts: []model.ContentPart{{
+			Type:  model.ContentTypeImage,
+			Image: &model.Image{Data: []byte("png"), Format: "png"},
+		}},
+	}})
+	responses, err := client.GenerateContent(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for response := range responses {
+		if response.Error != nil {
+			t.Fatal(response.Error)
+		}
+	}
+
+	payload := <-bodyCh
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) == 0 {
+		t.Fatalf("messages = %#v", payload["messages"])
+	}
+	message, ok := messages[len(messages)-1].(map[string]any)
+	if !ok {
+		t.Fatalf("message = %#v", messages[len(messages)-1])
+	}
+	content, ok := message["content"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("content = %#v, want text and image parts", message["content"])
+	}
+	imagePart, ok := content[1].(map[string]any)
+	if !ok || imagePart["type"] != "image_url" {
+		t.Fatalf("image part = %#v", content[1])
+	}
+	imageURL, ok := imagePart["image_url"].(map[string]any)
+	if !ok || imageURL["url"] != "data:image/png;base64,cG5n" {
+		t.Fatalf("image_url = %#v", imagePart["image_url"])
 	}
 }

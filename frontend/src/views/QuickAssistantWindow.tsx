@@ -17,6 +17,7 @@ import {
   DeleteOutlined,
   FileImageOutlined,
   FileTextOutlined,
+  PictureOutlined,
   PlusOutlined,
   SendOutlined,
 } from '@ant-design/icons'
@@ -36,6 +37,7 @@ import type {
   ProviderLite,
 } from '../api'
 import { SnapshotMessage } from './ChatView'
+import { ChatAttachmentStrip, useChatAttachments } from '../components/ChatAttachments'
 import '../styles/chat-md.css'
 
 const QUICK_CONVERSATION_KEY = 'blankmind.quick.currentConversation'
@@ -48,6 +50,12 @@ interface AgentEnvelope {
   requestId?: string
   delta?: string
   event?: { type?: string }
+}
+
+interface AgentInputSaved {
+  conversationId: number
+  messageId: number
+  requestId?: string
 }
 
 function initialConversation() {
@@ -72,10 +80,21 @@ export default function QuickAssistantWindow({
   const [streaming, setStreaming] = useState('')
   const [phase, setPhase] = useState('')
   const [modelLabel, setModelLabel] = useState('')
+  const [supportsImages, setSupportsImages] = useState(false)
+  const {
+    attachments,
+    pickImages,
+    onPaste,
+    removeAttachment,
+    discardAttachments,
+    consumeAttachments,
+  } = useChatAttachments()
   const activeRequest = useRef('')
   const sessionVersion = useRef(0)
   const sendingRef = useRef(false)
   const clipboardDraftRef = useRef('')
+  const inputSavedRef = useRef(false)
+  const inputSavedConversationRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const loadMessages = useCallback(async (id: number) => {
@@ -97,8 +116,10 @@ export default function QuickAssistantWindow({
       const providers = await SettingsService.ListProviders() as unknown as ProviderLite[]
       const current = providers.find((provider) => provider.isDefault) ?? providers[0]
       setModelLabel(current?.model ?? '')
+      setSupportsImages(await SettingsService.DefaultModelSupportsVision())
     } catch {
       setModelLabel('')
+      setSupportsImages(false)
     }
   }, [])
 
@@ -151,6 +172,16 @@ export default function QuickAssistantWindow({
       setPhase('正在生成')
     }, []),
   )
+  useWailsEvent<AgentInputSaved>(
+    'agent.input.saved',
+    useCallback((payload) => {
+      if (!sendingRef.current || payload.requestId !== activeRequest.current) return
+      inputSavedRef.current = true
+      inputSavedConversationRef.current = payload.conversationId
+      setConversationID(payload.conversationId)
+      consumeAttachments()
+    }, [consumeAttachments]),
+  )
   useWailsEvent<AgentEnvelope>(
     'agent.agui',
     useCallback((payload) => {
@@ -164,16 +195,18 @@ export default function QuickAssistantWindow({
 
   const newConversation = useCallback(() => {
     discardClipboard()
+    discardAttachments()
     setMode('chat')
     sessionVersion.current += 1
     activeRequest.current = ''
     setConversationID(0)
     setMessages([])
+    setInput('')
     setStreaming('')
     setPhase('')
     sendingRef.current = false
     setSending(false)
-  }, [discardClipboard])
+  }, [discardAttachments, discardClipboard])
 
   const close = () => {
     newConversation()
@@ -189,14 +222,27 @@ export default function QuickAssistantWindow({
 
   const send = async () => {
     const text = input.trim()
-    if (!text || sending || !configured) return
+    if ((!text && attachments.length === 0) || sending || !configured) return
+    if (attachments.length > 0 && !supportsImages) {
+      message.error('当前模型不支持图片输入，请在主窗口切换模型')
+      return
+    }
+    const sentAttachments = attachments
     const version = sessionVersion.current
     const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `quick-${Date.now()}-${Math.random().toString(16).slice(2)}`
     activeRequest.current = requestId
+    inputSavedRef.current = false
+    inputSavedConversationRef.current = 0
     setInput('')
-    setMessages((items) => [...items, { id: `pending-${Date.now()}`, role: 'user', content: text }])
+    const pendingID = `pending-${Date.now()}`
+    setMessages((items) => [...items, {
+      id: pendingID,
+      role: 'user',
+      content: text,
+      attachments: sentAttachments,
+    }])
     setStreaming('')
     setPhase('正在等待模型响应')
     sendingRef.current = true
@@ -217,12 +263,22 @@ export default function QuickAssistantWindow({
         message: text,
         reasoning,
         requestId,
+        attachmentIds: sentAttachments.map((item) => item.id),
       }) as unknown as { conversationId: number }
       if (sessionVersion.current !== version) return
+      consumeAttachments()
       setConversationID(result.conversationId)
       await loadMessages(result.conversationId)
     } catch (error) {
-      if (sessionVersion.current === version) message.error(`对话失败：${String(error)}`)
+      if (sessionVersion.current === version) {
+        message.error(`对话失败：${String(error)}`)
+        if (!inputSavedRef.current) {
+          setInput(text)
+          setMessages((items) => items.filter((item) => item.id !== pendingID))
+        } else if (inputSavedConversationRef.current > 0) {
+          await loadMessages(inputSavedConversationRef.current)
+        }
+      }
     } finally {
       if (sessionVersion.current === version) {
         sendingRef.current = false
@@ -278,9 +334,14 @@ export default function QuickAssistantWindow({
             {streaming && <div className="bm-chat-assistant-message"><Typography.Text type="secondary">BlankMind</Typography.Text><div className="bm-md">{streaming}</div></div>}
           </div>
           <div className="bm-quick-composer">
+            <ChatAttachmentStrip attachments={attachments} onRemove={removeAttachment} />
+            {attachments.length > 0 && !supportsImages && (
+              <div className="bm-chat-attachment-warning">当前模型不支持图片输入</div>
+            )}
             <Input.TextArea
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onPaste={onPaste}
               onPressEnter={(event) => {
                 if (!event.shiftKey) {
                   event.preventDefault()
@@ -293,8 +354,22 @@ export default function QuickAssistantWindow({
               disabled={sending}
             />
             <Flex align="center" justify="space-between" className="bm-quick-composer-footer">
-              <Typography.Text type="secondary" ellipsis>{modelLabel || '当前模型'}</Typography.Text>
-              <Button type="primary" shape="circle" icon={<SendOutlined />} loading={sending} disabled={!input.trim()} onClick={() => void send()} />
+              <Flex align="center" gap={4} className="bm-quick-composer-left">
+                <Tooltip title="添加图片">
+                  <Button type="text" icon={<PictureOutlined />} disabled={sending} onClick={() => void pickImages()} />
+                </Tooltip>
+                <Typography.Text type="secondary" ellipsis>{modelLabel || '当前模型'}</Typography.Text>
+              </Flex>
+              <Tooltip title={attachments.length > 0 && !supportsImages ? '当前模型不支持图片输入' : '发送'}>
+                <Button
+                  type="primary"
+                  shape="circle"
+                  icon={<SendOutlined />}
+                  loading={sending}
+                  disabled={(!input.trim() && attachments.length === 0) || (attachments.length > 0 && !supportsImages)}
+                  onClick={() => void send()}
+                />
+              </Tooltip>
             </Flex>
           </div>
         </>

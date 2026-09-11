@@ -56,10 +56,3 @@ export function ExtractTodos(id: number): $CancellablePromise<$models.ExtractedT
 export function SaveShot(req: $models.SaveShotReq): $CancellablePromise<void> {
     return $Call.ByID(803619347, req);
 }
-
-/**
- * SetNotify 注入事件广播回调。
- */
-export function SetNotify(fn: any): $CancellablePromise<void> {
-    return $Call.ByID(2576805147, fn);
-}

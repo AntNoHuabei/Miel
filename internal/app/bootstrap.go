@@ -8,13 +8,14 @@ var Emit = func(_ string, _ any) {}
 
 // Services 是装配产物,供 main 注册为 wails 服务。
 type Services struct {
-	Settings   *SettingsService
-	Memory     *MemoryService
-	Todo       *TodoService
-	Agent      *AgentService
-	Screenshot *ScreenshotService
-	Clipboard  *ClipboardService
-	Reminder   *ReminderService
+	Settings        *SettingsService
+	Memory          *MemoryService
+	Todo            *TodoService
+	Agent           *AgentService
+	Screenshot      *ScreenshotService
+	Clipboard       *ClipboardService
+	ChatAttachments *ChatAttachmentService
+	Reminder        *ReminderService
 }
 
 // Bootstrap 初始化存储与内置 skills,构造并装配各业务服务
@@ -35,7 +36,8 @@ func Bootstrap() (*Services, error) {
 		return nil, err
 	}
 	memoryService := NewMemoryService(memoryRuntime, settings)
-	agent, err := NewAgentService(memoryRuntime)
+	chatAttachments := NewChatAttachmentService(store)
+	agent, err := NewAgentService(memoryRuntime, chatAttachments)
 	if err != nil {
 		_ = memoryRuntime.Close()
 		return nil, err
@@ -54,12 +56,13 @@ func Bootstrap() (*Services, error) {
 
 	rem.Start(context.Background())
 	return &Services{
-		Settings:   settings,
-		Memory:     memoryService,
-		Todo:       todo,
-		Agent:      agent,
-		Screenshot: shot,
-		Clipboard:  clipboard,
-		Reminder:   rem,
+		Settings:        settings,
+		Memory:          memoryService,
+		Todo:            todo,
+		Agent:           agent,
+		Screenshot:      shot,
+		Clipboard:       clipboard,
+		ChatAttachments: chatAttachments,
+		Reminder:        rem,
 	}, nil
 }

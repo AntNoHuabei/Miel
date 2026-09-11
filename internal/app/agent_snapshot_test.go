@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	aguitypes "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/types"
@@ -151,6 +153,57 @@ func TestMessagesSnapshotAttachesPersistedAssistantMetrics(t *testing.T) {
 	metrics := decoded.Messages[1].Metrics
 	if decoded.Messages[1].ID != "m92" || metrics == nil || metrics.TotalTokens != 20 || metrics.TokensPerSecond != 6.4 {
 		t.Fatalf("assistant metrics = %#v", decoded.Messages[1])
+	}
+}
+
+func TestMessagesSnapshotKeepsImageMessageOrderAndRedactsOriginal(t *testing.T) {
+	attachmentService := newAttachmentTestService(t)
+	oldStore := store
+	store = attachmentService.db
+	t.Cleanup(func() { store = oldStore })
+
+	sessions := inmemory.NewSessionService()
+	t.Cleanup(func() { _ = sessions.Close() })
+	service, err := newAgentService(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.attachments = attachmentService
+
+	draft, err := attachmentService.stageBytes(testPNG(t, 6, 4), "context.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversationID, userMessageID, err := service.saveUserMessage(0, "看看这张图", []string{draft.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.saveMessage(conversationID, "assistant", "看到了", "assistant-1", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := service.MessagesSnapshot(conversationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, ok := snapshot["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("snapshot messages = %#v", snapshot["messages"])
+	}
+	first, ok := messages[0].(map[string]any)
+	if !ok || first["id"] != "m"+strconv.FormatInt(userMessageID, 10) || first["role"] != "user" {
+		t.Fatalf("first message = %#v", messages[0])
+	}
+	attachments, ok := first["attachments"].([]MessageAttachment)
+	if !ok || len(attachments) != 1 || !strings.HasPrefix(attachments[0].ThumbnailDataURI, "data:image/png;base64,") {
+		t.Fatalf("snapshot attachments = %#v", first["attachments"])
+	}
+	if content, ok := first["content"].([]any); ok {
+		for _, part := range content {
+			if binary, ok := part.(map[string]any); ok && binary["data"] != nil {
+				t.Fatalf("original image data leaked into snapshot: %#v", binary)
+			}
+		}
 	}
 }
 

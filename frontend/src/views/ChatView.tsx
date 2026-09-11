@@ -26,6 +26,7 @@ import {
   HistoryOutlined,
   LoadingOutlined,
   PlusOutlined,
+  PictureOutlined,
   SendOutlined,
   ToolOutlined,
   WarningOutlined,
@@ -40,6 +41,7 @@ import { Clipboard as WailsClipboard } from '@wailsio/runtime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AgentService, SettingsService, useWailsEvent } from '../api'
+import { ChatAttachmentStrip, useChatAttachments } from '../components/ChatAttachments'
 import { BM_THEMES, useBMTheme } from '../theme/ThemeContext'
 import type {
   AGUIMessageLite,
@@ -140,6 +142,12 @@ type ChatViewProps = {
   openConversationRequest?: { id: number; seq: number }
 }
 
+interface AgentInputSaved {
+  conversationId: number
+  messageId: number
+  requestId?: string
+}
+
 export default function ChatView({
   activeView,
   featureTitle,
@@ -164,6 +172,14 @@ export default function ChatView({
   const [agentPhase, setAgentPhase] = useState<AgentPhase>('idle')
   const [reasoningTrace, setReasoningTrace] = useState('')
   const [toolCalls, setToolCalls] = useState<ToolCallUI[]>([])
+  const {
+    attachments,
+    pickImages,
+    onPaste,
+    removeAttachment,
+    discardAttachments,
+    consumeAttachments,
+  } = useChatAttachments()
 
   // 模型与工作区
   const [providers, setProviders] = useState<ProviderLite[]>([])
@@ -177,6 +193,8 @@ export default function ChatView({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const reasoningPreferencesRef = useRef<Record<string, string>>({})
   const activeRequestIdRef = useRef('')
+  const inputSavedRef = useRef(false)
+  const inputSavedConversationRef = useRef(0)
 
   const defaultP = providers.find((p) => p.isDefault) ?? providers[0]
 
@@ -194,8 +212,10 @@ export default function ChatView({
   }, [modelOpts])
 
   // 从内置目录解析当前模型的“思考规格”
-  const catProv = catalog.find((c) => c.kind === defaultP?.kind)
-  const spec = catProv?.models.find((m) => m.id === defaultP?.model)?.reasoning
+  const catProv = catalog.find((c) => c.kind.toLowerCase() === defaultP?.kind.toLowerCase())
+  const catalogModel = catProv?.models.find((m) => m.id.toLowerCase() === defaultP?.model.toLowerCase())
+  const spec = catalogModel?.reasoning
+  const supportsImages = catalogModel?.multimodal ?? defaultP?.multimodal ?? false
   const specType = spec?.type ?? 'none'
   const isCustom = defaultP?.kind === 'custom'
   const canDisableReasoning =
@@ -361,6 +381,7 @@ export default function ChatView({
   }, [])
 
   const openConv = (id: number) => {
+    discardAttachments()
     currentRef.current = id
     targetRef.current = id
     setCurrent(id)
@@ -373,6 +394,7 @@ export default function ChatView({
   }
 
   const newChat = () => {
+    discardAttachments()
     currentRef.current = 0
     targetRef.current = 0
     setCurrent(0)
@@ -400,11 +422,19 @@ export default function ChatView({
 
   const send = async () => {
     const text = input.trim()
-    if (!text || sending) return
+    if ((!text && attachments.length === 0) || sending) return
+    if (attachments.length > 0 && !supportsImages) {
+      message.error('当前模型不支持图片输入，请切换到支持图片的模型')
+      return
+    }
+    const sentAttachments = attachments
+    const pendingID = `pending-${Date.now()}`
+    inputSavedRef.current = false
+    inputSavedConversationRef.current = 0
     setInput('')
     setMsgs((prev) => [
       ...prev,
-      { id: `pending-${Date.now()}`, role: 'user', content: text },
+      { id: pendingID, role: 'user', content: text, attachments: sentAttachments },
     ])
     setSending(true)
     setStreaming('')
@@ -423,8 +453,10 @@ export default function ChatView({
         message: text,
         reasoning: effectiveReasoning,
         requestId,
+        attachmentIds: sentAttachments.map((item) => item.id),
       })) as unknown as { conversationId: number; answer: string }
       const id = res.conversationId
+      consumeAttachments()
       currentRef.current = id
       targetRef.current = id
       setCurrent(id)
@@ -436,6 +468,13 @@ export default function ChatView({
     } catch (err) {
       setAgentPhase('error')
       message.error(`对话失败:${String(err)}`)
+      if (!inputSavedRef.current) {
+        setInput(text)
+        setMsgs((items) => items.filter((item) => item.id !== pendingID))
+      } else if (inputSavedConversationRef.current > 0) {
+        await loadMessages(inputSavedConversationRef.current)
+        await reloadConvs()
+      }
     } finally {
       sendingRef.current = false
       setSending(false)
@@ -612,6 +651,19 @@ export default function ChatView({
       message.error(`切换失败:${String(err)}`)
     }
   }
+
+  useWailsEvent<AgentInputSaved>(
+    'agent.input.saved',
+    useCallback((payload) => {
+      if (!sendingRef.current || payload.requestId !== activeRequestIdRef.current) return
+      inputSavedRef.current = true
+      inputSavedConversationRef.current = payload.conversationId
+      currentRef.current = payload.conversationId
+      targetRef.current = payload.conversationId
+      setCurrent(payload.conversationId)
+      consumeAttachments()
+    }, [consumeAttachments]),
+  )
 
   const changeReasoning = (value: string) => {
     setReasoning(value)
@@ -845,10 +897,15 @@ export default function ChatView({
               background: 'var(--bm-header-bg)',
             }}
           >
+            <ChatAttachmentStrip attachments={attachments} onRemove={removeAttachment} />
+            {attachments.length > 0 && !supportsImages && (
+              <div className="bm-chat-attachment-warning">当前模型不支持图片输入</div>
+            )}
             <Input.TextArea
               id="bm-chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onPaste={onPaste}
               onPressEnter={(e) => {
                 if (!e.shiftKey) {
                   e.preventDefault()
@@ -873,6 +930,13 @@ export default function ChatView({
                 <Dropdown
                   menu={{
                     items: [
+                      {
+                        key: 'image',
+                        icon: <PictureOutlined />,
+                        label: '添加图片',
+                        disabled: sending,
+                        onClick: () => void pickImages(),
+                      },
                       {
                         key: 'capture',
                         icon: <CameraOutlined />,
@@ -982,14 +1046,14 @@ export default function ChatView({
                   </Button>
                 </Popover>
 
-                <Tooltip title={sending ? '生成中…' : '发送'}>
+                <Tooltip title={attachments.length > 0 && !supportsImages ? '当前模型不支持图片输入' : sending ? '生成中…' : '发送'}>
                   <Button
                     type="primary"
                     shape="circle"
                     size="large"
                     icon={<SendOutlined />}
                     loading={sending}
-                    disabled={!input.trim()}
+                    disabled={(!input.trim() && attachments.length === 0) || (attachments.length > 0 && !supportsImages)}
                     onClick={() => void send()}
                   />
                 </Tooltip>
@@ -1111,7 +1175,8 @@ export function SnapshotMessage({
     return (
       <Flex justify="flex-end" style={{ margin: '4px 0' }}>
         <div className="bm-chat-user-message">
-          {content}
+          <ChatAttachmentStrip attachments={message.attachments ?? []} />
+          {content && <div className="bm-chat-user-message-text">{content}</div>}
         </div>
       </Flex>
     )

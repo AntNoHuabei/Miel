@@ -47,10 +47,3 @@ export function ListConversations(): $CancellablePromise<$models.Conversation[] 
 export function MessagesSnapshot(conversationID: number): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(1314565245, conversationID);
 }
-
-/**
- * SetNotify 注入事件广播回调(main 装配时设置)。
- */
-export function SetNotify(fn: any): $CancellablePromise<void> {
-    return $Call.ByID(2856966782, fn);
-}

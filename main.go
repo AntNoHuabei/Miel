@@ -12,6 +12,22 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+type wailsChatAttachmentPicker struct {
+	instance        *application.App
+	quickController *quickWindowController
+}
+
+func (p wailsChatAttachmentPicker) PickChatImages() ([]string, error) {
+	dialog := p.instance.Dialog.OpenFile().
+		SetTitle("选择图片").
+		CanChooseFiles(true).
+		AddFilter("图片", "*.png;*.jpg;*.jpeg;*.webp;*.gif")
+	if window := p.quickController.currentWindow(); window != nil {
+		dialog.AttachToWindow(window)
+	}
+	return dialog.PromptForMultipleSelection()
+}
+
 func init() {
 	application.RegisterEvent[string]("time")
 	application.RegisterEvent[string]("todos.changed")
@@ -22,6 +38,7 @@ func init() {
 	application.RegisterEvent[map[string]any]("agent.chunk")
 	application.RegisterEvent[map[string]any]("agent.done")
 	application.RegisterEvent[map[string]any]("agent.start")
+	application.RegisterEvent[map[string]any]("agent.input.saved")
 	application.RegisterEvent[map[string]any]("agent.agui")
 	application.RegisterEvent[string]("conversations.changed")
 	application.RegisterEvent[string]("models.changed")
@@ -63,6 +80,7 @@ func main() {
 		application.NewService(svcs.Agent),
 		application.NewService(svcs.Screenshot),
 		application.NewService(svcs.Clipboard),
+		application.NewService(svcs.ChatAttachments),
 	} {
 		instance.RegisterService(service)
 	}
@@ -101,6 +119,10 @@ func main() {
 		},
 	})
 	quickController := newQuickWindowController(instance, mainWin, quickWin)
+	app.BindChatAttachmentPicker(svcs.ChatAttachments, wailsChatAttachmentPicker{
+		instance:        instance,
+		quickController: quickController,
+	})
 	activation.bind(quickController.showMain)
 	app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
 	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {

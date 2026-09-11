@@ -136,6 +136,16 @@ body {
 
 /* Floating assistant: a compact Swiss utility surface with one continuous grid. */
 .bm-quick-window {
+  --bm-chat-bg: var(--bm-content-bg);
+  --bm-chat-surface: var(--bm-header-bg);
+  --bm-chat-surface-2: var(--bm-inset-bg);
+  --bm-chat-border: var(--bm-divider);
+  --bm-chat-hover: var(--bm-hover-bg);
+  --bm-chat-selected: var(--bm-selected-bg);
+  --bm-chat-selected-text: var(--bm-selected-text);
+  --bm-chat-text: var(--bm-text);
+  --bm-chat-muted: var(--bm-muted);
+  --bm-chat-signal: var(--bm-signal);
   display: flex;
   width: 100%;
   height: 100vh;
@@ -252,12 +262,26 @@ body {
   border-color: var(--bm-signal);
 }
 
+.bm-quick-composer .ant-input,
+.bm-quick-composer .ant-input-textarea,
 .bm-quick-composer textarea {
   padding: 12px 14px 4px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
   color: var(--bm-text);
   font-size: 14px;
   line-height: 1.55;
   background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bm-quick-composer .ant-input:focus,
+.bm-quick-composer .ant-input-focused,
+.bm-quick-composer .ant-input-textarea-focused,
+.bm-quick-composer textarea:focus {
+  border: 0 !important;
+  outline: 0 !important;
   box-shadow: none !important;
 }
 
@@ -270,6 +294,31 @@ body {
 .bm-quick-composer-footer .ant-typography {
   min-width: 0;
   font-size: 11px;
+}
+
+.bm-quick-composer-left {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.bm-quick-composer-left .ant-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 0;
+  color: var(--bm-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.bm-quick-composer-left .ant-btn:hover,
+.bm-quick-composer-left .ant-btn:focus-visible {
+  border: 0;
+  color: var(--bm-text);
+  background: var(--bm-hover-bg);
+  box-shadow: none;
 }
 
 .bm-clipboard-panel {
@@ -522,6 +571,518 @@ body {
   flex: 1;
 }
 
+/* Settings: Swiss information grid with stable columns and continuous rules. */
+.bm-settings-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--bm-text);
+  background: var(--bm-content-bg);
+}
+
+.bm-settings-nav {
+  width: 172px;
+  flex: 0 0 172px;
+  overflow-y: auto;
+  border-right: 1px solid var(--bm-divider);
+  background: var(--bm-header-bg);
+}
+
+.bm-settings-nav-list {
+  padding: 18px 10px;
+}
+
+.bm-settings-nav-item.ant-btn {
+  display: grid;
+  width: 100%;
+  height: 44px;
+  grid-template-columns: 24px 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--bm-muted) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left;
+}
+
+.bm-settings-nav-item.ant-btn:hover,
+.bm-settings-nav-item.ant-btn:focus-visible {
+  color: var(--bm-text) !important;
+  background: var(--bm-hover-bg) !important;
+}
+
+.bm-settings-nav-item.ant-btn.is-active {
+  color: var(--bm-selected-text) !important;
+  background: var(--bm-selected-bg) !important;
+  box-shadow: inset 3px 0 0 var(--bm-signal) !important;
+  font-weight: 600;
+}
+
+.bm-settings-nav-index {
+  color: var(--bm-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-settings-nav-item.is-active .bm-settings-nav-index,
+.bm-settings-nav-item.is-active .bm-settings-nav-icon {
+  color: var(--bm-signal);
+}
+
+.bm-settings-nav-icon {
+  display: inline-flex;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.bm-settings-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-settings-main {
+  container-name: settings-main;
+  container-type: inline-size;
+  min-width: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px clamp(22px, 4vw, 48px) 44px;
+  background: var(--bm-content-bg);
+}
+
+.bm-settings-panel {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.bm-settings-page-heading {
+  display: flex;
+  min-height: 72px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-page-heading > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.bm-settings-page-heading h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--bm-text);
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.bm-settings-section-number {
+  color: var(--bm-signal);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-settings-loading,
+.bm-settings-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-provider-list {
+  container-name: provider-list;
+  container-type: inline-size;
+}
+
+.bm-settings-provider {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-provider-index {
+  padding-top: 22px;
+  border-right: 1px solid var(--bm-divider);
+  color: var(--bm-signal);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-settings-provider-body {
+  min-width: 0;
+  padding: 20px 0 24px 20px;
+}
+
+.bm-settings-provider-head {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(240px, 1.7fr) auto;
+  align-items: center;
+  gap: 18px;
+}
+
+.bm-settings-provider-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.bm-settings-provider-identity > .ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bm-text);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-settings-provider-default,
+.bm-settings-model-kind {
+  flex: 0 0 auto;
+  color: var(--bm-signal);
+  font-size: 10px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.bm-settings-provider-meta {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(140px, 1.4fr);
+  gap: 18px;
+  margin: 0;
+}
+
+.bm-settings-provider-meta > div {
+  min-width: 0;
+}
+
+.bm-settings-provider-meta dt {
+  margin-bottom: 3px;
+  color: var(--bm-muted);
+  font-size: 10px;
+}
+
+.bm-settings-provider-meta dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--bm-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-settings-provider-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.bm-settings-provider-actions .ant-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0 !important;
+  color: var(--bm-muted);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bm-settings-provider-actions .ant-btn:hover,
+.bm-settings-provider-actions .ant-btn:focus-visible {
+  color: var(--bm-text);
+  background: var(--bm-hover-bg) !important;
+}
+
+.bm-settings-model-list {
+  margin-top: 18px;
+  border-top: 1px solid var(--bm-divider);
+}
+
+.bm-settings-model-list-head,
+.bm-settings-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  align-items: center;
+}
+
+.bm-settings-model-list-head {
+  min-height: 30px;
+  color: var(--bm-muted);
+  font-size: 10px;
+}
+
+.bm-settings-model-list-head span:last-child {
+  text-align: right;
+}
+
+.bm-settings-model-row {
+  min-height: 44px;
+  border-top: 1px solid var(--bm-divider);
+}
+
+.bm-settings-model-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.bm-settings-model-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.bm-settings-model-label > .ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bm-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-settings-model-state {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.bm-settings-model-state .ant-btn {
+  height: 28px;
+  padding-inline: 8px;
+  border: 0 !important;
+  color: var(--bm-signal);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bm-settings-model-state .ant-btn:hover,
+.bm-settings-model-state .ant-btn:focus-visible {
+  background: var(--bm-hover-bg) !important;
+}
+
+.bm-settings-current-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--bm-signal);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.bm-settings-model-empty {
+  display: block;
+  padding: 16px 0;
+  font-size: 12px;
+}
+
+.bm-settings-appearance-list {
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-appearance-row {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 62px;
+  grid-template-columns: 36px 34px minmax(0, 1fr) 54px 22px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--bm-divider);
+  border-radius: 0;
+  color: var(--bm-text);
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bm-settings-appearance-row:first-child {
+  border-top: 0;
+}
+
+.bm-settings-appearance-row:hover,
+.bm-settings-appearance-row:focus-visible {
+  outline: 0;
+  background: var(--bm-hover-bg);
+}
+
+.bm-settings-appearance-row.is-active {
+  color: var(--bm-selected-text);
+  background: var(--bm-selected-bg);
+}
+
+.bm-settings-appearance-row.is-active::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--bm-signal);
+  content: '';
+}
+
+.bm-settings-theme-index,
+.bm-settings-theme-mode {
+  color: var(--bm-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-settings-theme-swatch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 3px;
+}
+
+.bm-settings-theme-swatch > span {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.bm-settings-theme-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bm-settings-theme-copy strong,
+.bm-settings-theme-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-settings-theme-copy strong {
+  font-size: 13px;
+}
+
+.bm-settings-theme-copy small {
+  color: var(--bm-muted);
+  font-size: 11px;
+}
+
+.bm-settings-theme-check {
+  color: var(--bm-signal);
+  text-align: right;
+}
+
+.bm-settings-data-band {
+  display: grid;
+  min-height: 132px;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-data-index {
+  align-self: stretch;
+  padding-top: 24px;
+  border-right: 1px solid var(--bm-divider);
+  color: var(--bm-signal);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-settings-data-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 22px;
+}
+
+.bm-settings-data-copy code {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: var(--bm-text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+}
+
+@container settings-main (max-width: 640px) {
+  .bm-settings-provider-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .bm-settings-provider-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .bm-settings-provider-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .bm-settings-data-band {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .bm-settings-data-band > .ant-btn {
+    grid-column: 2;
+    justify-self: start;
+    margin: 0 18px 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  .bm-settings-nav {
+    width: 62px;
+    flex-basis: 62px;
+  }
+
+  .bm-settings-nav-list {
+    padding-inline: 8px;
+  }
+
+  .bm-settings-nav-item.ant-btn {
+    display: flex;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .bm-settings-nav-index,
+  .bm-settings-nav-label {
+    display: none;
+  }
+
+  .bm-settings-main {
+    padding: 22px 18px 36px;
+  }
+
+  .bm-settings-page-heading h3 {
+    font-size: 21px;
+  }
+}
+
 /* Swiss information bands for memory settings: continuous rules, no cards or shadows. */
 .bm-memory-settings {
   width: min(100%, 920px);
@@ -537,11 +1098,22 @@ body {
   border-bottom: 1px solid var(--bm-divider);
 }
 
-.bm-settings-heading h4,
+.bm-settings-heading h3,
 .bm-memory-band h5,
 .bm-memory-list-heading h5 {
   margin: 0;
   letter-spacing: 0;
+}
+
+.bm-settings-page-heading > .bm-memory-heading-title {
+  align-items: baseline;
+}
+
+.bm-memory-heading-title > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .bm-memory-band {

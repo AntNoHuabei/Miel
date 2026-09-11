@@ -6,30 +6,8 @@
       "baseUrl": "https://api.deepseek.com",
       "models": [
         {
-          "id": "deepseek-v4-flash-vision-exp",
-          "label": "DeepSeek Vision",
-          "reasoning": {
-            "type": "none",
-            "note": ""
-          },
-          "multimodal": true
-        },
-        {
-          "id": "deepseek-v4-flash",
-          "label": "DeepSeek V4 Flash",
-          "reasoning": {
-            "type": "effort",
-            "levels": [
-              "low",
-              "high",
-              "max"
-            ]
-          },
-          "multimodal": false
-        },
-        {
-          "id": "deepseek-v4-pro",
-          "label": "DeepSeek V4 Pro",
+          "id": "deepseek-flash",
+          "label": "DeepSeek V4.1 Flash",
           "reasoning": {
             "type": "effort",
             "levels": [
@@ -39,7 +17,7 @@
             ],
             "note": "effort 档位:low/high/max"
           },
-          "multimodal": false
+          "multimodal": true
         }
       ]
     },

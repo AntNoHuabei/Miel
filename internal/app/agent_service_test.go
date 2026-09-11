@@ -108,12 +108,12 @@ func TestApplyReasoningOff(t *testing.T) {
 		want      *bool
 	}{
 		{name: "qwen empty", kind: "qwen", modelName: "qwen-plus", level: "", want: boolPtr(false)},
-		{name: "deepseek toggle off", kind: "deepseek", modelName: "deepseek-chat", level: "off", want: boolPtr(false)},
-		{name: "deepseek effort none", kind: "deepseek", modelName: "deepseek-v4-pro", level: "none", want: boolPtr(false)},
+		{name: "deepseek effort off", kind: "deepseek", modelName: "deepseek-flash", level: "off", want: boolPtr(false)},
+		{name: "deepseek effort none", kind: "deepseek", modelName: "deepseek-flash", level: "none", want: boolPtr(false)},
 		{name: "hunyuan", kind: "hunyuan", modelName: "hunyuan-turbos-latest", want: boolPtr(false)},
 		{name: "glm", kind: "glm", modelName: "glm-4.7", want: boolPtr(false)},
 		{name: "minimax case insensitive", kind: "minimax", modelName: "MiniMax-M2", want: boolPtr(false)},
-		{name: "always cannot disable", kind: "deepseek", modelName: "deepseek-reasoner"},
+		{name: "always cannot disable", kind: "kimi", modelName: "kimi-k2-thinking"},
 		{name: "unsupported has no toggle", kind: "openai", modelName: "gpt-4o"},
 		{name: "openai effort has no toggle", kind: "openai", modelName: "o3-mini"},
 		{name: "custom uses provider default", kind: "custom", modelName: "unknown"},
@@ -150,7 +150,7 @@ func TestApplyReasoningOn(t *testing.T) {
 	}{
 		{name: "qwen toggle", kind: "qwen", modelName: "qwen-plus", level: "on", wantToggle: boolPtr(true)},
 		{name: "minimax toggle", kind: "minimax", modelName: "MiniMax-M2", level: "on", wantToggle: boolPtr(true)},
-		{name: "deepseek effort", kind: "deepseek", modelName: "deepseek-v4-pro", level: "max", wantToggle: boolPtr(true), wantEffort: "max"},
+		{name: "deepseek effort", kind: "deepseek", modelName: "deepseek-flash", level: "max", wantToggle: boolPtr(true), wantEffort: "max"},
 		{name: "openai effort", kind: "openai", modelName: "o3-mini", level: "medium", wantEffort: "medium"},
 	}
 
@@ -192,7 +192,7 @@ func TestDisabledReasoningPayload(t *testing.T) {
 			},
 		},
 		{
-			name: "deepseek uses disabled thinking object", kind: "deepseek", modelName: "deepseek-chat",
+			name: "deepseek uses disabled thinking object", kind: "deepseek", modelName: "deepseek-flash",
 			assert: assertThinkingDisabled,
 		},
 		{

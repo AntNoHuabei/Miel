@@ -34,6 +34,19 @@ export interface CatalogProvider {
 }
 
 /**
+ * ChatAttachmentDraft is returned to a composer after an image has been staged.
+ */
+export interface ChatAttachmentDraft {
+    "id": string;
+    "name": string;
+    "mimeType": string;
+    "size": number;
+    "width": number;
+    "height": number;
+    "thumbnailDataUri": string;
+}
+
+/**
  * ChatMetrics records provider-reported token usage plus wall-clock timing for one assistant reply.
  */
 export interface ChatMetrics {
@@ -63,6 +76,7 @@ export interface ChatRequest {
      */
     "reasoning": string;
     "requestId": string;
+    "attachmentIds": string[] | null;
 }
 
 /**

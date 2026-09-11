@@ -15,6 +15,7 @@ declare module "@wailsio/runtime" {
             "agent.agui": { [_ in string]?: any } | null;
             "agent.chunk": { [_ in string]?: any } | null;
             "agent.done": { [_ in string]?: any } | null;
+            "agent.input.saved": { [_ in string]?: any } | null;
             "agent.start": { [_ in string]?: any } | null;
             "clipboard.todo.show": string;
             "conversations.changed": string;

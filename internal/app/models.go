@@ -156,11 +156,29 @@ type Conversation struct {
 
 // ChatMessage 会话消息。
 type ChatMessage struct {
-	ID             int64  `json:"id"`
-	ConversationID int64  `json:"conversationId"`
-	Role           string `json:"role"` // user | assistant | tool
-	Content        string `json:"content"`
-	CreatedAt      int64  `json:"createdAt"`
+	ID             int64               `json:"id"`
+	ConversationID int64               `json:"conversationId"`
+	Role           string              `json:"role"` // user | assistant | tool
+	Content        string              `json:"content"`
+	CreatedAt      int64               `json:"createdAt"`
+	Attachments    []MessageAttachment `json:"attachments,omitempty"`
+}
+
+// MessageAttachment is an image owned by a persisted user message.
+type MessageAttachment struct {
+	ID               string `json:"id"`
+	MessageID        int64  `json:"messageId"`
+	Kind             string `json:"kind"`
+	FilePath         string `json:"-"`
+	ThumbnailPath    string `json:"-"`
+	MIMEType         string `json:"mimeType"`
+	OriginalName     string `json:"name"`
+	Width            int    `json:"width"`
+	Height           int    `json:"height"`
+	SizeBytes        int64  `json:"size"`
+	Position         int    `json:"position"`
+	CreatedAt        int64  `json:"createdAt"`
+	ThumbnailDataURI string `json:"thumbnailDataUri"`
 }
 
 // ChatMetrics records provider-reported token usage plus wall-clock timing for one assistant reply.

@@ -3,11 +3,13 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	aguievents "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/events"
@@ -26,7 +28,7 @@ const (
 )
 
 // NewAgentService 创建持久化 AG-UI 会话服务。模型 runner 仍按每轮配置动态构建。
-func NewAgentService(memoryRuntime *memoryRuntime) (*AgentService, error) {
+func NewAgentService(memoryRuntime *memoryRuntime, attachments *ChatAttachmentService) (*AgentService, error) {
 	db, err := sql.Open("sqlite", filepath.Join(dataDir(), "agui.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open AG-UI session store: %w", err)
@@ -42,6 +44,7 @@ func NewAgentService(memoryRuntime *memoryRuntime) (*AgentService, error) {
 		return nil, err
 	}
 	service.memory = memoryRuntime
+	service.attachments = attachments
 	return service, nil
 }
 
@@ -123,12 +126,58 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 	if result == nil {
 		return nil, errors.New("AG-UI 未返回 MESSAGES_SNAPSHOT")
 	}
+	if err := mergePersistedUserMessages(result, history); err != nil {
+		return nil, err
+	}
 	metrics, err := loadConversationMessageMetrics(conversationID)
 	if err != nil {
 		return nil, err
 	}
 	attachMessageMetrics(result, metrics)
+	if err := s.attachSnapshotAttachments(result, history); err != nil {
+		return nil, err
+	}
+	redactAGUIBinaryContent(result)
 	return result, nil
+}
+
+func mergePersistedUserMessages(snapshot map[string]any, history []ChatMessage) error {
+	messages, ok := snapshot["messages"].([]any)
+	if !ok {
+		messages = []any{}
+	}
+	existing := make(map[string]struct{}, len(messages))
+	for _, raw := range messages {
+		if message, ok := raw.(map[string]any); ok {
+			if id, ok := message["id"].(string); ok {
+				existing[id] = struct{}{}
+			}
+		}
+	}
+	for _, persisted := range history {
+		if persisted.Role != "user" {
+			continue
+		}
+		id := "m" + strconv.FormatInt(persisted.ID, 10)
+		if _, ok := existing[id]; ok {
+			continue
+		}
+		encoded, err := json.Marshal(map[string]any{
+			"id":      id,
+			"role":    persisted.Role,
+			"content": persisted.Content,
+		})
+		if err != nil {
+			return err
+		}
+		var raw map[string]any
+		if err := json.Unmarshal(encoded, &raw); err != nil {
+			return err
+		}
+		messages = append(messages, raw)
+	}
+	snapshot["messages"] = messages
+	return nil
 }
 
 func loadConversationMessageMetrics(conversationID int64) (map[string]ChatMetrics, error) {
@@ -176,6 +225,64 @@ func attachMessageMetrics(snapshot map[string]any, metrics map[string]ChatMetric
 		messageID, _ := message["id"].(string)
 		if item, exists := metrics[messageID]; exists {
 			message["metrics"] = item
+		}
+	}
+}
+
+func (s *AgentService) attachSnapshotAttachments(snapshot map[string]any, history []ChatMessage) error {
+	byID := make(map[string][]MessageAttachment)
+	for _, message := range history {
+		if len(message.Attachments) == 0 {
+			continue
+		}
+		items := make([]MessageAttachment, 0, len(message.Attachments))
+		for _, attachment := range message.Attachments {
+			thumbnail, err := readLimitedFile(attachment.ThumbnailPath, maxChatAttachmentBytes)
+			if err != nil {
+				return fmt.Errorf("读取聊天图片缩略图失败: %w", err)
+			}
+			attachment.ThumbnailDataURI = "data:image/png;base64," + base64.StdEncoding.EncodeToString(thumbnail)
+			items = append(items, attachment)
+		}
+		byID["m"+strconv.FormatInt(message.ID, 10)] = items
+	}
+	messages, ok := snapshot["messages"].([]any)
+	if !ok {
+		return nil
+	}
+	for _, raw := range messages {
+		message, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		messageID, _ := message["id"].(string)
+		if attachments := byID[messageID]; len(attachments) > 0 {
+			message["attachments"] = attachments
+		}
+	}
+	return nil
+}
+
+// redactAGUIBinaryContent keeps original image payloads out of Wails events and snapshots.
+func redactAGUIBinaryContent(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		contentType, _ := typed["type"].(string)
+		mimeType, _ := typed["mimeType"].(string)
+		if contentType == "binary" && strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+			delete(typed, "data")
+		}
+		if contentType == "image" {
+			if source, ok := typed["source"].(map[string]any); ok && source["type"] == "data" {
+				delete(source, "value")
+			}
+		}
+		for _, child := range typed {
+			redactAGUIBinaryContent(child)
+		}
+	case []any:
+		for _, child := range typed {
+			redactAGUIBinaryContent(child)
 		}
 	}
 }

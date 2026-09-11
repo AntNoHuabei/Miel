@@ -66,6 +66,8 @@ func NewScreenshotService(db *sql.DB) *ScreenshotService {
 }
 
 // SetNotify 注入事件广播回调。
+//
+//wails:ignore
 func (s *ScreenshotService) SetNotify(fn func(name string, data any)) { s.notify = fn }
 
 // EmitEvent 跨包(热键等)触发该服务事件,等价于服务内部 emit。

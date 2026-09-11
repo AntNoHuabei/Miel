@@ -194,7 +194,7 @@ func TestDefaultModelSupportsVisionUsesCurrentCatalogModel(t *testing.T) {
 	if _, err := db.Exec(`
 		INSERT INTO providers (id, name, kind, base_url, api_key, model, multimodal, is_default, created_at)
 		VALUES (1, 'DeepSeek', 'deepseek', 'https://api.deepseek.com', '',
-			'deepseek-v4-flash-vision-exp', 0, 1, 1)`); err != nil {
+			'deepseek-flash', 0, 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,6 +203,19 @@ func TestDefaultModelSupportsVisionUsesCurrentCatalogModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !supported {
-		t.Fatal("DeepSeek Vision should be detected from the current catalog model")
+		t.Fatal("DeepSeek Flash should be detected as a vision model")
+	}
+}
+
+func TestDeepSeekCatalogOnlyContainsFlash(t *testing.T) {
+	provider, found := catalogLookup("deepseek")
+	if !found {
+		t.Fatal("DeepSeek catalog entry is missing")
+	}
+	if len(provider.Models) != 1 || provider.Models[0].ID != "deepseek-flash" {
+		t.Fatalf("DeepSeek catalog models = %#v, want only deepseek-flash", provider.Models)
+	}
+	if !provider.Models[0].Multimodal {
+		t.Fatal("deepseek-flash should support image input")
 	}
 }

@@ -312,6 +312,79 @@
   word-break: break-word;
 }
 
+.bm-chat-user-message-text {
+  white-space: pre-wrap;
+}
+
+.bm-chat-attachment-strip {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.bm-chat-user-message .bm-chat-attachment-strip {
+  padding: 0 0 8px;
+}
+
+.bm-chat-user-message .bm-chat-attachment-strip:only-child {
+  padding-bottom: 0;
+}
+
+.bm-chat-attachment {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+}
+
+.bm-chat-attachment .ant-image,
+.bm-chat-attachment .ant-image-img {
+  display: block;
+  width: 56px !important;
+  height: 56px !important;
+  border-radius: 6px;
+}
+
+.bm-chat-attachment .ant-image-img {
+  border: 1px solid color-mix(in srgb, var(--bm-chat-border) 76%, transparent);
+  object-fit: cover;
+}
+
+.bm-chat-attachment-remove.ant-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  z-index: 2;
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  color: var(--bm-chat-muted) !important;
+  background: var(--bm-chat-surface) !important;
+  box-shadow: none !important;
+}
+
+.bm-chat-attachment-remove.ant-btn:hover,
+.bm-chat-attachment-remove.ant-btn:focus-visible {
+  border: 0 !important;
+  color: var(--bm-chat-text) !important;
+  background: var(--bm-chat-hover) !important;
+  box-shadow: none !important;
+}
+
+.bm-chat-attachment-warning {
+  padding: 7px 14px 0;
+  color: var(--ant-color-error, #d4380d);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .bm-chat-assistant-message {
   margin: 6px 0 14px;
 }
@@ -973,33 +1046,6 @@
 .bm-theme-option-check {
   color: var(--bm-signal);
   font-size: 13px;
-}
-
-.bm-settings-theme-list {
-  align-items: stretch;
-}
-
-.bm-settings-theme-button.ant-btn {
-  justify-content: flex-start;
-  width: 132px;
-  height: 38px;
-  border-color: var(--bm-divider) !important;
-  color: var(--bm-text) !important;
-  background: var(--bm-header-bg) !important;
-}
-
-.bm-settings-theme-button.ant-btn:hover,
-.bm-settings-theme-button.ant-btn:focus-visible {
-  border-color: var(--bm-signal) !important;
-  background: var(--bm-hover-bg) !important;
-}
-
-.bm-settings-theme-button.ant-btn.is-active {
-  border-color: var(--bm-signal) !important;
-  color: var(--bm-selected-text) !important;
-  background: var(--bm-selected-bg) !important;
-  box-shadow: inset 2px 0 0 var(--bm-signal);
-  font-weight: 600;
 }
 
 .bm-chat-main-shell {

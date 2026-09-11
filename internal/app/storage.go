@@ -102,6 +102,21 @@ CREATE TABLE IF NOT EXISTS messages (
 	created_at      INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS message_attachments (
+	id             TEXT PRIMARY KEY,
+	message_id     INTEGER NOT NULL,
+	kind           TEXT NOT NULL DEFAULT 'image',
+	file_path      TEXT NOT NULL,
+	thumbnail_path TEXT NOT NULL,
+	mime_type      TEXT NOT NULL,
+	original_name  TEXT NOT NULL DEFAULT '',
+	width          INTEGER NOT NULL DEFAULT 0,
+	height         INTEGER NOT NULL DEFAULT 0,
+	size_bytes     INTEGER NOT NULL DEFAULT 0,
+	position       INTEGER NOT NULL DEFAULT 0,
+	created_at     INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS todo_sources (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
 	kind            TEXT NOT NULL,
@@ -147,12 +162,45 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_todos_source_id ON todos(source_id)"); err != nil {
 		return fmt.Errorf("index todos source: %w", err)
 	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_message_attachments_message_id ON message_attachments(message_id)"); err != nil {
+		return fmt.Errorf("index message attachments: %w", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin provider migration: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	// 旧数据回填:为已有服务商补齐启用模型行(以其当前 model 为准)
-	if _, err := db.Exec(`
+	if _, err := tx.Exec(`
 		INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, created_at)
 		SELECT id, model, '', 0, created_at FROM providers
 		WHERE model <> ''`); err != nil {
 		return fmt.Errorf("backfill provider_models: %w", err)
+	}
+	// DeepSeek 当前仅提供 Flash。清理历史 Pro/Reasoner/Chat 等型号，避免旧数据库
+	// 继续把已下线型号暴露给模型选择器。
+	if _, err := tx.Exec(`
+		UPDATE providers
+		SET model = 'deepseek-flash', multimodal = 1
+		WHERE lower(trim(kind)) = 'deepseek'`); err != nil {
+		return fmt.Errorf("normalize deepseek providers: %w", err)
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM provider_models
+		WHERE provider_id IN (
+			SELECT id FROM providers WHERE lower(trim(kind)) = 'deepseek'
+		)`); err != nil {
+		return fmt.Errorf("remove legacy deepseek models: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO provider_models (provider_id, model, label, custom, created_at)
+		SELECT id, 'deepseek-flash', 'DeepSeek V4.1 Flash', 0, created_at
+		FROM providers WHERE lower(trim(kind)) = 'deepseek'`); err != nil {
+		return fmt.Errorf("add deepseek flash model: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit provider migration: %w", err)
 	}
 	return nil
 }

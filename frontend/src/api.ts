@@ -10,6 +10,7 @@ export const MemoryService = Services.MemoryService
 export const TodoService = Services.TodoService
 export const ScreenshotService = Services.ScreenshotService
 export const ClipboardService = Services.ClipboardService
+export const ChatAttachmentService = Services.ChatAttachmentService
 export const WindowThemeService = Services.WindowThemeService
 export { Events }
 
@@ -162,6 +163,23 @@ export interface ChatMetricsLite {
   tokensPerSecond: number
 }
 
+export interface ChatAttachmentDraftLite {
+  id: string
+  name: string
+  mimeType: string
+  size: number
+  width: number
+  height: number
+  thumbnailDataUri: string
+}
+
+export interface MessageAttachmentLite extends ChatAttachmentDraftLite {
+  messageId: number
+  kind: string
+  position: number
+  createdAt: number
+}
+
 export interface AGUIMessageLite {
   id: string
   role: string
@@ -172,6 +190,7 @@ export interface AGUIMessageLite {
   error?: string
   activityType?: string
   metrics?: ChatMetricsLite
+  attachments?: Array<ChatAttachmentDraftLite | MessageAttachmentLite>
 }
 
 export interface AGUIMessagesSnapshotLite {

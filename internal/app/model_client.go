@@ -75,6 +75,10 @@ func buildModel(p Provider) (model.Model, error) {
 		openai.WithAPIKey(strings.TrimSpace(p.APIKey)),
 		openai.WithVariant(openaiVariant(kind)),
 	}
+	// DeepSeek defaults to text-only content, so vision models must opt back in.
+	if providerSupportsVision(p) {
+		opts = append(opts, openai.WithTextOnlyMessageContent(false))
+	}
 	if base := strings.TrimSpace(p.BaseURL); base != "" {
 		opts = append(opts, openai.WithBaseURL(base))
 	}
