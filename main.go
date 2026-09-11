@@ -110,7 +110,7 @@ func main() {
 		AlwaysOnTop:      true,
 		Frameless:        true,
 		Hidden:           true,
-		HideOnFocusLost:  true,
+		HideOnFocusLost:  false,
 		HideOnEscape:     true,
 		BackgroundColour: application.NewRGB(246, 247, 249),
 		URL:              "/?window=quick",
