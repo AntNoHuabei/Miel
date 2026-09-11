@@ -10,13 +10,13 @@ import (
 // 具体的窗口 API 由 Windows 实现绑定到原生 HWND。
 type WindowThemeService struct {
 	mu      sync.RWMutex
-	handle  uintptr
+	handles map[uintptr]struct{}
 	pending string
 }
 
 // NewWindowThemeService 构造窗口主题服务。
 func NewWindowThemeService() *WindowThemeService {
-	return &WindowThemeService{}
+	return &WindowThemeService{handles: make(map[uintptr]struct{})}
 }
 
 // BindWindowThemeService 绑定平台窗口句柄。窗口创建后由 main 装配一次。
@@ -25,7 +25,9 @@ func BindWindowThemeService(s *WindowThemeService, handle uintptr) {
 		return
 	}
 	s.mu.Lock()
-	s.handle = handle
+	if handle != 0 {
+		s.handles[handle] = struct{}{}
+	}
 	pending := s.pending
 	s.mu.Unlock()
 	if handle != 0 && pending != "" {
@@ -42,12 +44,21 @@ func (s *WindowThemeService) SetTheme(themeID string) error {
 
 	s.mu.Lock()
 	s.pending = themeID
-	handle := s.handle
+	handles := make([]uintptr, 0, len(s.handles))
+	for handle := range s.handles {
+		handles = append(handles, handle)
+	}
 	s.mu.Unlock()
-	if handle == 0 {
+	if len(handles) == 0 {
 		// Wails creates the native HWND just before WindowRuntimeReady. Cache
 		// the requested theme so startup calls do not fail during that gap.
 		return nil
 	}
-	return applyNativeWindowTheme(handle, themeID)
+	var firstErr error
+	for _, handle := range handles {
+		if err := applyNativeWindowTheme(handle, themeID); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }

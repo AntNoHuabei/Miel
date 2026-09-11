@@ -13,6 +13,7 @@ type Services struct {
 	Todo       *TodoService
 	Agent      *AgentService
 	Screenshot *ScreenshotService
+	Clipboard  *ClipboardService
 	Reminder   *ReminderService
 }
 
@@ -40,6 +41,7 @@ func Bootstrap() (*Services, error) {
 		return nil, err
 	}
 	shot := NewScreenshotService(store)
+	clipboard := NewClipboardService(todo)
 	rem := NewReminderService(store)
 
 	// 服务 → 事件总线:间接引用 var Emit,main 注入后同样生效
@@ -57,6 +59,7 @@ func Bootstrap() (*Services, error) {
 		Todo:       todo,
 		Agent:      agent,
 		Screenshot: shot,
+		Clipboard:  clipboard,
 		Reminder:   rem,
 	}, nil
 }

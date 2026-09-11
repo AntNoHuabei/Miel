@@ -54,6 +54,7 @@ const { Text } = Typography
 
 interface AgentChunk {
   conversationId: number
+  requestId?: string
   delta: string
 }
 
@@ -70,11 +71,13 @@ interface AGUIEvent {
 
 interface AGUIEnvelope {
   conversationId: number
+  requestId?: string
   event: AGUIEvent
 }
 
 interface AgentStarted {
   conversationId: number
+  requestId?: string
 }
 
 interface ToolCallUI {
@@ -134,6 +137,7 @@ type ChatViewProps = {
   onNavigate?: (view: 'chat' | 'todos' | 'milestones' | 'reminders' | 'settings') => void
   sidebarOpen: boolean
   newChatRequest: number
+  openConversationRequest?: { id: number; seq: number }
 }
 
 export default function ChatView({
@@ -144,6 +148,7 @@ export default function ChatView({
   onNavigate,
   sidebarOpen,
   newChatRequest,
+  openConversationRequest,
 }: ChatViewProps) {
   const { message } = AntApp.useApp()
   const [convs, setConvs] = useState<{ id: number; title: string }[]>([])
@@ -171,6 +176,7 @@ export default function ChatView({
   const targetRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const reasoningPreferencesRef = useRef<Record<string, string>>({})
+  const activeRequestIdRef = useRef('')
 
   const defaultP = providers.find((p) => p.isDefault) ?? providers[0]
 
@@ -386,6 +392,12 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newChatRequest, onNavigate])
 
+  useEffect(() => {
+    if (openConversationRequest?.id) openConv(openConversationRequest.id)
+    // Request sequence intentionally makes reopening the same conversation imperative.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openConversationRequest?.seq])
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending) return
@@ -401,11 +413,16 @@ export default function ChatView({
     setToolCalls([])
     sendingRef.current = true
     targetRef.current = currentRef.current
+    const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    activeRequestIdRef.current = requestId
     try {
       const res = (await AgentService.Chat({
         conversationId: currentRef.current,
         message: text,
         reasoning: effectiveReasoning,
+        requestId,
       })) as unknown as { conversationId: number; answer: string }
       const id = res.conversationId
       currentRef.current = id
@@ -431,6 +448,7 @@ export default function ChatView({
     'agent.chunk',
     useCallback((p) => {
       if (!sendingRef.current) return
+      if (p.requestId && p.requestId !== activeRequestIdRef.current) return
       if (targetRef.current === 0) {
         targetRef.current = p.conversationId
       } else if (p.conversationId !== targetRef.current) {
@@ -450,6 +468,7 @@ export default function ChatView({
     'agent.agui',
     useCallback((payload) => {
       if (!sendingRef.current || !payload?.event) return
+      if (payload.requestId && payload.requestId !== activeRequestIdRef.current) return
       if (targetRef.current === 0) {
         targetRef.current = payload.conversationId
       } else if (payload.conversationId !== targetRef.current) {
@@ -545,6 +564,7 @@ export default function ChatView({
     'agent.start',
     useCallback((payload) => {
       if (!sendingRef.current) return
+      if (payload.requestId && payload.requestId !== activeRequestIdRef.current) return
       if (targetRef.current === 0) targetRef.current = payload.conversationId
       if (payload.conversationId === targetRef.current) setAgentPhase('waiting')
     }, []),
@@ -1068,7 +1088,7 @@ function snapshotContentText(content: unknown) {
   }
 }
 
-function SnapshotMessage({
+export function SnapshotMessage({
   message,
   toolName,
 }: {

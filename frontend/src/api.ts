@@ -9,6 +9,7 @@ export const SettingsService = Services.SettingsService
 export const MemoryService = Services.MemoryService
 export const TodoService = Services.TodoService
 export const ScreenshotService = Services.ScreenshotService
+export const ClipboardService = Services.ClipboardService
 export const WindowThemeService = Services.WindowThemeService
 export { Events }
 
@@ -77,6 +78,7 @@ export interface TodoLite {
   isMilestone: boolean
   status: string
   source: string
+  sourceId: number
   createdAt: number
   doneAt: number
 }
@@ -112,6 +114,40 @@ export interface AGUIToolCallLite {
     name: string
     arguments: string
   }
+}
+
+export interface TodoSourceLite {
+  id: number
+  kind: 'clipboard_text' | 'clipboard_image' | 'screenshot' | 'conversation' | string
+  textContent: string
+  filePath: string
+  mimeType: string
+  dataUri: string
+  conversationId: number
+  messageId: number
+  conversationTitle: string
+  conversationAvailable: boolean
+  screenshotId: number
+  screenshotNote: string
+  createdAt: number
+  available: boolean
+  error: string
+}
+
+export interface ExtractedTodoLite {
+  title: string
+  description: string
+  milestone: boolean
+  dueDate: string
+}
+
+export interface ClipboardTodoDraftLite {
+  draftId: string
+  kind: string
+  text: string
+  dataUri: string
+  createdAt: number
+  items: ExtractedTodoLite[]
 }
 
 export interface ChatMetricsLite {

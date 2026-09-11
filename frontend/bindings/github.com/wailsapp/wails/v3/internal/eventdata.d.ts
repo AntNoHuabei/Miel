@@ -16,15 +16,18 @@ declare module "@wailsio/runtime" {
             "agent.chunk": { [_ in string]?: any } | null;
             "agent.done": { [_ in string]?: any } | null;
             "agent.start": { [_ in string]?: any } | null;
+            "clipboard.todo.show": string;
             "conversations.changed": string;
             "memory.changed": string;
             "memory.status": app$0.MemoryStatus;
             "models.changed": string;
+            "quickchat.show": string;
             "reminders.changed": string;
             "screenshot.captured": { [_ in string]?: any } | null;
             "screenshot.processed": { [_ in string]?: any } | null;
             "screenshot.saved": { [_ in string]?: any } | null;
             "time": string;
+            "todo.source.changed": number;
             "todos.changed": string;
         }
     }

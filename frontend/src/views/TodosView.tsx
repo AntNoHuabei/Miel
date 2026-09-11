@@ -4,9 +4,11 @@ import {
   Button,
   Checkbox,
   DatePicker,
+  Drawer,
   Empty,
   Flex,
   Input,
+  Image,
   List,
   Modal,
   Popconfirm,
@@ -17,17 +19,17 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { EditOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { TodoService, useWailsEvent } from '../api'
-import type { TodoLite, TodoStatsLite } from '../api'
+import type { TodoLite, TodoSourceLite, TodoStatsLite } from '../api'
 
 const { Text } = Typography
 
 type Filter = 'all' | 'pending' | 'done'
 
 // 待办页:统计卡片 + 增删改查 + 勾选完成 + 里程碑标记,数据变更经 todos.changed 自动刷新。
-export default function TodosView() {
+export default function TodosView({ onOpenConversation }: { onOpenConversation?: (id: number) => void }) {
   const { message } = AntApp.useApp()
   const [items, setItems] = useState<TodoLite[]>([])
   const [stats, setStats] = useState<TodoStatsLite | null>(null)
@@ -42,6 +44,10 @@ export default function TodosView() {
   const [deadline, setDeadline] = useState<dayjs.Dayjs | null>(null)
   const [milestone, setMilestone] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [sourceOpen, setSourceOpen] = useState(false)
+  const [sourceLoading, setSourceLoading] = useState(false)
+  const [sourceDetail, setSourceDetail] = useState<TodoSourceLite | null>(null)
+  const [sourceError, setSourceError] = useState('')
 
   const reload = useCallback(async () => {
     try {
@@ -111,6 +117,7 @@ export default function TodosView() {
         isMilestone: milestone,
         status: editing?.status ?? 'pending',
         source: editing?.source ?? 'manual',
+        sourceId: editing?.sourceId ?? 0,
       }
       if (editing) {
         await TodoService.UpdateTodo(payload)
@@ -144,6 +151,28 @@ export default function TodosView() {
     } catch (err) {
       message.error(String(err))
     }
+  }
+
+  const openSource = async (sourceId: number) => {
+    setSourceOpen(true)
+    setSourceLoading(true)
+    setSourceError('')
+    setSourceDetail(null)
+    try {
+      const detail = await TodoService.GetTodoSource(sourceId) as unknown as TodoSourceLite
+      setSourceDetail(detail)
+    } catch (err) {
+      setSourceError(String(err))
+    } finally {
+      setSourceLoading(false)
+    }
+  }
+
+  const sourceLabel = (source: string) => {
+    if (source === 'chat' || source === 'conversation') return '对话'
+    if (source === 'screenshot') return '截图'
+    if (source === 'clipboard') return '粘贴板'
+    return '手动'
   }
 
   const statCards = stats
@@ -268,9 +297,19 @@ export default function TodosView() {
                           {overdue ? '(已逾期)' : ''}
                         </Text>
                       )}
-                      <Tag color="default" style={{ fontSize: 11 }}>
-                        {t.source === 'chat' ? '对话' : t.source === 'screenshot' ? '截图' : '手动'}
-                      </Tag>
+                      {t.sourceId > 0 ? (
+                        <Button
+                          type="text"
+                          size="small"
+                          className="bm-todo-source-trigger"
+                          icon={<LinkOutlined />}
+                          onClick={() => void openSource(t.sourceId)}
+                        >
+                          {sourceLabel(t.source)}
+                        </Button>
+                      ) : (
+                        <Tag color="default" style={{ fontSize: 11 }}>{sourceLabel(t.source)}</Tag>
+                      )}
                     </Space>
                   </Flex>
                 </List.Item>
@@ -316,6 +355,62 @@ export default function TodosView() {
           </Space>
         </Space>
       </Modal>
+
+      <Drawer
+        title="待办来源"
+        placement="right"
+        width={420}
+        open={sourceOpen}
+        onClose={() => setSourceOpen(false)}
+        rootClassName="bm-todo-source-drawer"
+      >
+        {sourceLoading ? (
+          <Flex justify="center" align="center" className="bm-todo-source-loading"><Spin /></Flex>
+        ) : sourceError ? (
+          <div className="bm-todo-source-error">{sourceError}</div>
+        ) : sourceDetail ? (
+          <Flex vertical className="bm-todo-source-detail">
+            <div className="bm-todo-source-meta">
+              <Text type="secondary">来源</Text>
+              <Text>{sourceLabel(sourceDetail.kind.startsWith('clipboard') ? 'clipboard' : sourceDetail.kind)}</Text>
+              <Text type="secondary">采集时间</Text>
+              <Text>{dayjs.unix(sourceDetail.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Text>
+            </div>
+            {!sourceDetail.available && (
+              <div className="bm-todo-source-error">{sourceDetail.error || '来源内容不可用'}</div>
+            )}
+            {sourceDetail.dataUri && (
+              <div className="bm-todo-source-image">
+                <Image src={sourceDetail.dataUri} alt="待办来源图片" />
+              </div>
+            )}
+            {sourceDetail.textContent && (
+              <div className="bm-todo-source-text">{sourceDetail.textContent}</div>
+            )}
+            {sourceDetail.screenshotNote && (
+              <div className="bm-todo-source-note">
+                <Text type="secondary">截图备注</Text>
+                <div>{sourceDetail.screenshotNote}</div>
+              </div>
+            )}
+            {sourceDetail.kind === 'conversation' && (
+              <div className="bm-todo-source-conversation">
+                <Text type="secondary">{sourceDetail.conversationTitle || '原对话'}</Text>
+                <Button
+                  type="link"
+                  disabled={!sourceDetail.conversationAvailable}
+                  onClick={() => {
+                    setSourceOpen(false)
+                    onOpenConversation?.(sourceDetail.conversationId)
+                  }}
+                >
+                  打开对话
+                </Button>
+              </div>
+            )}
+          </Flex>
+        ) : null}
+      </Drawer>
     </Flex>
   )
 }

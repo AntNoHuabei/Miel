@@ -44,6 +44,7 @@ export default function MainLayout() {
   const [unread, setUnread] = useState(0)
   const [chatSidebarOpen, setChatSidebarOpen] = useState(false)
   const [newChatRequest, setNewChatRequest] = useState(0)
+  const [openConversationRequest, setOpenConversationRequest] = useState({ id: 0, seq: 0 })
 
   // 申请系统通知权限(用于到期提醒的系统通知通道)
   useEffect(() => {
@@ -77,7 +78,12 @@ export default function MainLayout() {
 
   const featureContent =
     view === 'todos' ? (
-      <TodosView />
+      <TodosView
+        onOpenConversation={(id) => {
+          setOpenConversationRequest((request) => ({ id, seq: request.seq + 1 }))
+          navigate('chat')
+        }}
+      />
     ) : view === 'milestones' ? (
       <MilestonesView onGoTodos={() => navigate('todos')} />
     ) : view === 'reminders' ? (
@@ -129,6 +135,7 @@ export default function MainLayout() {
           onNavigate={navigate}
           sidebarOpen={chatSidebarOpen}
           newChatRequest={newChatRequest}
+          openConversationRequest={openConversationRequest}
         />
       </div>
       <ScreenshotModal />

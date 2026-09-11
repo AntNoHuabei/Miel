@@ -25,6 +25,9 @@ func init() {
 	application.RegisterEvent[map[string]any]("agent.agui")
 	application.RegisterEvent[string]("conversations.changed")
 	application.RegisterEvent[string]("models.changed")
+	application.RegisterEvent[int64]("todo.source.changed")
+	application.RegisterEvent[string]("quickchat.show")
+	application.RegisterEvent[string]("clipboard.todo.show")
 	application.RegisterEvent[string]("memory.changed")
 	application.RegisterEvent[app.MemoryStatus]("memory.status")
 }
@@ -55,6 +58,7 @@ func main() {
 			application.NewService(svcs.Todo),
 			application.NewService(svcs.Agent),
 			application.NewService(svcs.Screenshot),
+			application.NewService(svcs.Clipboard),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -70,12 +74,39 @@ func main() {
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
 	})
+	quickWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             "quick-assistant",
+		Title:            "BlankMind",
+		Width:            680,
+		Height:           560,
+		MinWidth:         520,
+		MinHeight:        420,
+		MaxWidth:         900,
+		MaxHeight:        760,
+		AlwaysOnTop:      true,
+		Frameless:        true,
+		Hidden:           true,
+		HideOnFocusLost:  true,
+		HideOnEscape:     true,
+		BackgroundColour: application.NewRGB(246, 247, 249),
+		URL:              "/?window=quick",
+		Windows: application.WindowsWindow{
+			HiddenOnTaskbar: true,
+		},
+	})
+	quickController := newQuickWindowController(instance, quickWin)
 	app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
 	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
 		app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
 	})
+	app.BindWindowThemeService(windowTheme, uintptr(quickWin.NativeWindow()))
+	quickWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		app.BindWindowThemeService(windowTheme, uintptr(quickWin.NativeWindow()))
+		quickController.runtimeReady()
+	})
 
-	setupSystemTray(instance, mainWin)
+	setupSystemTray(instance, mainWin, quickController)
+	setupQuickHotkeys(instance, quickController)
 	setupGlobalHotkey(instance, mainWin, svcs.Screenshot, func() string {
 		if h, err := svcs.Settings.GetSetting(app.SettingCaptureHotkey); err == nil && h != "" {
 			return h

@@ -36,6 +36,13 @@ export function GetTodo(id: number): $CancellablePromise<$models.Todo> {
 }
 
 /**
+ * GetTodoSource returns the immutable source payload used to create a todo.
+ */
+export function GetTodoSource(sourceID: number): $CancellablePromise<$models.TodoSource> {
+    return $Call.ByID(1295397499, sourceID);
+}
+
+/**
  * ListEvents 返回操作日志;since > 0 时只返回该时间点之后(周报等按周聚合)。
  */
 export function ListEvents(since: number): $CancellablePromise<$models.Event[] | null> {

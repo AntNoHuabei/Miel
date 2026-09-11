@@ -62,6 +62,7 @@ export interface ChatRequest {
      * 思考档位:"" 关闭 | low | medium | high | max | on
      */
     "reasoning": string;
+    "requestId": string;
 }
 
 /**
@@ -71,6 +72,20 @@ export interface ChatResult {
     "conversationId": number;
     "answer": string;
     "metrics"?: ChatMetrics | null;
+}
+
+export interface ClipboardTodoDraft {
+    "draftId": string;
+    "kind": string;
+    "text": string;
+    "dataUri": string;
+    "createdAt": number;
+    "items": ExtractedTodo[] | null;
+}
+
+export interface ConfirmClipboardTodosReq {
+    "draftId": string;
+    "items": ExtractedTodo[] | null;
 }
 
 /**
@@ -362,6 +377,7 @@ export interface Todo {
      * manual | chat | screenshot
      */
     "source": string;
+    "sourceId": number;
     "createdAt": number;
     "doneAt": number;
 }
@@ -377,6 +393,28 @@ export interface TodoInput {
     "isMilestone": boolean;
     "status": string;
     "source": string;
+    "sourceId": number;
+}
+
+/**
+ * TodoSource preserves the immutable input that produced one or more todos.
+ */
+export interface TodoSource {
+    "id": number;
+    "kind": string;
+    "textContent": string;
+    "filePath": string;
+    "mimeType": string;
+    "dataUri": string;
+    "conversationId": number;
+    "messageId": number;
+    "conversationTitle": string;
+    "conversationAvailable": boolean;
+    "screenshotId": number;
+    "screenshotNote": string;
+    "createdAt": number;
+    "available": boolean;
+    "error": string;
 }
 
 /**
