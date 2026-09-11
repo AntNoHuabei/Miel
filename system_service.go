@@ -59,6 +59,38 @@ type quickWindowController struct {
 	ready bool
 }
 
+// deferredMainActivation bridges the single-instance callback with window
+// creation. A second launch can arrive immediately after the process lock is
+// acquired, before the main and quick windows have been constructed.
+type deferredMainActivation struct {
+	mu      sync.Mutex
+	show    func()
+	pending bool
+}
+
+func (a *deferredMainActivation) request() {
+	a.mu.Lock()
+	show := a.show
+	if show == nil {
+		a.pending = true
+	}
+	a.mu.Unlock()
+	if show != nil {
+		show()
+	}
+}
+
+func (a *deferredMainActivation) bind(show func()) {
+	a.mu.Lock()
+	a.show = show
+	pending := a.pending
+	a.pending = false
+	a.mu.Unlock()
+	if pending && show != nil {
+		show()
+	}
+}
+
 func newQuickWindowController(inst *application.App, main, quick application.Window) *quickWindowController {
 	return &quickWindowController{inst: inst, main: main, quick: quick}
 }

@@ -34,37 +34,43 @@ func init() {
 
 // main 只负责:装配业务(app.Bootstrap)→ 接事件总线 → 建窗/托盘/热键 → 运行。
 func main() {
-	svcs, err := app.Bootstrap()
-	if err != nil {
-		log.Fatal("bootstrap:", err)
-	}
-	windowTheme := app.NewWindowThemeService()
-
-	// 事件总线:服务发事件 → wails 应用实例(创建后生效)
-	var wailsApp *application.App
-	app.Emit = func(name string, data any) {
-		if wailsApp != nil {
-			wailsApp.Event.Emit(name, data)
-		}
-	}
-
+	activation := &deferredMainActivation{}
 	instance := application.New(application.Options{
 		Name:        "BlankMind",
 		Description: "A local-first AI office agent",
-		Services: []application.Service{
-			application.NewService(svcs.Settings),
-			application.NewService(svcs.Memory),
-			application.NewService(windowTheme),
-			application.NewService(svcs.Todo),
-			application.NewService(svcs.Agent),
-			application.NewService(svcs.Screenshot),
-			application.NewService(svcs.Clipboard),
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.antnohuabei.blankmind",
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				log.Printf("second instance launch requested from %s", data.WorkingDir)
+				activation.request()
+			},
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
 	})
-	wailsApp = instance
+
+	svcs, err := app.Bootstrap()
+	if err != nil {
+		log.Fatal("bootstrap:", err)
+	}
+	windowTheme := app.NewWindowThemeService()
+	for _, service := range []application.Service{
+		application.NewService(svcs.Settings),
+		application.NewService(svcs.Memory),
+		application.NewService(windowTheme),
+		application.NewService(svcs.Todo),
+		application.NewService(svcs.Agent),
+		application.NewService(svcs.Screenshot),
+		application.NewService(svcs.Clipboard),
+	} {
+		instance.RegisterService(service)
+	}
+
+	// 事件总线:服务发事件 → wails 应用实例(创建后生效)
+	app.Emit = func(name string, data any) {
+		instance.Event.Emit(name, data)
+	}
 
 	mainWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "BlankMind",
@@ -95,6 +101,7 @@ func main() {
 		},
 	})
 	quickController := newQuickWindowController(instance, mainWin, quickWin)
+	activation.bind(quickController.showMain)
 	app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
 	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
 		app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
