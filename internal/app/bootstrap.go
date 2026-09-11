@@ -42,8 +42,8 @@ func Bootstrap() (*Services, error) {
 		_ = memoryRuntime.Close()
 		return nil, err
 	}
-	shot := NewScreenshotService(store)
-	clipboard := NewClipboardService(todo)
+	shot := NewScreenshotService(store, settings, memoryRuntime)
+	clipboard := NewClipboardService(todo, settings, memoryRuntime)
 	rem := NewReminderService(store)
 
 	// 服务 → 事件总线:间接引用 var Emit,main 注入后同样生效

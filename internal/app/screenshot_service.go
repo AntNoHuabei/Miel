@@ -56,13 +56,15 @@ type AskShotReq struct {
 
 // ScreenshotService 提供截屏、保存与视觉 AI 处理(转待办/问答)能力。
 type ScreenshotService struct {
-	db     *sql.DB
-	notify func(name string, data any)
+	db       *sql.DB
+	settings *SettingsService
+	memory   *memoryRuntime
+	notify   func(name string, data any)
 }
 
 // NewScreenshotService 构造截图服务。
-func NewScreenshotService(db *sql.DB) *ScreenshotService {
-	return &ScreenshotService{db: db}
+func NewScreenshotService(db *sql.DB, settings *SettingsService, memoryRuntime *memoryRuntime) *ScreenshotService {
+	return &ScreenshotService{db: db, settings: settings, memory: memoryRuntime}
 }
 
 // SetNotify 注入事件广播回调。
@@ -215,6 +217,10 @@ func (s *ScreenshotService) ExtractTodos(id int64) ([]ExtractedTodo, error) {
 3. title 用原文语言概括;若截图里有明确截止时间(如"3月15日""2026-03-15 18:00"),把 dueDate 写成 YYYY-MM-DD 或 YYYY-MM-DD HH:MM;没有则为空字符串。
 4. 若截图中没有任何任务类内容,输出 []。
 5. 里程碑/重要节点把 milestone 置为 true。`
+	prompt, err = todoPromptWithMemory(s.settings, s.memory, prompt)
+	if err != nil {
+		return nil, err
+	}
 	out, err := visionOnce(p, prompt, sh.Path)
 	if err != nil {
 		return nil, err

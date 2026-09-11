@@ -39,14 +39,18 @@ type clipboardDraftPayload struct {
 // ClipboardService reads Windows clipboard text/images and owns extraction drafts.
 type ClipboardService struct {
 	todo      *TodoService
+	settings  *SettingsService
+	memory    *memoryRuntime
 	sourceDir string
 	mu        sync.Mutex
 	drafts    map[string]clipboardDraftPayload
 }
 
-func NewClipboardService(todo *TodoService) *ClipboardService {
+func NewClipboardService(todo *TodoService, settings *SettingsService, memoryRuntime *memoryRuntime) *ClipboardService {
 	service := &ClipboardService{
 		todo:      todo,
+		settings:  settings,
+		memory:    memoryRuntime,
 		sourceDir: filepath.Join(dataDir(), "sources", "clipboard"),
 		drafts:    make(map[string]clipboardDraftPayload),
 	}
@@ -85,7 +89,12 @@ func (s *ClipboardService) ExtractTodos() (ClipboardTodoDraft, error) {
 			_ = os.Remove(draft.draftPath)
 			return ClipboardTodoDraft{}, err
 		}
-		out, err := visionOnce(provider, todoExtractionPrompt("图片"), draft.draftPath)
+		prompt, err := todoPromptWithMemory(s.settings, s.memory, todoExtractionPrompt("图片"))
+		if err != nil {
+			_ = os.Remove(draft.draftPath)
+			return ClipboardTodoDraft{}, err
+		}
+		out, err := visionOnce(provider, prompt, draft.draftPath)
 		if err != nil {
 			_ = os.Remove(draft.draftPath)
 			return ClipboardTodoDraft{}, err
@@ -101,7 +110,11 @@ func (s *ClipboardService) ExtractTodos() (ClipboardTodoDraft, error) {
 		if err != nil {
 			return ClipboardTodoDraft{}, errors.New("尚未配置模型服务商,请先在设置中配置")
 		}
-		out, err := textOnce(provider, todoExtractionPrompt("文本")+"\n\n原始文本:\n"+payload.text)
+		prompt, err := todoPromptWithMemory(s.settings, s.memory, todoExtractionPrompt("文本"))
+		if err != nil {
+			return ClipboardTodoDraft{}, err
+		}
+		out, err := textOnce(provider, prompt+"\n\n原始文本:\n"+payload.text)
 		if err != nil {
 			return ClipboardTodoDraft{}, err
 		}
