@@ -94,7 +94,7 @@ func main() {
 			HiddenOnTaskbar: true,
 		},
 	})
-	quickController := newQuickWindowController(instance, quickWin)
+	quickController := newQuickWindowController(instance, mainWin, quickWin)
 	app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
 	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
 		app.BindWindowThemeService(windowTheme, uintptr(mainWin.NativeWindow()))
@@ -105,9 +105,9 @@ func main() {
 		quickController.runtimeReady()
 	})
 
-	setupSystemTray(instance, mainWin, quickController)
+	setupSystemTray(instance, quickController)
 	setupQuickHotkeys(instance, quickController)
-	setupGlobalHotkey(instance, mainWin, svcs.Screenshot, func() string {
+	setupGlobalHotkey(instance, quickController, svcs.Screenshot, func() string {
 		if h, err := svcs.Settings.GetSetting(app.SettingCaptureHotkey); err == nil && h != "" {
 			return h
 		}

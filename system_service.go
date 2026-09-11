@@ -12,7 +12,7 @@ import (
 )
 
 // setupSystemTray 创建系统托盘:常驻入口(显示/隐藏主窗口、退出)。
-func setupSystemTray(inst *application.App, win application.Window, quick *quickWindowController) {
+func setupSystemTray(inst *application.App, quick *quickWindowController) {
 	tray := inst.SystemTray.New()
 	tray.SetTooltip("BlankMind - 本地办公 Agent")
 	if icon, err := os.ReadFile(filepath.Join("build", "appicon.png")); err == nil {
@@ -21,10 +21,10 @@ func setupSystemTray(inst *application.App, win application.Window, quick *quick
 		log.Println("tray icon not loaded:", err)
 	}
 	menu := application.NewMenu()
-	menu.Add("打开 BlankMind").OnClick(func(*application.Context) { win.Show() })
+	menu.Add("打开 BlankMind").OnClick(func(*application.Context) { quick.showMain() })
 	menu.Add("浮动助手").OnClick(func(*application.Context) { quick.show("chat") })
 	menu.Add("从粘贴板生成待办").OnClick(func(*application.Context) { quick.show("clipboard") })
-	menu.Add("隐藏窗口").OnClick(func(*application.Context) { win.Hide() })
+	menu.Add("隐藏窗口").OnClick(func(*application.Context) { quick.hideAll() })
 	menu.AddSeparator()
 	menu.Add("退出").OnClick(func(*application.Context) { inst.Quit() })
 	tray.SetMenu(menu)
@@ -50,16 +50,17 @@ func setupQuickHotkeys(inst *application.App, quick *quickWindowController) {
 }
 
 type quickWindowController struct {
-	inst *application.App
-	win  application.Window
+	inst  *application.App
+	main  application.Window
+	quick application.Window
 
 	mu    sync.Mutex
 	mode  string
 	ready bool
 }
 
-func newQuickWindowController(inst *application.App, win application.Window) *quickWindowController {
-	return &quickWindowController{inst: inst, win: win}
+func newQuickWindowController(inst *application.App, main, quick application.Window) *quickWindowController {
+	return &quickWindowController{inst: inst, main: main, quick: quick}
 }
 
 func (c *quickWindowController) show(mode string) {
@@ -71,17 +72,29 @@ func (c *quickWindowController) show(mode string) {
 	ready := c.ready
 	c.mu.Unlock()
 
+	c.main.Hide()
 	if x, y, ok := w32.GetCursorPos(); ok {
 		if screen := c.inst.Screen.ScreenNearestPhysicalPoint(application.Point{X: x, Y: y}); screen != nil {
-			c.win.SetScreen(screen)
+			c.quick.SetScreen(screen)
 		}
 	}
-	c.win.Center()
-	c.win.Show()
-	c.win.Focus()
+	c.quick.Center()
+	c.quick.Show()
+	c.quick.Focus()
 	if ready {
 		c.emit(mode)
 	}
+}
+
+func (c *quickWindowController) showMain() {
+	c.quick.Hide()
+	c.main.Show()
+	c.main.Focus()
+}
+
+func (c *quickWindowController) hideAll() {
+	c.quick.Hide()
+	c.main.Hide()
 }
 
 func (c *quickWindowController) runtimeReady() {
@@ -105,11 +118,11 @@ func (c *quickWindowController) emit(mode string) {
 // setupGlobalHotkey 注册“全局截图”快捷键:后台/托盘态触发截屏并广播
 // screenshot.captured(前端弹处理菜单)。快捷键由 resolveHotkey 提供
 // (默认 Ctrl+Alt+S,可在设置中覆盖)。
-func setupGlobalHotkey(inst *application.App, win application.Window,
+func setupGlobalHotkey(inst *application.App, quick *quickWindowController,
 	svc *app.ScreenshotService, resolveHotkey func() string) {
 	hotkey := resolveHotkey()
 	err := inst.GlobalShortcut.Register(hotkey, func() {
-		win.Show()
+		quick.showMain()
 		res, cerr := svc.Capture()
 		if cerr != nil {
 			log.Println("capture failed:", cerr)
