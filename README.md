@@ -8,7 +8,9 @@
 
 - **对话 Agent 中枢**:基于 trpc-agent-go,function calling 驱动;流式输出、多轮会话、历史可回溯。
 - **模型服务商灵活接入**:内置 DeepSeek / OpenAI / 通义千问 / Moonshot / Ollama 模板,支持任意 OpenAI 兼容的自定义服务商;默认未配置时用全屏向导引导(首次启动必经)。
-- **待办与里程碑**:手动/对话/截图三种来源;勾选完成、截止时间、里程碑标记、逾期与 24h 内到期统计。
+- **待办与里程碑**:手动/对话/截图/粘贴板来源;自动生成的待办保留原文或原图,可从待办页追溯。
+- **浮动助手**:`Alt+S` 在任意应用上方打开持久化快捷对话;失焦仅隐藏,显式关闭后下次新建会话。
+- **粘贴板转待办**:`Alt+T` 读取粘贴板文本或图片,经 AI 提取、编辑确认后写入待办。
 - **里程碑倒计时**:未完成里程碑以卡片呈现剩余天数/进度,逾期红色预警。
 - **双通道提醒**:系统通知 + 应用内提醒中心/角标(每分钟自动扫描,托盘态也能收到)。
 - **全局截图**:默认 `Ctrl+Alt+S`(设置可改)任意时刻截屏 → 弹出处理菜单:
@@ -51,6 +53,7 @@ npm run build     # tsc + vite 生产打包
 | `agui.db` | trpc-agent-go 会话与 AG-UI 消息轨迹 |
 | `memory.db` | 跨会话长期记忆，作用域为 `blankmind-app/user` |
 | `screenshots/` | 截图原图 |
+| `sources/clipboard/` | 已确认待办关联的粘贴板图片来源 |
 | `outputs/reports/` | 生成的周报(markdown) |
 | `outputs/documents/` | 生成的文档(markdown) |
 | `outputs/tables/` | 生成的表格(CSV)与待办导出 |
@@ -73,6 +76,7 @@ npm run build     # tsc + vite 生产打包
 | `agent_tools.go` | 待办类 function-calling 工具 |
 | `office_tools.go` | 周报/文档/表格/导出办公工具 |
 | `screenshot_service.go` | 截屏 / 视觉提取转待办 / 截图问答 |
+| `clipboard_service.go` | 粘贴板文本/图片提取、确认与来源文件生命周期 |
 | `capture_windows.go` | Windows GDI 截屏(纯 syscall) |
 | `reminder_service.go` | 每分钟 deadline 扫描提醒引擎 |
 | `system_service.go` | 系统托盘与全局快捷键注册 |

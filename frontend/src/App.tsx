@@ -3,9 +3,11 @@ import { Flex, Spin, Typography } from 'antd'
 import { SettingsService } from './api'
 import SetupWizard from './views/SetupWizard'
 import MainLayout from './views/MainLayout'
+import QuickAssistantWindow from './views/QuickAssistantWindow'
 
 // App 负责“免登录 + 首启引导”:没有任何模型服务商配置时,全屏配置向导拦住入口。
 function App() {
+  const quickWindow = new URLSearchParams(window.location.search).get('window') === 'quick'
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [error, setError] = useState('')
 
@@ -23,6 +25,10 @@ function App() {
   useEffect(() => {
     void check()
   }, [])
+
+  if (quickWindow) {
+    return <QuickAssistantWindow configured={configured === true} checking={configured === null} />
+  }
 
   if (configured === null) {
     return (
