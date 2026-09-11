@@ -266,13 +266,17 @@ func (s *ScreenshotService) ConfirmExtracted(req ConfirmExtractedReq) ([]Todo, e
 	if todoSvc == nil {
 		return nil, errors.New("待办服务未初始化")
 	}
-	created := make([]Todo, 0, len(req.Items))
+	sh, err := s.getShot(req.ShotID)
+	if err != nil {
+		return nil, err
+	}
+	inputs := make([]TodoInput, 0, len(req.Items))
 	for _, it := range req.Items {
 		title := strings.TrimSpace(it.Title)
 		if title == "" {
 			continue
 		}
-		t, err := todoSvc.CreateTodo(TodoInput{
+		inputs = append(inputs, TodoInput{
 			Title:       title,
 			Description: strings.TrimSpace(it.Description),
 			Deadline:    parseDueDate(it.DueDate),
@@ -280,10 +284,15 @@ func (s *ScreenshotService) ConfirmExtracted(req ConfirmExtractedReq) ([]Todo, e
 			Status:      TodoStatusPending,
 			Source:      "screenshot",
 		})
-		if err != nil {
-			return created, err
-		}
-		created = append(created, t)
+	}
+	created, err := todoSvc.createTodosWithSource(inputs, todoSourceInput{
+		Kind:         "screenshot",
+		FilePath:     sh.Path,
+		MIMEType:     "image/jpeg",
+		ScreenshotID: sh.ID,
+	})
+	if err != nil {
+		return nil, err
 	}
 	if len(created) > 0 {
 		if _, err := insertEvent(s.db, EventScreenshotAdded,

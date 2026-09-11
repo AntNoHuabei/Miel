@@ -9,6 +9,7 @@ type Todo struct {
 	IsMilestone bool   `json:"isMilestone"`
 	Status      string `json:"status"` // pending | doing | done
 	Source      string `json:"source"` // manual | chat | screenshot
+	SourceID    int64  `json:"sourceId"`
 	CreatedAt   int64  `json:"createdAt"`
 	DoneAt      int64  `json:"doneAt"`
 }
@@ -22,6 +23,36 @@ type TodoInput struct {
 	IsMilestone bool   `json:"isMilestone"`
 	Status      string `json:"status"`
 	Source      string `json:"source"`
+	SourceID    int64  `json:"sourceId"`
+}
+
+// TodoSource preserves the immutable input that produced one or more todos.
+type TodoSource struct {
+	ID                    int64  `json:"id"`
+	Kind                  string `json:"kind"`
+	TextContent           string `json:"textContent"`
+	FilePath              string `json:"filePath"`
+	MIMEType              string `json:"mimeType"`
+	DataURI               string `json:"dataUri"`
+	ConversationID        int64  `json:"conversationId"`
+	MessageID             int64  `json:"messageId"`
+	ConversationTitle     string `json:"conversationTitle"`
+	ConversationAvailable bool   `json:"conversationAvailable"`
+	ScreenshotID          int64  `json:"screenshotId"`
+	ScreenshotNote        string `json:"screenshotNote"`
+	CreatedAt             int64  `json:"createdAt"`
+	Available             bool   `json:"available"`
+	Error                 string `json:"error"`
+}
+
+type todoSourceInput struct {
+	Kind           string
+	TextContent    string
+	FilePath       string
+	MIMEType       string
+	ConversationID int64
+	MessageID      int64
+	ScreenshotID   int64
 }
 
 // TodoStats 提供给前端快捷视图的汇总(角标/里程碑倒计时)。

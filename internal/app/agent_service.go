@@ -80,6 +80,7 @@ type ChatRequest struct {
 	ConversationID int64  `json:"conversationId"` // 0 = 新建会话
 	Message        string `json:"message"`
 	Reasoning      string `json:"reasoning"` // 思考档位:"" 关闭 | low | medium | high | max | on
+	RequestID      string `json:"requestId"`
 }
 
 // applyReasoning 把思考档位映射到 GenerationConfig。
@@ -198,7 +199,8 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		}
 		convID = c.ID
 	}
-	if _, err := s.saveMessage(convID, "user", msg, "", nil); err != nil {
+	userMessageID, err := s.saveMessage(convID, "user", msg, "", nil)
+	if err != nil {
 		return ChatResult{}, err
 	}
 
@@ -219,9 +221,12 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	gc := model.GenerationConfig{Stream: true}
 	applyReasoning(&gc, p.Kind, p.Model, req.Reasoning)
 
-	agentTools := chatAgentTools(nil)
+	sourceContext := &todoToolSource{input: todoSourceInput{
+		Kind: "conversation", TextContent: msg, ConversationID: convID, MessageID: userMessageID,
+	}}
+	agentTools := chatAgentTools(nil, sourceContext)
 	if memoryEnabled {
-		agentTools = chatAgentTools(s.memory.Tools())
+		agentTools = chatAgentTools(s.memory.Tools(), sourceContext)
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(m),
@@ -297,7 +302,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 
 	var answer strings.Builder
 	var answerMessageID string
-	s.emit("agent.start", map[string]any{"conversationId": convID})
+	s.emit("agent.start", map[string]any{"conversationId": convID, "requestId": req.RequestID})
 	for ev := range aguiEvents {
 		if ev == nil {
 			continue
@@ -307,6 +312,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 			if json.Unmarshal(b, &event) == nil {
 				s.emit("agent.agui", map[string]any{
 					"conversationId": convID,
+					"requestId":      req.RequestID,
 					"event":          event,
 				})
 			}
@@ -316,6 +322,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 			answerMessageID = te.MessageID
 			s.emit("agent.chunk", map[string]any{
 				"conversationId": convID,
+				"requestId":      req.RequestID,
 				"delta":          te.Delta,
 			})
 		}
@@ -328,7 +335,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if _, err := s.saveMessage(convID, "assistant", out, answerMessageID, &metrics); err != nil {
 		return ChatResult{}, err
 	}
-	s.emit("agent.done", map[string]any{"conversationId": convID, "answer": out, "metrics": metrics})
+	s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
 	s.emit("conversations.changed", "updated")
 	if memoryEnabled && memoryConfig.AutoExtract {
 		if err := s.memory.enqueue(m, memoryConfig, msg, out); err != nil {
@@ -381,8 +388,8 @@ func knowledgeOnlySkillOptions(repo skill.Repository) []llmagent.Option {
 	}
 }
 
-func chatAgentTools(memoryTools []tool.Tool) []tool.Tool {
-	tools := append(append(todoAgentTools(todoSvc), officeTools(todoSvc)...), reminderAgentTools()...)
+func chatAgentTools(memoryTools []tool.Tool, sourceContext ...*todoToolSource) []tool.Tool {
+	tools := append(append(todoAgentTools(todoSvc, sourceContext...), officeTools(todoSvc)...), reminderAgentTools()...)
 	return append(tools, memoryTools...)
 }
 

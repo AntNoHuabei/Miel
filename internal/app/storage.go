@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS todos (
 	is_milestone INTEGER NOT NULL DEFAULT 0,
 	status      TEXT NOT NULL DEFAULT 'pending',
 	source      TEXT NOT NULL DEFAULT 'manual',
+	source_id   INTEGER DEFAULT NULL,
 	created_at  INTEGER NOT NULL,
 	done_at     INTEGER NOT NULL DEFAULT 0
 );
@@ -98,6 +99,18 @@ CREATE TABLE IF NOT EXISTS messages (
 	conversation_id INTEGER NOT NULL,
 	role            TEXT NOT NULL,
 	content         TEXT NOT NULL DEFAULT '',
+	created_at      INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS todo_sources (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind            TEXT NOT NULL,
+	text_content    TEXT NOT NULL DEFAULT '',
+	file_path       TEXT NOT NULL DEFAULT '',
+	mime_type       TEXT NOT NULL DEFAULT '',
+	conversation_id INTEGER NOT NULL DEFAULT 0,
+	message_id      INTEGER NOT NULL DEFAULT 0,
+	screenshot_id   INTEGER NOT NULL DEFAULT 0,
 	created_at      INTEGER NOT NULL
 );
 
@@ -128,6 +141,12 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(schema); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+	if err := ensureColumn(db, "todos", "source_id", "INTEGER DEFAULT NULL"); err != nil {
+		return fmt.Errorf("migrate todos source: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_todos_source_id ON todos(source_id)"); err != nil {
+		return fmt.Errorf("index todos source: %w", err)
+	}
 	// 旧数据回填:为已有服务商补齐启用模型行(以其当前 model 为准)
 	if _, err := db.Exec(`
 		INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, created_at)
@@ -136,6 +155,35 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("backfill provider_models: %w", err)
 	}
 	return nil
+}
+
+func ensureColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition)
+	return err
 }
 
 // now 返回当前 unix 秒。

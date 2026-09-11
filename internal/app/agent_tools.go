@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -13,18 +14,47 @@ import (
 )
 
 // todoAgentTools 把待办/统计/日志能力包装为 function-calling 工具,供 Agent 调用。
-func todoAgentTools(t *TodoService) []tool.Tool {
+
+type todoToolSource struct {
+	mu       sync.Mutex
+	input    todoSourceInput
+	sourceID int64
+}
+
+func (s *todoToolSource) create(t *TodoService, input TodoInput) (Todo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sourceID > 0 {
+		input.SourceID = s.sourceID
+		return t.CreateTodo(input)
+	}
+	created, err := t.createTodo(input, &s.input)
+	if err == nil {
+		s.sourceID = created.SourceID
+	}
+	return created, err
+}
+
+func todoAgentTools(t *TodoService, sourceContext ...*todoToolSource) []tool.Tool {
+	var source *todoToolSource
+	if len(sourceContext) > 0 {
+		source = sourceContext[0]
+	}
 	return []tool.Tool{
 		function.NewFunctionTool(
 			func(ctx context.Context, req toolCreateTodoReq) (Todo, error) {
-				return t.CreateTodo(TodoInput{
+				input := TodoInput{
 					Title:       req.Title,
 					Description: req.Description,
 					Deadline:    req.Deadline,
 					IsMilestone: req.Milestone,
 					Status:      TodoStatusPending,
 					Source:      "chat",
-				})
+				}
+				if source != nil {
+					return source.create(t, input)
+				}
+				return t.CreateTodo(input)
 			},
 			function.WithName("create_todo"),
 			function.WithDescription("Create a todo or milestone for the user. Ask for a deadline date if the user mentions one. Returns the saved todo."),
