@@ -132,6 +132,19 @@ type ChatMessage struct {
 	CreatedAt      int64  `json:"createdAt"`
 }
 
+// ChatMetrics records provider-reported token usage plus wall-clock timing for one assistant reply.
+type ChatMetrics struct {
+	Model            string  `json:"model"`
+	PromptTokens     int     `json:"promptTokens"`
+	CompletionTokens int     `json:"completionTokens"`
+	TotalTokens      int     `json:"totalTokens"`
+	ReasoningTokens  int     `json:"reasoningTokens"`
+	CachedTokens     int     `json:"cachedTokens"`
+	DurationMs       int64   `json:"durationMs"`
+	FirstTokenMs     int64   `json:"firstTokenMs"`
+	TokensPerSecond  float64 `json:"tokensPerSecond"`
+}
+
 // Screenshot 截图记录。
 type Screenshot struct {
 	ID        int64  `json:"id"`

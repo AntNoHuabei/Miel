@@ -114,6 +114,18 @@ export interface AGUIToolCallLite {
   }
 }
 
+export interface ChatMetricsLite {
+  model: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  reasoningTokens: number
+  cachedTokens: number
+  durationMs: number
+  firstTokenMs: number
+  tokensPerSecond: number
+}
+
 export interface AGUIMessageLite {
   id: string
   role: string
@@ -123,6 +135,7 @@ export interface AGUIMessageLite {
   toolCallId?: string
   error?: string
   activityType?: string
+  metrics?: ChatMetricsLite
 }
 
 export interface AGUIMessagesSnapshotLite {

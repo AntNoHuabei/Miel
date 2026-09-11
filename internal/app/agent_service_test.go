@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -14,6 +15,42 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
+
+func TestBuildChatMetrics(t *testing.T) {
+	usage := &model.Usage{
+		PromptTokens:     120,
+		CompletionTokens: 80,
+		TotalTokens:      200,
+		PromptTokensDetails: model.PromptTokensDetails{
+			CachedTokens: 40,
+		},
+		CompletionTokensDetails: model.CompletionTokensDetails{
+			ReasoningTokens: 24,
+		},
+		TimingInfo: &model.TimingInfo{FirstTokenDuration: 500 * time.Millisecond},
+	}
+
+	got := buildChatMetrics("test-model", usage, 2500*time.Millisecond)
+	if got.Model != "test-model" || got.PromptTokens != 120 || got.CompletionTokens != 80 || got.TotalTokens != 200 {
+		t.Fatalf("token metrics = %#v", got)
+	}
+	if got.ReasoningTokens != 24 || got.CachedTokens != 40 || got.DurationMs != 2500 || got.FirstTokenMs != 500 {
+		t.Fatalf("detail metrics = %#v", got)
+	}
+	if got.TokensPerSecond != 40 {
+		t.Fatalf("tokens/second = %v, want 40", got.TokensPerSecond)
+	}
+}
+
+func TestBuildChatMetricsWithoutProviderUsageOnlyKeepsTiming(t *testing.T) {
+	got := buildChatMetrics("test-model", nil, 1500*time.Millisecond)
+	if got.Model != "test-model" || got.DurationMs != 1500 {
+		t.Fatalf("metrics = %#v", got)
+	}
+	if got.TotalTokens != 0 || got.TokensPerSecond != 0 || got.FirstTokenMs != 0 {
+		t.Fatalf("unreported usage must remain empty: %#v", got)
+	}
+}
 
 func TestKnowledgeOnlySkillOptionsDoNotExposeWorkspaceExec(t *testing.T) {
 	repo, err := skill.NewFSRepository(t.TempDir())

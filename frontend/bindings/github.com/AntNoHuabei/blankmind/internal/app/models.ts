@@ -34,6 +34,21 @@ export interface CatalogProvider {
 }
 
 /**
+ * ChatMetrics records provider-reported token usage plus wall-clock timing for one assistant reply.
+ */
+export interface ChatMetrics {
+    "model": string;
+    "promptTokens": number;
+    "completionTokens": number;
+    "totalTokens": number;
+    "reasoningTokens": number;
+    "cachedTokens": number;
+    "durationMs": number;
+    "firstTokenMs": number;
+    "tokensPerSecond": number;
+}
+
+/**
  * ChatRequest 一次对话入参。
  */
 export interface ChatRequest {
@@ -55,6 +70,7 @@ export interface ChatRequest {
 export interface ChatResult {
     "conversationId": number;
     "answer": string;
+    "metrics"?: ChatMetrics | null;
 }
 
 /**

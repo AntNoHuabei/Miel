@@ -3,6 +3,7 @@ package app
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -141,6 +142,50 @@ func TestModelMutationsNotifyAndRefreshOptions(t *testing.T) {
 	}
 	if events != 3 {
 		t.Fatalf("models.changed events = %d, want 3", events)
+	}
+}
+
+func TestSetProviderModelPersistsAcrossDatabaseReopen(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO providers (id, name, kind, base_url, api_key, model, is_default, created_at)
+		VALUES
+			(1, 'first', 'custom', 'http://localhost/first', '', 'model-a', 1, 1),
+			(2, 'second', 'custom', 'http://localhost/second', '', 'model-b', 0, 1);
+		INSERT INTO provider_models (provider_id, model, label, custom, created_at)
+		VALUES
+			(1, 'model-a', 'Model A', 1, 1),
+			(2, 'model-b', 'Model B', 1, 1);`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := NewSettingsService(db).SetProviderModel(2, "model-b"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	provider, err := NewSettingsService(reopened).DefaultProvider()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.ID != 2 || provider.Model != "model-b" || !provider.IsDefault {
+		t.Fatalf("restored provider = %#v, want provider 2 model-b as default", provider)
 	}
 }
 

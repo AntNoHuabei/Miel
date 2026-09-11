@@ -123,7 +123,61 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 	if result == nil {
 		return nil, errors.New("AG-UI 未返回 MESSAGES_SNAPSHOT")
 	}
+	metrics, err := loadConversationMessageMetrics(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	attachMessageMetrics(result, metrics)
 	return result, nil
+}
+
+func loadConversationMessageMetrics(conversationID int64) (map[string]ChatMetrics, error) {
+	rows, err := store.Query(`
+		SELECT mm.agui_message_id, mm.model, mm.prompt_tokens, mm.completion_tokens,
+			mm.total_tokens, mm.reasoning_tokens, mm.cached_tokens, mm.duration_ms,
+			mm.first_token_ms, mm.tokens_per_second
+		FROM message_metrics mm
+		JOIN messages m ON m.id = mm.message_id
+		WHERE m.conversation_id = ? AND mm.agui_message_id <> ''`, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("load message metrics: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	metrics := make(map[string]ChatMetrics)
+	for rows.Next() {
+		var messageID string
+		var item ChatMetrics
+		if err := rows.Scan(
+			&messageID, &item.Model, &item.PromptTokens, &item.CompletionTokens,
+			&item.TotalTokens, &item.ReasoningTokens, &item.CachedTokens,
+			&item.DurationMs, &item.FirstTokenMs, &item.TokensPerSecond,
+		); err != nil {
+			return nil, fmt.Errorf("scan message metrics: %w", err)
+		}
+		metrics[messageID] = item
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate message metrics: %w", err)
+	}
+	return metrics, nil
+}
+
+func attachMessageMetrics(snapshot map[string]any, metrics map[string]ChatMetrics) {
+	messages, ok := snapshot["messages"].([]any)
+	if !ok {
+		return
+	}
+	for _, raw := range messages {
+		message, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		messageID, _ := message["id"].(string)
+		if item, exists := metrics[messageID]; exists {
+			message["metrics"] = item
+		}
+	}
 }
 
 type trackEventReader interface {

@@ -19,6 +19,7 @@ import {
   CameraOutlined,
   CheckOutlined,
   CheckCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   FolderOpenOutlined,
@@ -35,6 +36,7 @@ import {
   BgColorsOutlined,
   RightOutlined,
 } from '@ant-design/icons'
+import { Clipboard as WailsClipboard } from '@wailsio/runtime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AgentService, SettingsService, useWailsEvent } from '../api'
@@ -113,6 +115,7 @@ const TOOL_LABEL: Record<string, string> = {
 }
 
 const CURRENT_CONVERSATION_STORAGE_KEY = 'blankmind.chat.currentConversation'
+const CHAT_REASONING_STORAGE_KEY = 'chat.reasoning.v1'
 
 function readPersistedConversationId() {
   if (typeof window === 'undefined') return 0
@@ -152,6 +155,7 @@ export default function ChatView({
   const [sending, setSending] = useState(false)
   const [streaming, setStreaming] = useState('')
   const [reasoning, setReasoning] = useState('')
+  const [reasoningPreferences, setReasoningPreferences] = useState<Record<string, string>>({})
   const [agentPhase, setAgentPhase] = useState<AgentPhase>('idle')
   const [reasoningTrace, setReasoningTrace] = useState('')
   const [toolCalls, setToolCalls] = useState<ToolCallUI[]>([])
@@ -166,6 +170,7 @@ export default function ChatView({
   const sendingRef = useRef(false)
   const targetRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const reasoningPreferencesRef = useRef<Record<string, string>>({})
 
   const defaultP = providers.find((p) => p.isDefault) ?? providers[0]
 
@@ -176,7 +181,7 @@ export default function ChatView({
       if (!map.has(o.providerName)) map.set(o.providerName, [])
       map.get(o.providerName)?.push({
         value: `${o.providerId}::${o.model}`,
-        label: `${o.isDefault ? '✓ ' : ''}${o.custom ? o.model + '(自定义)' : o.label || o.model}`,
+        label: o.custom ? `${o.model} (自定义)` : o.label || o.model,
       })
     }
     return Array.from(map, ([label, options]) => ({ label, options }))
@@ -217,6 +222,28 @@ export default function ChatView({
     })
     return m
   }, [thinkSteps, isCustom])
+  const activeModel = modelOpts.find(
+    (option) => option.providerId === defaultP?.id && option.model === defaultP?.model,
+  )
+  const activeModelLabel = activeModel
+    ? activeModel.custom
+      ? `${activeModel.model} (自定义)`
+      : activeModel.label || activeModel.model
+    : defaultP?.model || '未配置模型'
+  const reasoningStatus = thinkLocked
+    ? specType === 'always'
+      ? '思考常开'
+      : specType === 'none'
+        ? '不支持思考'
+        : '不可调节'
+    : thinkMarks[thinkIdx] ?? '关闭'
+  const reasoningPillLabel = thinkLocked
+    ? specType === 'always'
+      ? '常开'
+      : ''
+    : thinkMarks[thinkIdx] ?? '关闭'
+  const showWorkspaceControl = current === 0 && msgs.length === 0
+  const reasoningPreferenceKey = defaultP ? `${defaultP.id}::${defaultP.model}` : ''
 
   const reloadConvs = useCallback(async () => {
     try {
@@ -294,11 +321,32 @@ export default function ChatView({
     }
   }, [current])
 
-  // 模型切换后重置思考档位(不同模型档位集合不同)
+  useEffect(() => {
+    SettingsService.GetSetting(CHAT_REASONING_STORAGE_KEY)
+      .then((raw) => {
+        if (!raw) return
+        const parsed: unknown = JSON.parse(raw)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+        const preferences = Object.fromEntries(
+          Object.entries(parsed).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+          ),
+        )
+        const merged = { ...preferences, ...reasoningPreferencesRef.current }
+        reasoningPreferencesRef.current = merged
+        setReasoningPreferences(merged)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  // 每个模型恢复自己上次的思考档位;已失效的档位回落到模型默认值。
   const modelKey = `${defaultP?.kind ?? ''}:${defaultP?.model ?? ''}`
   useEffect(() => {
-    setReasoning(thinkSteps[0] ?? '')
-  }, [modelKey, thinkSteps])
+    const saved = reasoningPreferenceKey
+      ? reasoningPreferences[reasoningPreferenceKey]
+      : undefined
+    setReasoning(saved !== undefined && thinkSteps.includes(saved) ? saved : (thinkSteps[0] ?? ''))
+  }, [modelKey, reasoningPreferenceKey, reasoningPreferences, thinkSteps])
 
   useEffect(() => {
     SettingsService.DataDir()
@@ -545,6 +593,21 @@ export default function ChatView({
     }
   }
 
+  const changeReasoning = (value: string) => {
+    setReasoning(value)
+    if (!reasoningPreferenceKey) return
+    const preferences = {
+      ...reasoningPreferencesRef.current,
+      [reasoningPreferenceKey]: value,
+    }
+    reasoningPreferencesRef.current = preferences
+    setReasoningPreferences(preferences)
+    void SettingsService.SetSetting(
+      CHAT_REASONING_STORAGE_KEY,
+      JSON.stringify(preferences),
+    ).catch((err) => message.error(`思考级别保存失败:${String(err)}`))
+  }
+
   const showAgentProcess = sending || reasoningTrace.length > 0 || toolCalls.length > 0
   // 回答落库后 msgs 会追加 assistant 消息,过程块应留在该回答之前。
   const processBeforeIndex =
@@ -676,7 +739,7 @@ export default function ChatView({
             ref={scrollRef}
             style={{ flex: 1, overflowY: 'auto', minWidth: 0, minHeight: 0 }}
           >
-          <Flex vertical style={{ maxWidth: 800, margin: '0 auto', padding: '8px 24px 24px' }}>
+          <Flex vertical className="bm-chat-message-track" style={{ padding: '8px 24px 24px' }}>
             {msgs.length === 0 && !streaming && (
               <section className="bm-chat-empty-state" aria-labelledby="bm-chat-empty-title">
                 <div className="bm-chat-empty-intro">
@@ -746,7 +809,7 @@ export default function ChatView({
           </Flex>
           </div>
 
-          {/* Composer:输入 + 工具(工作区/模型/思考/发送) */}
+          {/* Composer:输入 + 工具(新对话显示工作区，右侧切换模型与思考档位) */}
           <div
             className="bm-chat-composer"
             style={{
@@ -754,12 +817,10 @@ export default function ChatView({
               background: 'var(--bm-content-bg)',
             }}
           >
-        <Flex justify="center">
+        <Flex justify="center" className="bm-chat-composer-track">
           <div
             className="bm-chat-composer-shell"
             style={{
-              width: 800,
-              maxWidth: '100%',
               border: '1px solid var(--bm-border)',
               background: 'var(--bm-header-bg)',
             }}
@@ -781,13 +842,13 @@ export default function ChatView({
               disabled={sending}
             />
             <Flex
+              className="bm-chat-composer-actions"
               justify="space-between"
               align="center"
               style={{ padding: '4px 6px 6px' }}
-              wrap
               gap={6}
             >
-              <Space size={2} wrap>
+              <Space size={2} className="bm-chat-composer-actions-left">
                 {/* ➕ 快捷菜单:位于输入区左下角 */}
                 <Dropdown
                   menu={{
@@ -806,136 +867,113 @@ export default function ChatView({
                   <Button type="text" icon={<PlusOutlined />} />
                 </Dropdown>
 
-                {/* 工作区 */}
+                {showWorkspaceControl && (
+                  <Popover
+                    trigger="click"
+                    content={
+                      <Flex vertical gap={6} style={{ maxWidth: 380 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          工作区(应用数据目录)
+                        </Text>
+                        <Text style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                          {dataDir || '读取中…'}
+                        </Text>
+                        <Button
+                          size="small"
+                          icon={<FolderOpenOutlined />}
+                          onClick={() => void SettingsService.OpenDataDir()}
+                        >
+                          打开目录
+                        </Button>
+                      </Flex>
+                    }
+                  >
+                    <Tooltip title="工作区">
+                      <Button type="text" icon={<FolderOpenOutlined />} />
+                    </Tooltip>
+                  </Popover>
+                )}
+              </Space>
+
+              <Space size={6} className="bm-chat-composer-actions-right">
                 <Popover
                   trigger="click"
+                  placement="topRight"
+                  rootClassName="bm-chat-model-popover"
                   content={
-                    <Flex vertical gap={6} style={{ maxWidth: 380 }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        工作区(应用数据目录)
-                      </Text>
-                      <Text style={{ fontSize: 12, wordBreak: 'break-all' }}>
-                        {dataDir || '读取中…'}
-                      </Text>
-                      <Button
-                        size="small"
-                        icon={<FolderOpenOutlined />}
-                        onClick={() => void SettingsService.OpenDataDir()}
-                      >
-                        打开目录
-                      </Button>
-                    </Flex>
-                  }
-                >
-                  <Tooltip title="工作区">
-                    <Button type="text" icon={<FolderOpenOutlined />} />
-                  </Tooltip>
-                </Popover>
+                    <div className="bm-chat-model-panel">
+                      <label className="bm-chat-model-panel-label" htmlFor="bm-chat-model-select">
+                        模型
+                      </label>
+                      <Select
+                        id="bm-chat-model-select"
+                        className="bm-chat-model-select"
+                        value={defaultP ? `${defaultP.id}::${defaultP.model}` : undefined}
+                        onChange={(value) => {
+                          const [providerID, ...modelParts] = String(value).split('::')
+                          void switchModel(Number(providerID), modelParts.join('::'))
+                        }}
+                        placeholder="未配置模型"
+                        popupMatchSelectWidth={false}
+                        options={modelOptGroups}
+                        getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
+                      />
 
-                {/* 模型切换:列出各服务商已启用的模型 */}
-                <Select
-                  size="middle"
-                  variant="borderless"
-                  style={{ minWidth: 210, maxWidth: 300 }}
-                  value={
-                    defaultP ? `${defaultP.id}::${defaultP.model}` : undefined
-                  }
-                  onChange={(v) => {
-                    const [pid, ...rest] = String(v).split('::')
-                    void switchModel(Number(pid), rest.join('::'))
-                  }}
-                  placeholder="未配置模型"
-                  popupMatchSelectWidth={false}
-                  options={modelOptGroups}
-                />
+                      <div className="bm-chat-model-panel-divider" />
 
-                {/* 思考:点击弹出档位滑块 */}
-                <Popover
-                  trigger="click"
-                  placement="top"
-                  content={
-                    <Flex vertical gap={6} style={{ width: 260, padding: '2px 4px' }}>
-                      <Flex justify="space-between" align="center">
-                        <Typography.Text strong style={{ fontSize: 13 }}>
-                          思考档位
-                        </Typography.Text>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {thinkLocked
-                            ? specType === 'always'
-                              ? '该模型思考常开'
-                              : specType === 'none'
-                                ? '该模型不支持思考'
-                                : '无可用档位'
-                            : thinkMarks[thinkIdx] ?? '关闭'}
-                        </Typography.Text>
+                      <Flex justify="space-between" align="center" gap={16}>
+                        <span className="bm-chat-model-panel-label">思考级别</span>
+                        <Text type="secondary" className="bm-chat-model-panel-value">
+                          {reasoningStatus}
+                        </Text>
                       </Flex>
                       <Slider
+                        className="bm-chat-reasoning-slider"
                         min={0}
                         max={Math.max(thinkSteps.length - 1, 0)}
                         step={1}
                         value={thinkIdx}
                         disabled={thinkLocked}
-                        onChange={(v) => setReasoning(thinkSteps[v as number] ?? '')}
+                        onChange={(value) => changeReasoning(thinkSteps[value as number] ?? '')}
                         marks={thinkMarks}
                         tooltip={{ open: false }}
                       />
                       {spec?.note && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        <Text type="secondary" className="bm-chat-model-panel-note">
                           {spec.note}
-                        </Typography.Text>
+                        </Text>
                       )}
                       {isCustom && !spec && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          自定义模型:按 OpenAI 兼容 reasoning_effort 尽力透传
-                        </Typography.Text>
+                        <Text type="secondary" className="bm-chat-model-panel-note">
+                          自定义模型会按 OpenAI 兼容协议透传 reasoning_effort。
+                        </Text>
                       )}
-                    </Flex>
+                    </div>
                   }
                 >
-                  <Tooltip title="思考档位" placement="top">
-                    <Button
-                      type="text"
-                      size="middle"
-                      style={{
-                        width: 88,
-                        justifyContent: 'flex-start',
-                        paddingInline: 8,
-                        color: 'inherit',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      icon={
-                        <BulbOutlined
-                          style={{
-                            color: effectiveReasoning && !thinkLocked ? '#faad14' : '#999',
-                          }}
-                        />
-                      }
-                    >
-                      {thinkLocked
-                        ? specType === 'always'
-                          ? '思考(常开)'
-                          : specType === 'none'
-                            ? '不支持思考'
-                            : '思考'
-                        : (thinkMarks[thinkIdx] ?? '关闭')}
-                    </Button>
-                  </Tooltip>
+                  <Button type="text" className="bm-chat-model-trigger">
+                    <span className="bm-chat-model-trigger-name">{activeModelLabel}</span>
+                    {reasoningPillLabel && (
+                      <span className="bm-chat-model-trigger-reasoning">
+                        {reasoningPillLabel}
+                      </span>
+                    )}
+                    <RightOutlined className="bm-chat-model-trigger-chevron" />
+                  </Button>
                 </Popover>
-              </Space>
 
-              <Tooltip title={sending ? '生成中…' : '发送'}>
-                <Button
-                  type="primary"
-                  shape="circle"
-                  size="large"
-                  icon={<SendOutlined />}
-                  loading={sending}
-                  disabled={!input.trim()}
-                  onClick={() => void send()}
-                />
-              </Tooltip>
+                <Tooltip title={sending ? '生成中…' : '发送'}>
+                  <Button
+                    type="primary"
+                    shape="circle"
+                    size="large"
+                    icon={<SendOutlined />}
+                    loading={sending}
+                    disabled={!input.trim()}
+                    onClick={() => void send()}
+                  />
+                </Tooltip>
+              </Space>
             </Flex>
           </div>
         </Flex>
@@ -1037,24 +1075,22 @@ function SnapshotMessage({
   message: AGUIMessageLite
   toolName?: string
 }) {
+  const { message: messageApi } = AntApp.useApp()
   const content = snapshotContentText(message.content)
+
+  const copyContent = async () => {
+    try {
+      await WailsClipboard.SetText(content)
+      messageApi.success('已复制')
+    } catch (error) {
+      messageApi.error(`复制失败：${String(error)}`)
+    }
+  }
 
   if (message.role === 'user') {
     return (
       <Flex justify="flex-end" style={{ margin: '4px 0' }}>
-        <div
-          className="bm-chat-user-message"
-          style={{
-            maxWidth: '78%',
-            background: 'var(--bm-user-bg, #1677ff)',
-            color: '#fff',
-            padding: '8px 14px',
-            borderRadius: 14,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            fontSize: 14,
-          }}
-        >
+        <div className="bm-chat-user-message">
           {content}
         </div>
       </Flex>
@@ -1134,14 +1170,94 @@ function SnapshotMessage({
         )
       })}
       {content && (
-        <div style={{ margin: '6px 0' }}>
+        <div className="bm-chat-assistant-message">
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
             BlankMind
           </Text>
           <div className="bm-md">{renderMarkdown(content)}</div>
+          <AssistantMessageFooter
+            content={content}
+            metrics={message.metrics}
+            onCopy={copyContent}
+          />
         </div>
       )}
     </>
+  )
+}
+
+function formatDuration(milliseconds: number) {
+  if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`
+  return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)} s`
+}
+
+function AssistantMessageFooter({
+  content,
+  metrics,
+  onCopy,
+}: {
+  content: string
+  metrics?: AGUIMessageLite['metrics']
+  onCopy: () => Promise<void>
+}) {
+  const totalTokens = metrics
+    ? metrics.totalTokens > 0
+      ? metrics.totalTokens
+      : metrics.promptTokens + metrics.completionTokens
+    : 0
+  const hasUsage = totalTokens > 0
+  const usageDetails = metrics
+    ? [
+        metrics.model && `模型：${metrics.model}`,
+        hasUsage && `输入：${metrics.promptTokens.toLocaleString()} tokens`,
+        hasUsage && `输出：${metrics.completionTokens.toLocaleString()} tokens`,
+        metrics.reasoningTokens > 0 && `推理：${metrics.reasoningTokens.toLocaleString()} tokens`,
+        metrics.cachedTokens > 0 && `缓存命中：${metrics.cachedTokens.toLocaleString()} tokens`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : ''
+
+  return (
+    <div className="bm-chat-response-meta">
+      <Tooltip title="复制回复">
+        <Button
+          type="text"
+          className="bm-chat-copy-button"
+          aria-label="复制回复"
+          icon={<CopyOutlined />}
+          disabled={!content}
+          onClick={() => void onCopy()}
+        />
+      </Tooltip>
+      <div className="bm-chat-response-stats" aria-label="回复统计">
+        {hasUsage && metrics && (
+          <Tooltip title={<span className="bm-chat-response-tooltip">{usageDetails}</span>}>
+            <span>{totalTokens.toLocaleString()} tokens</span>
+          </Tooltip>
+        )}
+        {metrics && metrics.durationMs > 0 && (
+          <Tooltip title="从发送请求到回复完成的总耗时">
+            <span>{formatDuration(metrics.durationMs)}</span>
+          </Tooltip>
+        )}
+        {hasUsage && metrics && metrics.tokensPerSecond > 0 && (
+          <Tooltip title="输出 token / 扣除首 token 等待后的剩余总时长">
+            <span>{metrics.tokensPerSecond.toFixed(1)} tok/s</span>
+          </Tooltip>
+        )}
+        {metrics && metrics.firstTokenMs > 0 && (
+          <Tooltip title="首个有效 token 延迟">
+            <span>TTFT {formatDuration(metrics.firstTokenMs)}</span>
+          </Tooltip>
+        )}
+        {metrics?.model && (
+          <Tooltip title="本次回复使用的模型">
+            <span className="bm-chat-response-model">{metrics.model}</span>
+          </Tooltip>
+        )}
+      </div>
+    </div>
   )
 }
 

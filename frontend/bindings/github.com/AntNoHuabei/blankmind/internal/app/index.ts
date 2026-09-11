@@ -20,6 +20,7 @@ export type {
     AskShotReq,
     CatalogModel,
     CatalogProvider,
+    ChatMetrics,
     ChatRequest,
     ChatResult,
     ConfirmExtractedReq,

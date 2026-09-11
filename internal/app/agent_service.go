@@ -12,11 +12,14 @@ import (
 	"sync"
 	"time"
 
+	agentcore "trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/server/agui/adapter"
 	aguirunner "trpc.group/trpc-go/trpc-agent-go/server/agui/runner"
+	aguitranslator "trpc.group/trpc-go/trpc-agent-go/server/agui/translator"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -154,8 +157,9 @@ const (
 
 // ChatResult 一次对话的结果(前端可据此刷新会话)。
 type ChatResult struct {
-	ConversationID int64  `json:"conversationId"`
-	Answer         string `json:"answer"`
+	ConversationID int64        `json:"conversationId"`
+	Answer         string       `json:"answer"`
+	Metrics        *ChatMetrics `json:"metrics,omitempty"`
 }
 
 // Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
@@ -194,7 +198,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		}
 		convID = c.ID
 	}
-	if err := s.saveMessage(convID, "user", msg); err != nil {
+	if _, err := s.saveMessage(convID, "user", msg, "", nil); err != nil {
 		return ChatResult{}, err
 	}
 
@@ -246,11 +250,24 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	// AG-UI 协议化:内部 runner 事件经 agui/runner 翻译成标准 AG-UI 事件
 	// (RUN/Text/ToolCall/Reasoning…),逐个经 agent.agui 推给前端;
 	// 同时保留 agent.chunk 纯文本流供现有 UI 与落库。
+	var traceUsage *model.Usage
+	callbacks := aguitranslator.NewCallbacks().RegisterBeforeTranslate(
+		func(_ context.Context, ev *agentevent.Event) (*agentevent.Event, error) {
+			if ev != nil && ev.ExecutionTrace != nil && ev.ExecutionTrace.Usage != nil {
+				traceUsage = cloneMetricsUsage(ev.ExecutionTrace.Usage)
+			}
+			return nil, nil
+		},
+	)
 	aguiR := aguirunner.New(baseR,
 		aguirunner.WithAppName(aguiAppName),
 		aguirunner.WithSessionService(s.sessions),
 		aguirunner.WithReasoningContentEnabled(true),
 		aguirunner.WithToolCallDeltaStreamingEnabled(true),
+		aguirunner.WithTranslateCallbacks(callbacks),
+		aguirunner.WithRunOptionResolver(func(context.Context, *adapter.RunAgentInput) ([]agentcore.RunOption, error) {
+			return []agentcore.RunOption{agentcore.WithExecutionTraceEnabled(true)}, nil
+		}),
 	)
 
 	ctx := context.Background()
@@ -272,12 +289,14 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		RunID:    "run-" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		Messages: aguiMsgs,
 	}
+	startedAt := time.Now()
 	aguiEvents, err := aguiR.Run(ctx, input)
 	if err != nil {
 		return ChatResult{}, err
 	}
 
 	var answer strings.Builder
+	var answerMessageID string
 	s.emit("agent.start", map[string]any{"conversationId": convID})
 	for ev := range aguiEvents {
 		if ev == nil {
@@ -294,6 +313,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		}
 		if te, ok := ev.(*aguievents.TextMessageContentEvent); ok && te.Delta != "" {
 			answer.WriteString(te.Delta)
+			answerMessageID = te.MessageID
 			s.emit("agent.chunk", map[string]any{
 				"conversationId": convID,
 				"delta":          te.Delta,
@@ -304,17 +324,53 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if out == "" {
 		return ChatResult{}, errors.New("模型未返回有效内容")
 	}
-	if err := s.saveMessage(convID, "assistant", out); err != nil {
+	metrics := buildChatMetrics(p.Model, traceUsage, time.Since(startedAt))
+	if _, err := s.saveMessage(convID, "assistant", out, answerMessageID, &metrics); err != nil {
 		return ChatResult{}, err
 	}
-	s.emit("agent.done", map[string]any{"conversationId": convID, "answer": out})
+	s.emit("agent.done", map[string]any{"conversationId": convID, "answer": out, "metrics": metrics})
 	s.emit("conversations.changed", "updated")
 	if memoryEnabled && memoryConfig.AutoExtract {
 		if err := s.memory.enqueue(m, memoryConfig, msg, out); err != nil {
 			log.Println("enqueue memory extraction:", err)
 		}
 	}
-	return ChatResult{ConversationID: convID, Answer: out}, nil
+	return ChatResult{ConversationID: convID, Answer: out, Metrics: &metrics}, nil
+}
+
+func cloneMetricsUsage(usage *model.Usage) *model.Usage {
+	if usage == nil {
+		return nil
+	}
+	cloned := *usage
+	if usage.TimingInfo != nil {
+		timing := *usage.TimingInfo
+		cloned.TimingInfo = &timing
+	}
+	return &cloned
+}
+
+func buildChatMetrics(modelName string, usage *model.Usage, elapsed time.Duration) ChatMetrics {
+	metrics := ChatMetrics{Model: modelName, DurationMs: elapsed.Milliseconds()}
+	if usage == nil {
+		return metrics
+	}
+	metrics.PromptTokens = usage.PromptTokens
+	metrics.CompletionTokens = usage.CompletionTokens
+	metrics.TotalTokens = usage.TotalTokens
+	metrics.ReasoningTokens = usage.CompletionTokensDetails.ReasoningTokens
+	metrics.CachedTokens = usage.PromptTokensDetails.CachedTokens
+	generationDuration := elapsed
+	if usage.TimingInfo != nil {
+		metrics.FirstTokenMs = usage.TimingInfo.FirstTokenDuration.Milliseconds()
+		if usage.TimingInfo.FirstTokenDuration > 0 && usage.TimingInfo.FirstTokenDuration < elapsed {
+			generationDuration -= usage.TimingInfo.FirstTokenDuration
+		}
+	}
+	if usage.CompletionTokens > 0 && generationDuration > 0 {
+		metrics.TokensPerSecond = float64(usage.CompletionTokens) / generationDuration.Seconds()
+	}
+	return metrics
 }
 
 func knowledgeOnlySkillOptions(repo skill.Repository) []llmagent.Option {
@@ -372,14 +428,43 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 }
 
 // saveMessage 追加消息并更新时间戳。
-func (s *AgentService) saveMessage(convID int64, role, content string) error {
-	if _, err := store.Exec(`
-		INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)`,
-		convID, role, content, now()); err != nil {
-		return err
+func (s *AgentService) saveMessage(convID int64, role, content, aguiMessageID string, metrics *ChatMetrics) (int64, error) {
+	tx, err := store.Begin()
+	if err != nil {
+		return 0, err
 	}
-	_, err := store.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now(), convID)
-	return err
+	defer tx.Rollback() //nolint:errcheck
+	res, err := tx.Exec(`
+		INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)`,
+		convID, role, content, now())
+	if err != nil {
+		return 0, err
+	}
+	messageID, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if metrics != nil {
+		if _, err := tx.Exec(`
+			INSERT INTO message_metrics (
+				message_id, agui_message_id, model, prompt_tokens, completion_tokens,
+				total_tokens, reasoning_tokens, cached_tokens, duration_ms,
+				first_token_ms, tokens_per_second
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			messageID, aguiMessageID, metrics.Model, metrics.PromptTokens,
+			metrics.CompletionTokens, metrics.TotalTokens, metrics.ReasoningTokens,
+			metrics.CachedTokens, metrics.DurationMs, metrics.FirstTokenMs,
+			metrics.TokensPerSecond); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := tx.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now(), convID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return messageID, nil
 }
 
 // loadMessages 读取会话消息(正序)。
@@ -426,10 +511,24 @@ func (s *AgentService) ListConversations() ([]Conversation, error) {
 
 // DeleteConversation 删除会话及其消息。
 func (s *AgentService) DeleteConversation(conversationID int64) error {
-	if _, err := store.Exec("DELETE FROM messages WHERE conversation_id = ?", conversationID); err != nil {
+	tx, err := store.Begin()
+	if err != nil {
 		return err
 	}
-	if _, err := store.Exec("DELETE FROM conversations WHERE id = ?", conversationID); err != nil {
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`
+		DELETE FROM message_metrics WHERE message_id IN (
+			SELECT id FROM messages WHERE conversation_id = ?
+		)`, conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM messages WHERE conversation_id = ?", conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM conversations WHERE id = ?", conversationID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	if s.sessions != nil {

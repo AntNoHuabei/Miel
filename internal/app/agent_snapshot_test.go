@@ -104,6 +104,56 @@ func TestMessagesSnapshotPersistsInSQLiteSession(t *testing.T) {
 	}
 }
 
+func TestMessagesSnapshotAttachesPersistedAssistantMetrics(t *testing.T) {
+	db := newSettingsTestDB(t)
+	oldStore := store
+	store = db
+	t.Cleanup(func() { store = oldStore })
+	if _, err := db.Exec(`
+		INSERT INTO conversations (id, title, created_at, updated_at)
+		VALUES (44, 'metrics snapshot', 1, 2);
+		INSERT INTO messages (id, conversation_id, role, content, created_at)
+		VALUES (91, 44, 'user', 'hello', 1), (92, 44, 'assistant', 'world', 2);
+		INSERT INTO message_metrics (
+			message_id, agui_message_id, model, prompt_tokens, completion_tokens,
+			total_tokens, reasoning_tokens, cached_tokens, duration_ms,
+			first_token_ms, tokens_per_second
+		) VALUES (92, 'm92', 'test-model', 12, 8, 20, 3, 4, 1500, 250, 6.4)`); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := inmemory.NewSessionService()
+	t.Cleanup(func() { _ = sessions.Close() })
+	service, err := newAgentService(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := service.MessagesSnapshot(44)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Messages []struct {
+			ID      string       `json:"id"`
+			Metrics *ChatMetrics `json:"metrics"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Messages) != 2 || decoded.Messages[0].Metrics != nil {
+		t.Fatalf("snapshot messages = %#v", decoded.Messages)
+	}
+	metrics := decoded.Messages[1].Metrics
+	if decoded.Messages[1].ID != "m92" || metrics == nil || metrics.TotalTokens != 20 || metrics.TokensPerSecond != 6.4 {
+		t.Fatalf("assistant metrics = %#v", decoded.Messages[1])
+	}
+}
+
 func TestAgentServiceShutdownIsIdempotent(t *testing.T) {
 	sessions := inmemory.NewSessionService()
 	service, err := newAgentService(sessions)

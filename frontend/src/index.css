@@ -53,6 +53,11 @@ body {
 }
 
 .bm-window-shell {
+  --bm-shell-hairline: color-mix(
+    in srgb,
+    var(--bm-divider, #dfe3e8) 48%,
+    transparent
+  );
   display: flex;
   width: 100%;
   height: 100vh;
@@ -61,15 +66,22 @@ body {
   overflow: hidden;
   color: var(--bm-text, #1f2329);
   background: var(--bm-app-bg, #f5f6f8);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
 }
 
 .bm-window-titlebar {
   display: flex;
   flex: 0 0 44px;
+  box-sizing: border-box;
   align-items: stretch;
-  border-bottom: 1px solid var(--bm-divider, #dfe3e8);
+  border-bottom: 0.5px solid var(--bm-shell-hairline);
   background: var(--bm-header-bg, #fff);
   user-select: none;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
 }
 
 .bm-window-title-actions,

@@ -101,6 +101,20 @@ CREATE TABLE IF NOT EXISTS messages (
 	created_at      INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS message_metrics (
+	message_id        INTEGER PRIMARY KEY,
+	agui_message_id   TEXT NOT NULL DEFAULT '',
+	model             TEXT NOT NULL DEFAULT '',
+	prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+	completion_tokens INTEGER NOT NULL DEFAULT 0,
+	total_tokens      INTEGER NOT NULL DEFAULT 0,
+	reasoning_tokens  INTEGER NOT NULL DEFAULT 0,
+	cached_tokens     INTEGER NOT NULL DEFAULT 0,
+	duration_ms       INTEGER NOT NULL DEFAULT 0,
+	first_token_ms    INTEGER NOT NULL DEFAULT 0,
+	tokens_per_second REAL NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS screenshots (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	path       TEXT NOT NULL DEFAULT '',
