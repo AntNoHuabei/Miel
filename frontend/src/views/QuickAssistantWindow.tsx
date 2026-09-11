@@ -396,9 +396,11 @@ function ClipboardTodoPanel({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const handledRequest = useRef(0)
 
   useEffect(() => {
-    if (!request) return
+    if (!request || handledRequest.current === request) return
+    handledRequest.current = request
     setLoading(true)
     setError('')
     setDraft(null)

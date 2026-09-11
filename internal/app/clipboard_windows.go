@@ -24,6 +24,8 @@ const (
 	clipboardFormatDIBV5       = 17
 	maxClipboardTextBytes      = 4 << 20
 	maxClipboardImageBytes     = 20 << 20
+	clipboardReadAttempts      = 41
+	clipboardReadRetryDelay    = 25 * time.Millisecond
 )
 
 var (
@@ -34,6 +36,8 @@ var (
 	clipboardFormatAvailableProc = clipboardUser32.NewProc("IsClipboardFormatAvailable")
 	clipboardGetDataProc         = clipboardUser32.NewProc("GetClipboardData")
 	clipboardGlobalSizeProc      = clipboardKernel32.NewProc("GlobalSize")
+	errClipboardOpenUnavailable  = errors.New("无法打开剪贴板,请稍后重试")
+	errClipboardDataUnavailable  = errors.New("无法读取剪贴板内容")
 )
 
 type clipboardPayload struct {
@@ -45,17 +49,31 @@ type clipboardPayload struct {
 func readWindowsClipboard() (clipboardPayload, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	return readClipboardWithRetry(readWindowsClipboardAttempt, clipboardReadAttempts, clipboardReadRetryDelay)
+}
 
-	deadline := time.Now().Add(time.Second)
-	for {
-		opened, _, _ := clipboardOpenProc.Call(0)
-		if opened != 0 {
-			break
+func readClipboardWithRetry(
+	attempt func() (clipboardPayload, error), maxAttempts int, retryDelay time.Duration,
+) (clipboardPayload, error) {
+	for current := 1; current <= maxAttempts; current++ {
+		payload, err := attempt()
+		if err == nil {
+			return payload, nil
 		}
-		if time.Now().After(deadline) {
-			return clipboardPayload{}, errors.New("无法打开剪贴板,请稍后重试")
+		if (!errors.Is(err, errClipboardOpenUnavailable) && !errors.Is(err, errClipboardDataUnavailable)) || current == maxAttempts {
+			return clipboardPayload{}, err
 		}
-		time.Sleep(time.Millisecond)
+		if retryDelay > 0 {
+			time.Sleep(retryDelay)
+		}
+	}
+	return clipboardPayload{}, errClipboardDataUnavailable
+}
+
+func readWindowsClipboardAttempt() (clipboardPayload, error) {
+	opened, _, _ := clipboardOpenProc.Call(0)
+	if opened == 0 {
+		return clipboardPayload{}, errClipboardOpenUnavailable
 	}
 	defer clipboardCloseProc.Call() //nolint:errcheck
 
@@ -103,7 +121,7 @@ func readWindowsClipboard() (clipboardPayload, error) {
 func clipboardData(format uint32, maxBytes int) ([]byte, error) {
 	handle, _, _ := clipboardGetDataProc.Call(uintptr(format))
 	if handle == 0 {
-		return nil, errors.New("无法读取剪贴板内容")
+		return nil, errClipboardDataUnavailable
 	}
 	size, _, _ := clipboardGlobalSizeProc.Call(handle)
 	if size == 0 {

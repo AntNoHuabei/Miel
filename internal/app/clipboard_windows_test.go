@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"image/png"
 	"testing"
 )
@@ -69,5 +70,37 @@ func TestDIBToPNGRejectsMalformedData(t *testing.T) {
 		if _, err := dibToPNG(dib); err == nil {
 			t.Fatalf("dibToPNG(%d bytes) returned no error", len(dib))
 		}
+	}
+}
+
+func TestReadClipboardWithRetryRecoversFromDelayedData(t *testing.T) {
+	attempts := 0
+	payload, err := readClipboardWithRetry(func() (clipboardPayload, error) {
+		attempts++
+		if attempts < 3 {
+			return clipboardPayload{}, errClipboardDataUnavailable
+		}
+		return clipboardPayload{kind: "clipboard_text", text: "ready"}, nil
+	}, 3, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 || payload.text != "ready" {
+		t.Fatalf("attempts = %d, payload = %#v", attempts, payload)
+	}
+}
+
+func TestReadClipboardWithRetryDoesNotRepeatPermanentError(t *testing.T) {
+	attempts := 0
+	want := errors.New("permanent")
+	_, err := readClipboardWithRetry(func() (clipboardPayload, error) {
+		attempts++
+		return clipboardPayload{}, want
+	}, 3, 0)
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
 	}
 }
