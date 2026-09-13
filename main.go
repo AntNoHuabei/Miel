@@ -67,6 +67,12 @@ func init() {
 
 // main 只负责:装配业务(app.Bootstrap)→ 接事件总线 → 建窗/托盘/热键 → 运行。
 func main() {
+	logFile, logErr := app.DefaultDirectoryManager().ConfigureLogging()
+	if logErr != nil {
+		log.Printf("configure application logging: %v", logErr)
+	} else {
+		defer logFile.Close()
+	}
 	activation := &deferredMainActivation{}
 	instance := application.New(application.Options{
 		Name:        "BlankMind",
@@ -89,6 +95,7 @@ func main() {
 	}
 	windowTheme := app.NewWindowThemeService()
 	for _, service := range []application.Service{
+		application.NewService(svcs.Directories),
 		application.NewService(svcs.Settings),
 		application.NewService(svcs.Memory),
 		application.NewService(windowTheme),
