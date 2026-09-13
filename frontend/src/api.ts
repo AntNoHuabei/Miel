@@ -60,6 +60,13 @@ export interface ProviderModelInputLite {
   custom?: boolean
 }
 
+export interface DiscoveredModelLite {
+  id: string
+  status: string
+  reasoning: ReasoningSpecLite
+  multimodal: boolean
+}
+
 // 对话页模型切换下拉:provider × 启用模型 扁平项
 export interface ModelOptionLite {
   providerId: number
@@ -69,6 +76,12 @@ export interface ModelOptionLite {
   label: string
   custom: boolean
   isDefault: boolean
+}
+
+export interface WorkspaceLite {
+  name: string
+  path: string
+  isCurrent: boolean
 }
 
 export interface TodoLite {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   App as AntApp,
   Button,
@@ -19,6 +19,7 @@ import { SettingsService } from '../api'
 import type {
   CatalogModelLite,
   CatalogProviderLite,
+  DiscoveredModelLite,
   ProviderLite,
   ProviderModelInputLite,
   ProviderModelLite,
@@ -65,7 +66,8 @@ export default function ProviderFormModal({
   const [testing, setTesting] = useState(false)
   const [fetchingModels, setFetchingModels] = useState(false)
   const [catalog, setCatalog] = useState<CatalogProviderLite[]>([])
-  const [remoteModels, setRemoteModels] = useState<string[]>([])
+  const [remoteModels, setRemoteModels] = useState<DiscoveredModelLite[]>([])
+  const autoFetchedHerdsmanRef = useRef('')
 
   // 启用模型集合(含内置与自定义)
   const [enabled, setEnabled] = useState<ProviderModelInputLite[]>([])
@@ -98,9 +100,9 @@ export default function ProviderFormModal({
     const builtin = new Set(builtinModels.map((m) => m.id))
     const list: { value: string; label: string }[] = []
     for (const model of remoteModels) {
-      if (!seen.has(model) && !builtin.has(model)) {
-        list.push({ value: model, label: model })
-        seen.add(model)
+      if (!seen.has(model.id) && !builtin.has(model.id)) {
+        list.push({ value: model.id, label: model.id })
+        seen.add(model.id)
       }
     }
     if (builtinModels.length === 0) {
@@ -258,7 +260,7 @@ export default function ProviderFormModal({
       await form.validateFields(['baseUrl'])
       setFetchingModels(true)
       const values = form.getFieldsValue(true) as FormValues
-      const list = (await SettingsService.FetchProviderModels(toInput(values))) ?? []
+      const list = ((await SettingsService.DiscoverProviderModels(toInput(values))) ?? []) as unknown as DiscoveredModelLite[]
       setRemoteModels(list)
       message.success(`已获取 ${list.length} 个模型`)
     } catch (err) {
@@ -267,6 +269,24 @@ export default function ProviderFormModal({
       setFetchingModels(false)
     }
   }
+
+  useEffect(() => {
+    if (!open || kind.toLowerCase() !== 'herdsman') {
+      autoFetchedHerdsmanRef.current = ''
+      return
+    }
+    if (!catalog.some((provider) => provider.kind.toLowerCase() === 'herdsman')) return
+
+    const baseUrl = String(form.getFieldValue('baseUrl') ?? '').trim()
+    if (!baseUrl) return
+    const requestKey = `${existing?.id ?? 0}:${baseUrl}`
+    if (autoFetchedHerdsmanRef.current === requestKey) return
+
+    autoFetchedHerdsmanRef.current = requestKey
+    void handleFetchModels()
+    // 修改 Base URL 后保留手动获取语义,不把输入过程加入自动请求依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, existing?.id, form, kind, open])
 
   const handleTest = async () => {
     try {

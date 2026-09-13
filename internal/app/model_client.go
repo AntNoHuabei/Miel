@@ -41,7 +41,8 @@ func convProvider(in ProviderInput) Provider {
 }
 
 // openaiVariant 把 Kind 映射为 trpc-agent-go openai 变体。
-// openai / custom(任意 OpenAI 兼容服务商)与 ollama(v1 兼容端点)走标准 OpenAI 协议。
+// openai / herdsman / custom(任意 OpenAI 兼容服务商)与 ollama(v1 兼容端点)
+// 走标准 OpenAI 协议。
 func openaiVariant(kind string) openai.Variant {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "deepseek":
@@ -56,6 +57,8 @@ func openaiVariant(kind string) openai.Variant {
 		return openai.VariantMiniMax
 	case "kimi", "moonshot":
 		return openai.VariantKimi
+	case "openai", "herdsman", "custom", "ollama":
+		return openai.VariantOpenAI
 	default:
 		return openai.VariantOpenAI
 	}
@@ -117,13 +120,36 @@ func modelsEndpoint(base string) (string, error) {
 	return u.String(), nil
 }
 
-// FetchProviderModels 从服务商的 OpenAI 兼容 /models 端点读取可用模型。
-func (s *SettingsService) FetchProviderModels(in ProviderInput) ([]string, error) {
-	p := s.providerFromInput(in)
-	endpoint, err := modelsEndpoint(p.BaseURL)
-	if err != nil {
-		return nil, err
+func herdsmanMetadataEndpoint(base string) (string, error) {
+	raw := strings.TrimSpace(base)
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("API Base URL 格式无效")
 	}
+	path := strings.TrimRight(u.Path, "/")
+	path = strings.TrimSuffix(path, "/chat/completions")
+	path = strings.TrimSuffix(path, "/models")
+	path = strings.TrimSuffix(path, "/v1")
+	u.Path = strings.TrimRight(path, "/") + "/api/v1/models"
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String(), nil
+}
+
+type providerModelAPIItem struct {
+	ID               string         `json:"id"`
+	Name             string         `json:"name"`
+	Model            string         `json:"model"`
+	Status           string         `json:"status"`
+	Type             string         `json:"type"`
+	Multimodal       bool           `json:"multimodal"`
+	ReasoningControl map[string]any `json:"reasoning_control"`
+	Parameters       struct {
+		ReasoningControl map[string]any `json:"reasoning_control"`
+	} `json:"parameters"`
+}
+
+func fetchProviderModelsBody(p Provider, endpoint string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), providerRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -158,49 +184,171 @@ func (s *SettingsService) FetchProviderModels(in ProviderInput) ([]string, error
 		return nil, fmt.Errorf("获取模型列表失败(%d): %s", rsp.StatusCode, detail)
 	}
 
+	return body, nil
+}
+
+func providerModelID(item providerModelAPIItem) string {
+	for _, candidate := range []string{item.ID, item.Name, item.Model} {
+		if value := strings.TrimSpace(candidate); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func providerReasoningSpec(control map[string]any) ReasoningSpec {
+	typ := strings.ToLower(strings.TrimSpace(fmt.Sprint(control["type"])))
+	levels := providerReasoningLevels(control["efforts"])
+	forced, _ := control["forced_enabled"].(bool)
+	locked, _ := control["locked"].(bool)
+
+	switch typ {
+	case "effort":
+		return ReasoningSpec{Type: ReasoningEffort, Levels: levels}
+	case "thinking":
+		if forced || locked {
+			return ReasoningSpec{Type: ReasoningAlways}
+		}
+		if len(levels) > 0 {
+			return ReasoningSpec{Type: ReasoningEffort, Levels: levels}
+		}
+		return ReasoningSpec{Type: ReasoningToggle}
+	default:
+		return ReasoningSpec{Type: ReasoningNone}
+	}
+}
+
+func providerReasoningLevels(value any) []string {
+	var items []any
+	switch typed := value.(type) {
+	case []any:
+		items = typed
+	case []string:
+		items = make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, item)
+		}
+	default:
+		return nil
+	}
+	allowed := map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
+	seen := map[string]bool{}
+	levels := make([]string, 0, len(items))
+	for _, item := range items {
+		level := strings.ToLower(strings.TrimSpace(fmt.Sprint(item)))
+		if allowed[level] && !seen[level] {
+			seen[level] = true
+			levels = append(levels, level)
+		}
+	}
+	return levels
+}
+
+func discoveredModelFromAPIItem(item providerModelAPIItem) DiscoveredModel {
+	control := item.ReasoningControl
+	if control == nil {
+		control = item.Parameters.ReasoningControl
+	}
+	return DiscoveredModel{
+		ID:         providerModelID(item),
+		Status:     strings.TrimSpace(item.Status),
+		Reasoning:  providerReasoningSpec(control),
+		Multimodal: item.Multimodal || strings.EqualFold(strings.TrimSpace(item.Type), "multimodal"),
+	}
+}
+
+// DiscoverProviderModels 从 OpenAI 兼容 /models 读取模型，并为 Herdsman 合并
+// 本地模型元数据中的动态推理与多模态能力。
+func (s *SettingsService) DiscoverProviderModels(in ProviderInput) ([]DiscoveredModel, error) {
+	p := s.providerFromInput(in)
+	endpoint, err := modelsEndpoint(p.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	body, err := fetchProviderModelsBody(p, endpoint)
+	if err != nil {
+		return nil, err
+	}
 	var payload struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-		Models []struct {
-			ID    string `json:"id"`
-			Name  string `json:"name"`
-			Model string `json:"model"`
-		} `json:"models"`
+		Data   []providerModelAPIItem `json:"data"`
+		Models []providerModelAPIItem `json:"models"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("模型列表响应格式无效: %w", err)
 	}
-	seen := make(map[string]struct{}, len(payload.Data)+len(payload.Models))
-	models := make([]string, 0, len(payload.Data)+len(payload.Models))
-	add := func(name string) {
-		name = strings.TrimSpace(name)
-		if name == "" {
+
+	byID := make(map[string]DiscoveredModel, len(payload.Data)+len(payload.Models))
+	add := func(item providerModelAPIItem) {
+		model := discoveredModelFromAPIItem(item)
+		if model.ID == "" {
 			return
 		}
-		if _, ok := seen[name]; ok {
+		if _, ok := byID[model.ID]; ok {
 			return
 		}
-		seen[name] = struct{}{}
-		models = append(models, name)
+		byID[model.ID] = model
 	}
 	for _, item := range payload.Data {
-		add(item.ID)
+		add(item)
 	}
 	for _, item := range payload.Models {
-		name := item.ID
-		if name == "" {
-			name = item.Name
-		}
-		if name == "" {
-			name = item.Model
-		}
-		add(name)
+		add(item)
 	}
-	if len(models) == 0 {
+	if len(byID) == 0 {
 		return nil, errors.New("服务商返回了空模型列表")
 	}
-	sort.Strings(models)
+
+	if strings.EqualFold(strings.TrimSpace(p.Kind), "herdsman") {
+		if metadataURL, metadataErr := herdsmanMetadataEndpoint(p.BaseURL); metadataErr == nil {
+			if metadataBody, fetchErr := fetchProviderModelsBody(p, metadataURL); fetchErr == nil {
+				var metadata []providerModelAPIItem
+				if json.Unmarshal(metadataBody, &metadata) == nil {
+					chatModels := make(map[string]bool, len(metadata))
+					for _, item := range metadata {
+						id := providerModelID(item)
+						if _, exists := byID[id]; !exists {
+							continue
+						}
+						modelType := strings.ToLower(strings.TrimSpace(item.Type))
+						if modelType != "text-generation" && modelType != "multimodal" {
+							continue
+						}
+						chatModels[id] = true
+						model := discoveredModelFromAPIItem(item)
+						model.Status = byID[id].Status
+						byID[id] = model
+					}
+					for id := range byID {
+						if !chatModels[id] {
+							delete(byID, id)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	models := make([]DiscoveredModel, 0, len(byID))
+	for _, item := range byID {
+		models = append(models, item)
+	}
+	if len(models) == 0 {
+		return nil, errors.New("服务商未返回可用聊天模型")
+	}
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	return models, nil
+}
+
+// FetchProviderModels 保留原有字符串列表接口，供旧调用方兼容使用。
+func (s *SettingsService) FetchProviderModels(in ProviderInput) ([]string, error) {
+	discovered, err := s.DiscoverProviderModels(in)
+	if err != nil {
+		return nil, err
+	}
+	models := make([]string, 0, len(discovered))
+	for _, item := range discovered {
+		models = append(models, item.ID)
+	}
 	return models, nil
 }
 

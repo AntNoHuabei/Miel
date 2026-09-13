@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS settings (
 	value TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS workspaces (
+	path       TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	created_at INTEGER NOT NULL
+);
+
 -- 服务商启用的模型集合(内置目录模型经开关启用;自定义模型手输加入)
 CREATE TABLE IF NOT EXISTS provider_models (
 	provider_id INTEGER NOT NULL,

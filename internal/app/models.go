@@ -68,9 +68,9 @@ type TodoStats struct {
 // Provider 模型服务商配置。
 // Kind 对应 trpc-agent-go 的 provider 体系:
 //
-//	openai / anthropic / ollama / deepseek / qwen / hunyuan / custom
+//	openai / anthropic / ollama / deepseek / qwen / hunyuan / herdsman / custom
 //
-// 其中 custom 指任意 OpenAI 兼容自定义服务商(baseUrl + apiKey + model)。
+// 其中 herdsman 与 custom 均使用 OpenAI 兼容协议。
 type Provider struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -110,6 +110,14 @@ type ProviderModelInput struct {
 	Custom bool   `json:"custom"`
 }
 
+// DiscoveredModel 是从 OpenAI 兼容服务动态发现的模型及能力。
+type DiscoveredModel struct {
+	ID         string        `json:"id"`
+	Status     string        `json:"status"`
+	Reasoning  ReasoningSpec `json:"reasoning"`
+	Multimodal bool          `json:"multimodal"`
+}
+
 // ModelOption 模型切换下拉的扁平选项(provider × 启用模型)。
 type ModelOption struct {
 	ProviderID   int64  `json:"providerId"`
@@ -144,6 +152,13 @@ type Event struct {
 type Setting struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// Workspace 是用户可选的工作目录。
+type Workspace struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	IsCurrent bool   `json:"isCurrent"`
 }
 
 // Conversation 会话元信息。

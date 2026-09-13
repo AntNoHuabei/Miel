@@ -68,6 +68,45 @@ func TestListProvidersDoesNotDeadlockWhenMigratingAPIKey(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLifecycle(t *testing.T) {
+	db := newSettingsTestDB(t)
+	service := NewSettingsService(db)
+	first := t.TempDir()
+	second := t.TempDir()
+
+	added, err := service.AddWorkspace(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added.Name != filepath.Base(first) || !added.IsCurrent {
+		t.Fatalf("added workspace = %#v", added)
+	}
+	if _, err := service.AddWorkspace(second); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetWorkspace(first); err != nil {
+		t.Fatal(err)
+	}
+	items, err := service.ListWorkspaces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || !items[0].IsCurrent || items[0].Path != first {
+		t.Fatalf("workspaces = %#v", items)
+	}
+
+	if err := service.RemoveWorkspace(first); err != nil {
+		t.Fatal(err)
+	}
+	items, err = service.ListWorkspaces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].IsCurrent {
+		t.Fatalf("workspaces after remove = %#v", items)
+	}
+}
+
 func TestProviderCatalogMethodsReturn(t *testing.T) {
 	service := &SettingsService{}
 	catalog, err := service.ModelCatalog()
@@ -79,6 +118,33 @@ func TestProviderCatalogMethodsReturn(t *testing.T) {
 	}
 	if templates := service.ProviderTemplates(); len(templates) == 0 {
 		t.Fatal("ProviderTemplates returned no providers")
+	}
+}
+
+func TestHerdsmanCatalogAndTemplate(t *testing.T) {
+	const wantBaseURL = "http://localhost:8080/v1"
+
+	provider, found := catalogLookup("herdsman")
+	if !found {
+		t.Fatal("Herdsman catalog entry is missing")
+	}
+	if provider.Name != "Herdsman" || provider.BaseURL != wantBaseURL || len(provider.Models) != 0 {
+		t.Fatalf("Herdsman catalog entry = %#v", provider)
+	}
+
+	var template *ProviderTemplate
+	for _, candidate := range (&SettingsService{}).ProviderTemplates() {
+		if candidate.Kind == "herdsman" {
+			current := candidate
+			template = &current
+			break
+		}
+	}
+	if template == nil {
+		t.Fatal("Herdsman provider template is missing")
+	}
+	if template.Name != "Herdsman" || template.BaseURL != wantBaseURL || template.Model != "" || template.Multimodal || template.DocsURL != "" {
+		t.Fatalf("Herdsman provider template = %#v", *template)
 	}
 }
 

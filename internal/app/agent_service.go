@@ -84,23 +84,45 @@ const systemInstruction = `你是 BlankMind,运行在本地的办公 Agent,通�
 type ChatRequest struct {
 	ConversationID int64    `json:"conversationId"` // 0 = 新建会话
 	Message        string   `json:"message"`
-	Reasoning      string   `json:"reasoning"` // 思考档位:"" 关闭 | low | medium | high | max | on
+	Reasoning      string   `json:"reasoning"` // "" 默认/关闭 | off | on | low | medium | high | xhigh | max
 	RequestID      string   `json:"requestId"`
 	AttachmentIDs  []string `json:"attachmentIds"`
 }
 
 // applyReasoning 把思考档位映射到 GenerationConfig。
-// 档位取值:"" 关闭 | on | low | medium | high | max。
+// 档位取值:"" 服务商默认/关闭 | off | on | low | medium | high | xhigh | max。
 // 与内置模型目录(catalog.json)联动:关闭可切换模型时显式下发 false;
 // 目录标注 none / always 的模型不发参数;effort 模型只在其声明的 levels 内
 // 下发 reasoning_effort。
 //   - qwen -> enable_thinking(bool);deepseek/hunyuan/glm/minimax -> thinking.type=enabled
 //   - deepseek effort 模型另附 reasoning_effort;openai(o 系)只发 reasoning_effort
+//   - Herdsman 按动态能力下发 thinking_enabled / reasoning_effort
 //   - 自定义兼容网关(custom):reasoning_effort 尽力透传
 func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	model = strings.ToLower(strings.TrimSpace(model))
 	lv := strings.ToLower(strings.TrimSpace(level))
+	if kind == "herdsman" {
+		switch lv {
+		case "":
+			return
+		case "off", "none":
+			off := false
+			gc.ThinkingEnabled = &off
+			return
+		case "on":
+			on := true
+			gc.ThinkingEnabled = &on
+			return
+		case "low", "medium", "high", "xhigh", "max":
+			on := true
+			gc.ThinkingEnabled = &on
+			gc.ReasoningEffort = &lv
+			return
+		default:
+			return
+		}
+	}
 	spec := modelReasoning(kind, model)
 	if lv == "" || lv == "off" || lv == "none" {
 		// nil 表示采用服务商默认值，并不代表关闭。仅对明确支持逐请求
@@ -116,8 +138,9 @@ func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 		eff = "high"
 	}
 
-	if (spec.Type == ReasoningNone || spec.Type == ReasoningAlways) && kind != "custom" {
-		// 模型不支持/思考常开,无需下发任何参数(custom 走尽力透传)
+	isCompatibleGateway := kind == "custom"
+	if (spec.Type == ReasoningNone || spec.Type == ReasoningAlways) && !isCompatibleGateway {
+		// 模型不支持/思考常开,无需下发任何参数;兼容网关走尽力透传。
 		return
 	}
 	inLevels := false
@@ -146,9 +169,9 @@ func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 			gc.ReasoningEffort = &eff
 		}
 	default:
-		// 自定义兼容网关(kind=custom)模型不在目录内:reasoning_effort 尽力透传,
+		// 自定义兼容网关模型不在目录内:reasoning_effort 尽力透传,
 		// 模型不支持时由服务商反馈;其它未登记 kind 不发(目录为准)。
-		if kind == "custom" && (eff == "low" || eff == "medium" || eff == "high") {
+		if isCompatibleGateway && (eff == "low" || eff == "medium" || eff == "high") {
 			gc.ReasoningEffort = &eff
 		}
 	}

@@ -239,6 +239,7 @@
    override the active skin or the current conversation layout. */
 .bm-chat {
   --bm-chat-content-width: 800px;
+  --bm-chat-inline-gutter: 18px;
   --bm-chat-composer-radius: 18px;
   --bm-chat-bg: var(--bm-content-bg, #f5f6f8);
   --bm-chat-surface: var(--bm-header-bg, #fff);
@@ -291,7 +292,10 @@
 }
 
 .bm-chat-message-track {
-  width: min(var(--bm-chat-content-width), 100%);
+  width: min(
+    var(--bm-chat-content-width),
+    calc(100% - var(--bm-chat-inline-gutter) - var(--bm-chat-inline-gutter))
+  );
   margin: 0 auto;
   max-width: none !important;
   min-height: 100%;
@@ -528,12 +532,15 @@
 }
 
 .bm-chat-composer {
-  padding: 12px 18px 18px !important;
+  padding: 12px 0 18px !important;
   background: var(--bm-chat-bg) !important;
 }
 
 .bm-chat-composer-track {
-  width: min(var(--bm-chat-content-width), 100%);
+  width: min(
+    var(--bm-chat-content-width),
+    calc(100% - var(--bm-chat-inline-gutter) - var(--bm-chat-inline-gutter))
+  );
   margin: 0 auto;
 }
 
@@ -621,6 +628,143 @@
 
 .bm-chat-composer-actions-right {
   margin-left: auto;
+}
+
+.bm-chat-workspace-trigger.ant-btn {
+  display: flex;
+  min-width: 0;
+  max-width: min(220px, 34vw);
+  height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px !important;
+  color: var(--bm-chat-muted) !important;
+}
+
+.bm-chat-workspace-trigger.ant-btn > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-chat-workspace-popover .ant-popover-inner {
+  width: min(380px, calc(100vw - 32px));
+  padding: 10px !important;
+  border: 1px solid var(--bm-divider, #dfe3e8);
+  border-radius: var(--bm-control-radius, 8px) !important;
+  background: var(--bm-header-bg, #fff) !important;
+  box-shadow: none !important;
+}
+
+.bm-chat-workspace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--bm-text, #1f2329);
+}
+
+.bm-chat-workspace-panel > .ant-input-affix-wrapper {
+  border-color: var(--bm-divider, #dfe3e8) !important;
+  background: var(--bm-inset-bg, #f6f8fa) !important;
+  box-shadow: none !important;
+}
+
+.bm-chat-workspace-options {
+  display: flex;
+  max-height: 250px;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.bm-chat-workspace-option {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 4px 5px 7px;
+  border-radius: var(--bm-control-radius, 8px);
+  cursor: pointer;
+}
+
+.bm-chat-workspace-option:hover,
+.bm-chat-workspace-option:focus-visible,
+.bm-chat-workspace-option.is-current {
+  background: var(--bm-chat-hover, #f2f4f7);
+}
+
+.bm-chat-workspace-option-icon {
+  flex: 0 0 auto;
+  color: var(--bm-chat-muted);
+  font-size: 19px;
+}
+
+.bm-chat-workspace-option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bm-chat-workspace-option-name {
+  overflow: hidden;
+  color: var(--bm-chat-text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-chat-workspace-option-path {
+  overflow: hidden;
+  color: var(--bm-chat-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-chat-workspace-option-check {
+  flex: 0 0 auto;
+  color: var(--bm-chat-signal);
+  font-size: 15px;
+}
+
+.bm-chat-workspace-option-remove.ant-btn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  opacity: 0;
+}
+
+.bm-chat-workspace-option:hover .bm-chat-workspace-option-remove.ant-btn,
+.bm-chat-workspace-option:focus-within .bm-chat-workspace-option-remove.ant-btn {
+  opacity: 1;
+}
+
+.bm-chat-workspace-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+}
+
+.bm-chat-workspace-divider {
+  height: 1px;
+  background: var(--bm-divider, #dfe3e8);
+}
+
+.bm-chat-workspace-action.ant-btn {
+  justify-content: flex-start;
+  width: 100%;
+  height: 34px;
+  padding-inline: 7px !important;
+  color: var(--bm-text, #1f2329);
+  text-align: left;
+}
+
+.bm-chat-workspace-action.ant-btn:disabled {
+  color: var(--bm-chat-muted);
 }
 
 .bm-chat-model-trigger.ant-btn {
@@ -1099,6 +1243,10 @@
 }
 
 @media (max-width: 560px) {
+  .bm-chat {
+    --bm-chat-inline-gutter: 10px;
+  }
+
   .bm-chat-app-sidebar {
     flex-basis: 196px;
     width: 196px;
@@ -1111,7 +1259,7 @@
   }
 
   .bm-chat-composer {
-    padding: 10px 10px 12px !important;
+    padding: 10px 0 12px !important;
   }
 
   .bm-chat-model-trigger.ant-btn {

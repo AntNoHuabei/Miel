@@ -117,6 +117,7 @@ func TestApplyReasoningOff(t *testing.T) {
 		{name: "unsupported has no toggle", kind: "openai", modelName: "gpt-4o"},
 		{name: "openai effort has no toggle", kind: "openai", modelName: "o3-mini"},
 		{name: "custom uses provider default", kind: "custom", modelName: "unknown"},
+		{name: "herdsman explicit off", kind: "herdsman", modelName: "local-model", level: "off", want: boolPtr(false)},
 	}
 
 	for _, tt := range tests {
@@ -152,6 +153,7 @@ func TestApplyReasoningOn(t *testing.T) {
 		{name: "minimax toggle", kind: "minimax", modelName: "MiniMax-M2", level: "on", wantToggle: boolPtr(true)},
 		{name: "deepseek effort", kind: "deepseek", modelName: "deepseek-flash", level: "max", wantToggle: boolPtr(true), wantEffort: "max"},
 		{name: "openai effort", kind: "openai", modelName: "o3-mini", level: "medium", wantEffort: "medium"},
+		{name: "herdsman compatible effort", kind: "herdsman", modelName: "local-model", level: "xhigh", wantToggle: boolPtr(true), wantEffort: "xhigh"},
 	}
 
 	for _, tt := range tests {
@@ -246,6 +248,50 @@ func TestDisabledReasoningPayload(t *testing.T) {
 			}
 			tt.assert(t, <-bodyCh)
 		})
+	}
+}
+
+func TestHerdsmanReasoningPayload(t *testing.T) {
+	bodyCh := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		bodyCh <- payload
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"test","object":"chat.completion","created":1,"model":"local-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := buildModel(Provider{
+		Name: "Herdsman", Kind: "herdsman", BaseURL: server.URL, Model: "local-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := model.NewRequest([]model.Message{model.NewUserMessage("test")})
+	applyReasoning(&request.GenerationConfig, "herdsman", "local-model", "xhigh")
+	responses, err := client.GenerateContent(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for response := range responses {
+		if response.Error != nil {
+			t.Fatal(response.Error)
+		}
+	}
+
+	body := <-bodyCh
+	if enabled, ok := body["thinking_enabled"].(bool); !ok || !enabled {
+		t.Fatalf("thinking_enabled = %#v, want true", body["thinking_enabled"])
+	}
+	if effort := body["reasoning_effort"]; effort != "xhigh" {
+		t.Fatalf("reasoning_effort = %#v, want xhigh", effort)
 	}
 }
 

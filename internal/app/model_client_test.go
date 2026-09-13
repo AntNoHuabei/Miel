@@ -78,6 +78,50 @@ func TestFetchProviderModelsReturnsHTTPError(t *testing.T) {
 	}
 }
 
+func TestDiscoverProviderModelsMergesHerdsmanCapabilities(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"plain-chat","status":"stopped"},
+				{"id":"reasoning-chat","status":"running"},
+				{"id":"speech","status":"running"}
+			]}`))
+		case "/api/v1/models":
+			_, _ = w.Write([]byte(`[
+				{"name":"plain-chat","type":"text-generation","parameters":{"reasoning_control":{"type":"none","default_enabled":false}}},
+				{"name":"reasoning-chat","type":"multimodal","parameters":{"reasoning_control":{"type":"thinking","efforts":["low","medium","xhigh"],"default_effort":"xhigh"}}},
+				{"name":"speech","type":"tts","parameters":{}}
+			]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	models, err := (&SettingsService{}).DiscoverProviderModels(ProviderInput{
+		Kind:    "herdsman",
+		BaseURL: server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("DiscoverProviderModels() returned %d models, want 2: %#v", len(models), models)
+	}
+	if models[0].ID != "plain-chat" || models[0].Reasoning.Type != ReasoningNone || models[0].Multimodal {
+		t.Fatalf("plain model = %#v", models[0])
+	}
+	if models[1].ID != "reasoning-chat" || models[1].Status != "running" || !models[1].Multimodal {
+		t.Fatalf("reasoning model = %#v", models[1])
+	}
+	wantLevels := []string{"low", "medium", "xhigh"}
+	if models[1].Reasoning.Type != ReasoningEffort || !reflect.DeepEqual(models[1].Reasoning.Levels, wantLevels) {
+		t.Fatalf("reasoning spec = %#v, want effort %#v", models[1].Reasoning, wantLevels)
+	}
+}
+
 func TestBuildModelSendsImageForDeepSeekFlash(t *testing.T) {
 	bodyCh := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

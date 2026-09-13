@@ -17,6 +17,22 @@ type wailsChatAttachmentPicker struct {
 	quickController *quickWindowController
 }
 
+type wailsWorkspaceDirectoryPicker struct {
+	instance        *application.App
+	quickController *quickWindowController
+}
+
+func (p wailsWorkspaceDirectoryPicker) PickWorkspaceDirectory() (string, error) {
+	dialog := p.instance.Dialog.OpenFile().
+		SetTitle("选择工作区").
+		CanChooseFiles(false).
+		CanChooseDirectories(true)
+	if window := p.quickController.currentWindow(); window != nil {
+		dialog.AttachToWindow(window)
+	}
+	return dialog.PromptForSingleSelection()
+}
+
 func (p wailsChatAttachmentPicker) PickChatImages() ([]string, error) {
 	dialog := p.instance.Dialog.OpenFile().
 		SetTitle("选择图片").
@@ -120,6 +136,10 @@ func main() {
 	})
 	quickController := newQuickWindowController(instance, mainWin, quickWin)
 	app.BindChatAttachmentPicker(svcs.ChatAttachments, wailsChatAttachmentPicker{
+		instance:        instance,
+		quickController: quickController,
+	})
+	app.BindWorkspaceDirectoryPicker(svcs.Settings, wailsWorkspaceDirectoryPicker{
 		instance:        instance,
 		quickController: quickController,
 	})

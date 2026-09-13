@@ -32,6 +32,7 @@ export type {
     ConfirmClipboardTodosReq,
     ConfirmExtractedReq,
     Conversation,
+    DiscoveredModel,
     Event,
     ExtractedTodo,
     MemoryConfig,
@@ -56,5 +57,6 @@ export type {
     Todo,
     TodoInput,
     TodoSource,
-    TodoStats
+    TodoStats,
+    Workspace
 } from "./models.js";

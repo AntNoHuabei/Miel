@@ -489,6 +489,11 @@ func (s *SettingsService) ProviderTemplates() []ProviderTemplate {
 			Multimodal: false, DocsURL: "https://platform.moonshot.cn",
 		},
 		{
+			Name: "Herdsman", Kind: "herdsman",
+			BaseURL: "http://localhost:8080/v1", Model: "",
+			Multimodal: false, DocsURL: "",
+		},
+		{
 			Name: "Ollama(本地)", Kind: "custom",
 			BaseURL: "http://localhost:11434/v1", Model: "llama3.2",
 			Multimodal: false, DocsURL: "https://ollama.com",

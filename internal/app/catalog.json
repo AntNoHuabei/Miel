@@ -242,6 +242,13 @@
       ]
     },
     {
+      "kind": "herdsman",
+      "name": "Herdsman",
+      "baseUrl": "http://localhost:8080/v1",
+      "models": [],
+      "_hint": "Herdsman 使用 OpenAI 兼容协议,模型列表从本地服务动态获取"
+    },
+    {
       "kind": "custom",
       "name": "自定义 / Ollama(本地)",
       "baseUrl": "http://localhost:11434/v1",

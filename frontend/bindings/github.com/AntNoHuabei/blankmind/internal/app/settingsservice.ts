@@ -17,6 +17,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AddWorkspace 添加一个真实存在的目录并切换到它。
+ */
+export function AddWorkspace(path: string): $CancellablePromise<$models.Workspace> {
+    return $Call.ByID(3409758735, path);
+}
+
+/**
  * DataDir 返回应用数据目录(设置页展示与打开,便于用户找到导出产物)。
  */
 export function DataDir(): $CancellablePromise<string> {
@@ -53,6 +60,14 @@ export function DisableModel(providerID: number, model: string): $CancellablePro
 }
 
 /**
+ * DiscoverProviderModels 从 OpenAI 兼容 /models 读取模型，并为 Herdsman 合并
+ * 本地模型元数据中的动态推理与多模态能力。
+ */
+export function DiscoverProviderModels($in: $models.ProviderInput): $CancellablePromise<$models.DiscoveredModel[] | null> {
+    return $Call.ByID(4134076443, $in);
+}
+
+/**
  * EnableModel 启用某服务商下的一个模型(设置页即时开关用)。
  * 内置模型传 catalog label;自定义模型由前端传入。
  */
@@ -61,7 +76,7 @@ export function EnableModel(providerID: number, model: string, label: string, cu
 }
 
 /**
- * FetchProviderModels 从服务商的 OpenAI 兼容 /models 端点读取可用模型。
+ * FetchProviderModels 保留原有字符串列表接口，供旧调用方兼容使用。
  */
 export function FetchProviderModels($in: $models.ProviderInput): $CancellablePromise<string[] | null> {
     return $Call.ByID(4185565950, $in);
@@ -96,6 +111,13 @@ export function ListSettings(): $CancellablePromise<$models.Setting[] | null> {
 }
 
 /**
+ * ListWorkspaces 返回已添加的工作目录,当前项排最前。
+ */
+export function ListWorkspaces(): $CancellablePromise<$models.Workspace[] | null> {
+    return $Call.ByID(1439062353);
+}
+
+/**
  * ModelCatalog 返回内置模型目录(前端渲染模型下拉与思考档位)。
  */
 export function ModelCatalog(): $CancellablePromise<$models.CatalogProvider[] | null> {
@@ -115,6 +137,13 @@ export function ModelOptions(): $CancellablePromise<$models.ModelOption[] | null
  */
 export function OpenDataDir(): $CancellablePromise<void> {
     return $Call.ByID(3158252478);
+}
+
+/**
+ * PickWorkspace 打开系统目录选择器,选择后自动添加并切换。
+ */
+export function PickWorkspace(): $CancellablePromise<$models.Workspace> {
+    return $Call.ByID(2689521263);
 }
 
 /**
@@ -140,6 +169,13 @@ export function ProviderTemplates(): $CancellablePromise<$models.ProviderTemplat
 }
 
 /**
+ * RemoveWorkspace 移除工作目录;不会删除磁盘上的文件。
+ */
+export function RemoveWorkspace(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2127603404, path);
+}
+
+/**
  * SaveProvider 新增或更新服务商;若传了 Models(启用模型集合)则全量替换其集合,
  * 并保证 providers.model 落在集合内;若标记为默认会清除其它默认标记。
  */
@@ -159,4 +195,11 @@ export function SetProviderModel(providerID: number, model: string): $Cancellabl
  */
 export function SetSetting(key: string, value: string): $CancellablePromise<void> {
     return $Call.ByID(282278335, key, value);
+}
+
+/**
+ * SetWorkspace 切换到已添加的工作目录;传入空串表示退出工作区。
+ */
+export function SetWorkspace(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3077405738, path);
 }

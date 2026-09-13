@@ -72,7 +72,7 @@ export interface ChatRequest {
     "message": string;
 
     /**
-     * 思考档位:"" 关闭 | low | medium | high | max | on
+     * "" 默认/关闭 | off | on | low | medium | high | xhigh | max
      */
     "reasoning": string;
     "requestId": string;
@@ -118,6 +118,16 @@ export interface Conversation {
     "title": string;
     "createdAt": number;
     "updatedAt": number;
+}
+
+/**
+ * DiscoveredModel 是从 OpenAI 兼容服务动态发现的模型及能力。
+ */
+export interface DiscoveredModel {
+    "id": string;
+    "status": string;
+    "reasoning": ReasoningSpec;
+    "multimodal": boolean;
 }
 
 /**
@@ -243,9 +253,9 @@ export interface PingResult {
  * Provider 模型服务商配置。
  * Kind 对应 trpc-agent-go 的 provider 体系:
  * 
- * 	openai / anthropic / ollama / deepseek / qwen / hunyuan / custom
+ * 	openai / anthropic / ollama / deepseek / qwen / hunyuan / herdsman / custom
  * 
- * 其中 custom 指任意 OpenAI 兼容自定义服务商(baseUrl + apiKey + model)。
+ * 其中 herdsman 与 custom 均使用 OpenAI 兼容协议。
  */
 export interface Provider {
     "id": number;
@@ -449,4 +459,13 @@ export interface TodoStats {
      * 24 小时内到期未完成
      */
     "dueSoon": number;
+}
+
+/**
+ * Workspace 是用户可选的工作目录。
+ */
+export interface Workspace {
+    "name": string;
+    "path": string;
+    "isCurrent": boolean;
 }

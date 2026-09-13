@@ -19,14 +19,17 @@ import {
   CameraOutlined,
   CheckOutlined,
   CheckCircleOutlined,
+  CloseOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
+  FolderAddOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
   LoadingOutlined,
   PlusOutlined,
   PictureOutlined,
+  SearchOutlined,
   SendOutlined,
   ToolOutlined,
   WarningOutlined,
@@ -47,8 +50,10 @@ import type {
   AGUIMessageLite,
   AGUIMessagesSnapshotLite,
   CatalogProviderLite,
+  DiscoveredModelLite,
   ModelOptionLite,
   ProviderLite,
+  WorkspaceLite,
 } from '../api'
 import '../styles/chat-md.css'
 
@@ -101,6 +106,7 @@ const LEVEL_LABEL: Record<string, string> = {
   low: '低',
   medium: '中',
   high: '高',
+  xhigh: '极高',
   max: '最高',
 }
 
@@ -185,7 +191,10 @@ export default function ChatView({
   const [providers, setProviders] = useState<ProviderLite[]>([])
   const [modelOpts, setModelOpts] = useState<ModelOptionLite[]>([])
   const [catalog, setCatalog] = useState<CatalogProviderLite[]>([])
-  const [dataDir, setDataDir] = useState('')
+  const [discoveredModels, setDiscoveredModels] = useState<Record<number, DiscoveredModelLite[]>>({})
+  const [workspaces, setWorkspaces] = useState<WorkspaceLite[]>([])
+  const [workspaceQuery, setWorkspaceQuery] = useState('')
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
 
   const currentRef = useRef(current)
   const sendingRef = useRef(false)
@@ -211,13 +220,18 @@ export default function ChatView({
     return Array.from(map, ([label, options]) => ({ label, options }))
   }, [modelOpts])
 
-  // 从内置目录解析当前模型的“思考规格”
+  // Herdsman 使用服务端动态能力，其它服务商使用内置目录。
   const catProv = catalog.find((c) => c.kind.toLowerCase() === defaultP?.kind.toLowerCase())
   const catalogModel = catProv?.models.find((m) => m.id.toLowerCase() === defaultP?.model.toLowerCase())
-  const spec = catalogModel?.reasoning
-  const supportsImages = catalogModel?.multimodal ?? defaultP?.multimodal ?? false
+  const discoveredModel = defaultP
+    ? discoveredModels[defaultP.id]?.find((m) => m.id.toLowerCase() === defaultP.model.toLowerCase())
+    : undefined
+  const spec = discoveredModel?.reasoning ?? catalogModel?.reasoning
+  const supportsImages = discoveredModel?.multimodal ?? catalogModel?.multimodal ?? defaultP?.multimodal ?? false
   const specType = spec?.type ?? 'none'
-  const isCustom = defaultP?.kind === 'custom'
+  const isCustomGateway = defaultP?.kind === 'custom'
+  const isHerdsman = defaultP?.kind === 'herdsman'
+  const isCompatibleGateway = isCustomGateway || isHerdsman
   const canDisableReasoning =
     specType === 'toggle' || (specType === 'effort' && defaultP?.kind === 'deepseek')
 
@@ -225,16 +239,18 @@ export default function ChatView({
   const thinkSteps = useMemo(() => {
     if (specType === 'effort') {
       const levels = (spec?.levels ?? []).filter((l) => LEVEL_LABEL[l])
+      if (isHerdsman) return ['', 'off', ...levels]
       return canDisableReasoning ? ['', ...levels] : levels
     }
     if (specType === 'toggle') {
+      if (isHerdsman) return ['', 'off', 'on']
       return ['', 'on']
     }
-    if (isCustom) {
+    if (isCustomGateway) {
       return ['', 'low', 'medium', 'high']
     }
     return []
-  }, [spec, specType, isCustom, canDisableReasoning])
+  }, [spec, specType, isCustomGateway, isHerdsman, canDisableReasoning])
   // 仅“关闭”一档 = 不支持调节
   const thinkLocked = thinkSteps.length <= 1
   const effectiveReasoning = thinkSteps.includes(reasoning) ? reasoning : (thinkSteps[0] ?? '')
@@ -242,12 +258,13 @@ export default function ChatView({
   const thinkMarks = useMemo(() => {
     const m: Record<number, string> = {}
     thinkSteps.forEach((s, i) => {
-      if (s === '') m[i] = isCustom ? '服务商默认' : '关闭'
+      if (s === '') m[i] = isCompatibleGateway ? '服务商默认' : '关闭'
+      else if (s === 'off') m[i] = '关闭'
       else if (s === 'on') m[i] = '开启'
       else m[i] = LEVEL_LABEL[s] ?? s
     })
     return m
-  }, [thinkSteps, isCustom])
+  }, [thinkSteps, isCompatibleGateway])
   const activeModel = modelOpts.find(
     (option) => option.providerId === defaultP?.id && option.model === defaultP?.model,
   )
@@ -270,6 +287,15 @@ export default function ChatView({
     : thinkMarks[thinkIdx] ?? '关闭'
   const showWorkspaceControl = current === 0 && msgs.length === 0
   const reasoningPreferenceKey = defaultP ? `${defaultP.id}::${defaultP.model}` : ''
+  const currentWorkspace = workspaces.find((workspace) => workspace.isCurrent)
+  const filteredWorkspaces = useMemo(() => {
+    const query = workspaceQuery.trim().toLowerCase()
+    if (!query) return workspaces
+    return workspaces.filter(
+      (workspace) =>
+        workspace.name.toLowerCase().includes(query) || workspace.path.toLowerCase().includes(query),
+    )
+  }, [workspaceQuery, workspaces])
 
   const reloadConvs = useCallback(async () => {
     try {
@@ -292,6 +318,22 @@ export default function ChatView({
     try {
       const list = ((await SettingsService.ListProviders()) ?? []) as unknown as ProviderLite[]
       setProviders(list)
+      const next: Record<number, DiscoveredModelLite[]> = {}
+      await Promise.all(
+        list
+          .filter((provider) => provider.kind.toLowerCase() === 'herdsman')
+          .map(async (provider) => {
+            try {
+              next[provider.id] = ((await SettingsService.DiscoverProviderModels({
+                ...provider,
+                models: [],
+              })) ?? []) as unknown as DiscoveredModelLite[]
+            } catch {
+              next[provider.id] = []
+            }
+          }),
+      )
+      setDiscoveredModels(next)
     } catch {
       /* 忽略 */
     }
@@ -302,6 +344,15 @@ export default function ChatView({
     try {
       const list = ((await SettingsService.ModelOptions()) ?? []) as unknown as ModelOptionLite[]
       setModelOpts(list)
+    } catch {
+      /* 忽略 */
+    }
+  }, [])
+
+  const reloadWorkspaces = useCallback(async () => {
+    try {
+      const list = ((await SettingsService.ListWorkspaces()) ?? []) as unknown as WorkspaceLite[]
+      setWorkspaces(list)
     } catch {
       /* 忽略 */
     }
@@ -326,11 +377,12 @@ export default function ChatView({
     void reloadConvs()
     void reloadProviders()
     void reloadModelOpts()
+    void reloadWorkspaces()
     // 加载内置模型目录(驱动模型/思考规格)
     SettingsService.ModelCatalog()
       .then((list) => setCatalog((list ?? []) as unknown as CatalogProviderLite[]))
       .catch(() => undefined)
-  }, [reloadConvs, reloadProviders, reloadModelOpts])
+  }, [reloadConvs, reloadProviders, reloadModelOpts, reloadWorkspaces])
 
   // 恢复上次打开的会话;消息内容由后端 AG-UI snapshot 提供。
   useEffect(() => {
@@ -374,11 +426,38 @@ export default function ChatView({
     setReasoning(saved !== undefined && thinkSteps.includes(saved) ? saved : (thinkSteps[0] ?? ''))
   }, [modelKey, reasoningPreferenceKey, reasoningPreferences, thinkSteps])
 
-  useEffect(() => {
-    SettingsService.DataDir()
-      .then((d) => setDataDir(d))
-      .catch(() => undefined)
-  }, [])
+  const chooseWorkspace = async (path: string) => {
+    try {
+      await SettingsService.SetWorkspace(path)
+      await reloadWorkspaces()
+      setWorkspacePickerOpen(false)
+      setWorkspaceQuery('')
+    } catch (err) {
+      message.error(`切换工作区失败: ${String(err)}`)
+    }
+  }
+
+  const addWorkspace = async () => {
+    try {
+      const workspace = (await SettingsService.PickWorkspace()) as unknown as WorkspaceLite
+      if (workspace?.path) {
+        await reloadWorkspaces()
+        setWorkspacePickerOpen(false)
+        setWorkspaceQuery('')
+      }
+    } catch (err) {
+      message.error(`添加工作区失败: ${String(err)}`)
+    }
+  }
+
+  const removeWorkspace = async (workspace: WorkspaceLite) => {
+    try {
+      await SettingsService.RemoveWorkspace(workspace.path)
+      await reloadWorkspaces()
+    } catch (err) {
+      message.error(`移除工作区失败: ${String(err)}`)
+    }
+  }
 
   const openConv = (id: number) => {
     discardAttachments()
@@ -743,7 +822,7 @@ export default function ChatView({
             >
               <RightOutlined className="bm-chat-workspace-chevron" />
               <FolderOpenOutlined />
-              <span>BlankMind</span>
+              <span>{currentWorkspace?.name ?? '不在工作区'}</span>
             </Button>
 
             {workspaceOpen && (
@@ -954,26 +1033,96 @@ export default function ChatView({
                 {showWorkspaceControl && (
                   <Popover
                     trigger="click"
+                    open={workspacePickerOpen}
+                    onOpenChange={(open) => {
+                      setWorkspacePickerOpen(open)
+                      if (!open) setWorkspaceQuery('')
+                    }}
+                    placement="topLeft"
+                    rootClassName="bm-chat-workspace-popover"
                     content={
-                      <Flex vertical gap={6} style={{ maxWidth: 380 }}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          工作区(应用数据目录)
-                        </Text>
-                        <Text style={{ fontSize: 12, wordBreak: 'break-all' }}>
-                          {dataDir || '读取中…'}
-                        </Text>
+                      <div className="bm-chat-workspace-panel">
+                        <Input
+                          allowClear
+                          autoFocus
+                          value={workspaceQuery}
+                          onChange={(event) => setWorkspaceQuery(event.target.value)}
+                          placeholder="搜索工作区"
+                          prefix={<SearchOutlined />}
+                        />
+                        <div className="bm-chat-workspace-options" role="listbox" aria-label="工作区列表">
+                          {filteredWorkspaces.map((workspace) => (
+                            <div
+                              className={`bm-chat-workspace-option ${workspace.isCurrent ? 'is-current' : ''}`}
+                              key={workspace.path}
+                              role="option"
+                              aria-selected={workspace.isCurrent}
+                              tabIndex={0}
+                              title={workspace.path}
+                              onClick={() => void chooseWorkspace(workspace.path)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  void chooseWorkspace(workspace.path)
+                                }
+                              }}
+                            >
+                              <FolderOpenOutlined className="bm-chat-workspace-option-icon" />
+                              <span className="bm-chat-workspace-option-copy">
+                                <span className="bm-chat-workspace-option-name">{workspace.name}</span>
+                                <span className="bm-chat-workspace-option-path">{workspace.path}</span>
+                              </span>
+                              {workspace.isCurrent && <CheckOutlined className="bm-chat-workspace-option-check" />}
+                              <Tooltip title="移除工作区">
+                                <Button
+                                  type="text"
+                                  className="bm-chat-workspace-option-remove"
+                                  aria-label={`移除工作区 ${workspace.name}`}
+                                  icon={<CloseOutlined />}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    void removeWorkspace(workspace)
+                                  }}
+                                />
+                              </Tooltip>
+                            </div>
+                          ))}
+                          {filteredWorkspaces.length === 0 && (
+                            <Text type="secondary" className="bm-chat-workspace-empty">
+                              未找到工作区
+                            </Text>
+                          )}
+                        </div>
+                        <div className="bm-chat-workspace-divider" />
                         <Button
-                          size="small"
-                          icon={<FolderOpenOutlined />}
-                          onClick={() => void SettingsService.OpenDataDir()}
+                          type="text"
+                          className="bm-chat-workspace-action"
+                          icon={<FolderAddOutlined />}
+                          onClick={() => void addWorkspace()}
                         >
-                          打开目录
+                          添加工作区
                         </Button>
-                      </Flex>
+                        <Button
+                          type="text"
+                          className="bm-chat-workspace-action"
+                          icon={<CloseOutlined />}
+                          disabled={!currentWorkspace}
+                          onClick={() => void chooseWorkspace('')}
+                        >
+                          不在工作区中
+                        </Button>
+                      </div>
                     }
                   >
                     <Tooltip title="工作区">
-                      <Button type="text" icon={<FolderOpenOutlined />} />
+                      <Button
+                        type="text"
+                        className="bm-chat-workspace-trigger"
+                        icon={<FolderOpenOutlined />}
+                        title={currentWorkspace?.path ?? '不在工作区'}
+                      >
+                        <span>{currentWorkspace?.name ?? '不在工作区'}</span>
+                      </Button>
                     </Tooltip>
                   </Popover>
                 )}
@@ -1027,9 +1176,9 @@ export default function ChatView({
                           {spec.note}
                         </Text>
                       )}
-                      {isCustom && !spec && (
+                      {isCustomGateway && !spec && (
                         <Text type="secondary" className="bm-chat-model-panel-note">
-                          自定义模型会按 OpenAI 兼容协议透传 reasoning_effort。
+                          OpenAI 兼容模型会透传 reasoning_effort。
                         </Text>
                       )}
                     </div>
