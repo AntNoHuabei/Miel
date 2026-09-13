@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS provider_models (
 	model       TEXT NOT NULL,
 	label       TEXT NOT NULL DEFAULT '',
 	custom      INTEGER NOT NULL DEFAULT 0,
+	multimodal  INTEGER NOT NULL DEFAULT 0,
 	created_at  INTEGER NOT NULL,
 	PRIMARY KEY (provider_id, model)
 );
@@ -163,6 +164,9 @@ func migrate(db *sql.DB) error {
 	if err := ensureColumn(db, "todos", "source_id", "INTEGER DEFAULT NULL"); err != nil {
 		return fmt.Errorf("migrate todos source: %w", err)
 	}
+	if err := ensureColumn(db, "provider_models", "multimodal", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("migrate provider model multimodal: %w", err)
+	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_todos_source_id ON todos(source_id)"); err != nil {
 		return fmt.Errorf("index todos source: %w", err)
 	}
@@ -182,6 +186,18 @@ func migrate(db *sql.DB) error {
 		WHERE model <> ''`); err != nil {
 		return fmt.Errorf("backfill provider_models: %w", err)
 	}
+	// 旧库只有服务商当前模型的能力标识，将它回填到对应模型行。
+	if _, err := tx.Exec(`
+		UPDATE provider_models
+		SET multimodal = 1
+		WHERE multimodal = 0 AND EXISTS (
+			SELECT 1 FROM providers p
+			WHERE p.id = provider_models.provider_id
+			  AND p.model = provider_models.model
+			  AND p.multimodal = 1
+		)`); err != nil {
+		return fmt.Errorf("backfill provider model multimodal: %w", err)
+	}
 	// DeepSeek 当前仅提供 Flash。清理历史 Pro/Reasoner/Chat 等型号，避免旧数据库
 	// 继续把已下线型号暴露给模型选择器。
 	if _, err := tx.Exec(`
@@ -198,8 +214,8 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("remove legacy deepseek models: %w", err)
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO provider_models (provider_id, model, label, custom, created_at)
-		SELECT id, 'deepseek-flash', 'DeepSeek V4.1 Flash', 0, created_at
+		INSERT INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
+		SELECT id, 'deepseek-flash', 'DeepSeek V4.1 Flash', 0, 1, created_at
 		FROM providers WHERE lower(trim(kind)) = 'deepseek'`); err != nil {
 		return fmt.Errorf("add deepseek flash model: %w", err)
 	}

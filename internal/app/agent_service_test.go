@@ -6,11 +6,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
+	agentcore "trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
+	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -59,7 +63,7 @@ func TestKnowledgeOnlySkillOptionsDoNotExposeWorkspaceExec(t *testing.T) {
 	}
 
 	opts := []llmagent.Option{
-		llmagent.WithTools(todoAgentTools(nil)),
+		llmagent.WithTools([]tool.Tool{newSkillRunTool(nil, nil)}),
 	}
 	opts = append(opts, knowledgeOnlySkillOptions(repo)...)
 	agent := llmagent.New("test", opts...)
@@ -70,14 +74,25 @@ func TestKnowledgeOnlySkillOptionsDoNotExposeWorkspaceExec(t *testing.T) {
 			names[declaration.Name] = true
 		}
 	}
-	if !names["skill_load"] {
-		t.Error("skill_load is absent")
+	for _, expected := range []string{"skill_load", "skill_list_docs", "skill_select_docs", "skill_run"} {
+		if !names[expected] {
+			t.Errorf("%s is absent", expected)
+		}
+	}
+	if len(names) != 4 {
+		t.Fatalf("agent exposes %d tools, want 4: %#v", len(names), names)
 	}
 	if names["workspace_exec"] {
 		t.Error("workspace_exec must not be exposed")
 	}
-	if !names["list_todos"] {
-		t.Error("list_todos is absent")
+	for _, removed := range []string{
+		"create_todo", "list_todos", "set_todo_status", "delete_todo",
+		"todo_stats", "list_events", "reminder_upcoming", "reminder_settings",
+		"generate_weekly_report", "create_document", "create_table", "export_todos",
+	} {
+		if names[removed] {
+			t.Errorf("legacy tool %s must not be exposed", removed)
+		}
 	}
 }
 
@@ -87,15 +102,135 @@ func TestChatAgentToolsPreserveApplicationToolsWhenMemoryEnabled(t *testing.T) {
 		function.WithName("memory_search"),
 	)
 	names := make(map[string]bool)
-	for _, agentTool := range chatAgentTools([]tool.Tool{memoryTool}) {
+	for _, agentTool := range chatAgentTools(nil, []tool.Tool{memoryTool}) {
 		if declaration := agentTool.Declaration(); declaration != nil {
 			names[declaration.Name] = true
 		}
 	}
-	for _, name := range []string{"list_todos", "todo_stats", "memory_search"} {
+	for _, name := range []string{"skill_run", "memory_search"} {
 		if !names[name] {
 			t.Errorf("%s is absent when memory tools are enabled", name)
 		}
+	}
+}
+
+type requestCaptureModel struct {
+	request *model.Request
+}
+
+func (m *requestCaptureModel) GenerateContent(_ context.Context, request *model.Request) (<-chan *model.Response, error) {
+	m.request = request
+	responses := make(chan *model.Response, 1)
+	responses <- &model.Response{
+		Choices: []model.Choice{{Message: model.Message{Role: model.RoleAssistant, Content: "ok"}}},
+		Done:    true,
+	}
+	close(responses)
+	return responses, nil
+}
+
+func (m *requestCaptureModel) Info() model.Info { return model.Info{Name: "capture"} }
+
+func TestChatAgentRequestUsesCompactSkillSurface(t *testing.T) {
+	skillsRoot := t.TempDir()
+	ensureBuiltinSkills(skillsRoot)
+	repo, err := skill.NewFSRepository(skillsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &requestCaptureModel{}
+	opts := []llmagent.Option{
+		llmagent.WithModel(capture),
+		llmagent.WithInstruction(instructionWithCurrentTime(time.Now())),
+		llmagent.WithTools(chatAgentTools(nil, nil)),
+		llmagent.WithMaxToolIterations(8),
+	}
+	opts = append(opts, knowledgeOnlySkillOptions(repo)...)
+	agent := llmagent.New("test", opts...)
+	invocation := agentcore.NewInvocation(
+		agentcore.WithInvocationMessage(model.NewUserMessage("hello")),
+		agentcore.WithInvocationSession(&session.Session{}),
+	)
+	events, err := agent.Run(context.Background(), invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event != nil && event.RequiresCompletion {
+			key := agentcore.GetAppendEventNoticeKey(event.ID)
+			_ = invocation.AddNoticeChannel(context.Background(), key)
+			_ = invocation.NotifyCompletion(context.Background(), key)
+		}
+	}
+	if capture.request == nil {
+		t.Fatal("model request was not captured")
+	}
+	if len(capture.request.Tools) != 4 {
+		t.Fatalf("request exposes %d tools, want 4: %#v", len(capture.request.Tools), capture.request.Tools)
+	}
+	for _, name := range []string{"skill_load", "skill_list_docs", "skill_select_docs", "skill_run"} {
+		if capture.request.Tools[name] == nil {
+			t.Errorf("request tool %s is absent", name)
+		}
+	}
+	encoded, err := json.Marshal(capture.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) >= 20000 {
+		t.Fatalf("compact agent request metadata is unexpectedly large: %d bytes", len(encoded))
+	}
+}
+
+func TestHerdsmanCompactSkillRequestLive(t *testing.T) {
+	if os.Getenv("BLANKMIND_TEST_HERDSMAN") != "1" {
+		t.Skip("set BLANKMIND_TEST_HERDSMAN=1 to run against local Herdsman")
+	}
+	todo := setupSkillCommandTest(t)
+	skillsRoot := t.TempDir()
+	ensureBuiltinSkills(skillsRoot)
+	repo, err := skill.NewFSRepository(skillsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := buildModel(Provider{
+		Name: "Herdsman", Kind: "herdsman", BaseURL: "http://localhost:8080/v1", Model: "Gemma4:12B-IT",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := []llmagent.Option{
+		llmagent.WithModel(client),
+		llmagent.WithInstruction(instructionWithCurrentTime(time.Now())),
+		llmagent.WithTools(chatAgentTools(&todoToolSource{input: todoSourceInput{
+			Kind: "conversation", TextContent: "创建 skill-live-test 待办",
+		}}, nil)),
+		llmagent.WithGenerationConfig(model.GenerationConfig{Stream: true}),
+		llmagent.WithMaxToolIterations(8),
+	}
+	opts = append(opts, knowledgeOnlySkillOptions(repo)...)
+	agent := llmagent.New("test", opts...)
+	baseRunner := runner.NewRunner("test", agent)
+	defer baseRunner.Close()
+	events, err := baseRunner.Run(
+		context.Background(), "live-user", "live-session",
+		model.NewUserMessage("请使用 todo skill 创建一个标题为 skill-live-test 的待办，不设置截止时间。"),
+		agentcore.WithStream(true),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event != nil && event.Error != nil {
+			t.Fatal(event.Error)
+		}
+	}
+	items, err := todo.ListTodos()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Title != "skill-live-test" {
+		t.Fatalf("Gemma4 did not execute the Cobra skill command: %#v", items)
 	}
 }
 

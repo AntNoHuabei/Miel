@@ -53,12 +53,14 @@ export interface ProviderModelLite {
   model: string
   label: string
   custom: boolean
+  multimodal: boolean
 }
 
 export interface ProviderModelInputLite {
   model: string
   label?: string
   custom?: boolean
+  multimodal?: boolean
 }
 
 export interface DiscoveredModelLite {
@@ -76,6 +78,7 @@ export interface ModelOptionLite {
   model: string
   label: string
   custom: boolean
+  multimodal: boolean
   isDefault: boolean
 }
 

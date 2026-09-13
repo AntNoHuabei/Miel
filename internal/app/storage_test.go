@@ -102,3 +102,45 @@ func TestMigrateKeepsOnlyDeepSeekFlash(t *testing.T) {
 		t.Fatalf("OpenAI model count = %d, want 1", openAIModelCount)
 	}
 }
+
+func TestMigrateAddsAndBackfillsProviderModelMultimodal(t *testing.T) {
+	dsn := fmt.Sprintf("file:provider-model-multimodal-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.Exec(`
+		CREATE TABLE providers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL,
+			base_url TEXT NOT NULL DEFAULT '', api_key TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
+			multimodal INTEGER NOT NULL DEFAULT 0, is_default INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+		);
+		CREATE TABLE provider_models (
+			provider_id INTEGER NOT NULL, model TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',
+			custom INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+			PRIMARY KEY (provider_id, model)
+		);
+		INSERT INTO providers (id, name, kind, model, multimodal, created_at)
+		VALUES (1, 'custom', 'custom', 'vision-model', 1, 1);
+		INSERT INTO provider_models (provider_id, model, custom, created_at)
+		VALUES (1, 'vision-model', 1, 1), (1, 'text-model', 1, 1);`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	var vision, text bool
+	if err := db.QueryRow("SELECT multimodal FROM provider_models WHERE model = 'vision-model'").Scan(&vision); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT multimodal FROM provider_models WHERE model = 'text-model'").Scan(&text); err != nil {
+		t.Fatal(err)
+	}
+	if !vision || text {
+		t.Fatalf("backfilled capabilities = vision %v text %v", vision, text)
+	}
+}

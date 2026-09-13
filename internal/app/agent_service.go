@@ -68,15 +68,13 @@ func (s *AgentService) emit(name string, data any) {
 const systemInstruction = `你是 BlankMind,运行在本地的办公 Agent,通过工具管理用户的待办与里程碑,
 并基于操作日志生成周报与办公文档。规则:
 1. 使用与用户相同的语言回复。
-2. 当用户表达待办、任务或里程碑时,调用 create_todo 落库;涉及截止时间应追问具体日期。
-3. 用户询问待办/统计/进度时,调用工具读取真实数据,不要编造。
-4. 周报必须基于 list_events 与 todo_stats 的真实记录。
+2. 需要操作待办、提醒或办公产出时,先用 skill_load 加载对应的 todo、reminder 或 office skill,
+   再严格按照 skill 文档通过 skill_run 执行命令。
+3. 涉及截止时间但用户未给出具体日期时应追问;修改或删除待办前先查询并核对 ID。
+4. 用户询问待办、统计、进度或周报时必须执行 skill 命令读取真实数据,不要编造。
 5. 回复保持简洁,尽量用 Markdown 结构化。
-6. 可加载用户 skills 目录中的技能来完成任务。
-7. 用户要求“生成周报/周总结/本周汇报”时调用 generate_weekly_report。
-8. 用户要求生成文档(纪要/草稿/方案)或表格(排期/清单/预算)时,
-   调用 create_document / create_table 并保存为文件;需要导出待办时用 export_todos。
-9. memory_search 用于查询与当前请求有关的长期记忆;仅当用户明确要求记住时调用 memory_add。
+6. 可加载用户 skills 目录中的技能获取知识,但 skill_run 仅执行 BlankMind 内置 skill。
+7. memory_search 用于查询与当前请求有关的长期记忆;仅当用户明确要求记住时调用 memory_add。
    不保存凭据、密钥、密码、隐私秘密、模型推测或工具输出。`
 
 // ChatRequest 一次对话入参。
@@ -261,16 +259,16 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	sourceContext := &todoToolSource{input: todoSourceInput{
 		Kind: "conversation", TextContent: msg, ConversationID: convID, MessageID: userMessageID,
 	}}
-	agentTools := chatAgentTools(nil, sourceContext)
+	agentTools := chatAgentTools(sourceContext, nil)
 	if memoryEnabled {
-		agentTools = chatAgentTools(s.memory.Tools(), sourceContext)
+		agentTools = chatAgentTools(sourceContext, s.memory.Tools())
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(m),
-		llmagent.WithInstruction(systemInstruction),
+		llmagent.WithInstruction(instructionWithCurrentTime(time.Now())),
 		llmagent.WithTools(agentTools),
 		llmagent.WithGenerationConfig(gc),
-		llmagent.WithAddCurrentTime(true),
+		llmagent.WithMaxToolIterations(8),
 	}
 	if memoryEnabled {
 		opts = append(opts, llmagent.WithPreloadMemory(8))
@@ -422,8 +420,12 @@ func knowledgeOnlySkillOptions(repo skill.Repository) []llmagent.Option {
 	}
 }
 
-func chatAgentTools(memoryTools []tool.Tool, sourceContext ...*todoToolSource) []tool.Tool {
-	tools := append(append(todoAgentTools(todoSvc, sourceContext...), officeTools(todoSvc)...), reminderAgentTools()...)
+func instructionWithCurrentTime(current time.Time) string {
+	return systemInstruction + "\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")
+}
+
+func chatAgentTools(sourceContext *todoToolSource, memoryTools []tool.Tool) []tool.Tool {
+	tools := []tool.Tool{newSkillRunTool(todoSvc, sourceContext)}
 	return append(tools, memoryTools...)
 }
 

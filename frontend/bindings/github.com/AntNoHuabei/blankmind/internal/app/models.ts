@@ -259,6 +259,7 @@ export interface ModelOption {
     "model": string;
     "label": string;
     "custom": boolean;
+    "multimodal": boolean;
 
     /**
      * 是否为当前使用模型
@@ -330,6 +331,7 @@ export interface ProviderModel {
     "model": string;
     "label": string;
     "custom": boolean;
+    "multimodal": boolean;
 }
 
 /**
@@ -339,6 +341,7 @@ export interface ProviderModelInput {
     "model": string;
     "label": string;
     "custom": boolean;
+    "multimodal": boolean;
 }
 
 /**

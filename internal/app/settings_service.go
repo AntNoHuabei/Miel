@@ -3,6 +3,7 @@ package app
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -126,23 +127,11 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 	if name == "" || kind == "" {
 		return Provider{}, errors.New("name 与 kind 不能为空")
 	}
-	// 图片能力:目录收录的模型以 manifest 为准;自定义回落手工配置
 	cur := strings.TrimSpace(in.Model)
-	mm := 0
-	if cur != "" {
-		if v, ok := modelMultimodal(kind, cur); ok {
-			mm = boolToInt(v)
-		} else if in.Multimodal {
-			mm = 1
-		}
-	} else if in.Multimodal {
-		mm = 1
-	}
-
 	// 归一化启用集合:传入为空则以当前模型为唯一启用项
 	models := in.Models
 	if len(models) == 0 && cur != "" {
-		models = []ProviderModelInput{{Model: cur}}
+		models = []ProviderModelInput{{Model: cur, Multimodal: in.Multimodal}}
 	}
 	seen := map[string]bool{}
 	dedup := make([]ProviderModelInput, 0, len(models))
@@ -152,12 +141,29 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 			continue
 		}
 		seen[mmName] = true
-		dedup = append(dedup, ProviderModelInput{Model: mmName, Label: strings.TrimSpace(m.Label), Custom: m.Custom})
+		multimodal := m.Multimodal
+		if catalogMultimodal, found := modelMultimodal(kind, mmName); found {
+			multimodal = catalogMultimodal
+		}
+		dedup = append(dedup, ProviderModelInput{
+			Model: mmName, Label: strings.TrimSpace(m.Label), Custom: m.Custom, Multimodal: multimodal,
+		})
 	}
 	models = dedup
 	if cur == "" && len(models) > 0 {
 		cur = models[0].Model
 	}
+	currentMultimodal := in.Multimodal
+	for _, model := range models {
+		if model.Model == cur {
+			currentMultimodal = model.Multimodal
+			break
+		}
+	}
+	if catalogMultimodal, found := modelMultimodal(kind, cur); found {
+		currentMultimodal = catalogMultimodal
+	}
+	mm := boolToInt(currentMultimodal)
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -236,8 +242,8 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 			cus = 1
 		}
 		if _, err := tx.Exec(`
-			INSERT INTO provider_models (provider_id, model, label, custom, created_at)
-			VALUES (?, ?, ?, ?, ?)`, id, m.Model, m.Label, cus, ts); err != nil {
+			INSERT INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)`, id, m.Model, m.Label, cus, boolToInt(m.Multimodal), ts); err != nil {
 			return Provider{}, err
 		}
 	}
@@ -247,8 +253,8 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 			cus = 1
 		}
 		if _, err := tx.Exec(`
-			INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, created_at)
-			VALUES (?, ?, '', ?, ?)`, id, cur, cus, ts); err != nil {
+			INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
+			VALUES (?, ?, '', ?, ?, ?)`, id, cur, cus, mm, ts); err != nil {
 			return Provider{}, err
 		}
 	}
@@ -266,7 +272,7 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 // ProviderModels 返回服务商已启用的模型集合。
 func (s *SettingsService) ProviderModels(id int64) ([]ProviderModel, error) {
 	rows, err := s.db.Query(`
-		SELECT model, label, custom FROM provider_models
+		SELECT model, label, custom, multimodal FROM provider_models
 		WHERE provider_id = ? ORDER BY custom ASC, model ASC`, id)
 	if err != nil {
 		return nil, err
@@ -275,11 +281,12 @@ func (s *SettingsService) ProviderModels(id int64) ([]ProviderModel, error) {
 	items := []ProviderModel{}
 	for rows.Next() {
 		var m ProviderModel
-		var c int
-		if err := rows.Scan(&m.Model, &m.Label, &c); err != nil {
+		var c, mm int
+		if err := rows.Scan(&m.Model, &m.Label, &c, &mm); err != nil {
 			return nil, err
 		}
 		m.Custom = c != 0
+		m.Multimodal = mm != 0
 		items = append(items, m)
 	}
 	return items, rows.Err()
@@ -289,7 +296,7 @@ func (s *SettingsService) ProviderModels(id int64) ([]ProviderModel, error) {
 // IsDefault=true 表示该行是当前默认使用的模型。
 func (s *SettingsService) ModelOptions() ([]ModelOption, error) {
 	rows, err := s.db.Query(`
-		SELECT p.id, p.name, p.kind, p.model, pm.model, pm.label, pm.custom
+		SELECT p.id, p.name, p.kind, p.model, pm.model, pm.label, pm.custom, pm.multimodal
 		FROM providers p
 		JOIN provider_models pm ON pm.provider_id = p.id
 		ORDER BY p.is_default DESC, p.id ASC, pm.custom ASC, pm.model ASC`)
@@ -301,12 +308,13 @@ func (s *SettingsService) ModelOptions() ([]ModelOption, error) {
 	for rows.Next() {
 		var o ModelOption
 		var activeModel string
-		var c int
+		var c, mm int
 		if err := rows.Scan(&o.ProviderID, &o.ProviderName, &o.Kind, &activeModel,
-			&o.Model, &o.Label, &c); err != nil {
+			&o.Model, &o.Label, &c, &mm); err != nil {
 			return nil, err
 		}
 		o.Custom = c != 0
+		o.Multimodal = mm != 0
 		o.IsDefault = o.Model == activeModel
 		items = append(items, o)
 	}
@@ -319,24 +327,39 @@ func (s *SettingsService) SetProviderModel(providerID int64, model string) error
 	if model == "" {
 		return errors.New("模型不能为空")
 	}
+	provider, err := s.getProvider(providerID)
+	if err != nil {
+		return err
+	}
+	var storedMultimodal int
+	if err := s.db.QueryRow(`
+		SELECT multimodal FROM provider_models WHERE provider_id = ? AND model = ?`,
+		providerID, model).Scan(&storedMultimodal); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("该模型未在此服务商下启用,请先在设置中启用")
+		}
+		return err
+	}
+	multimodal, err := s.providerModelMultimodal(provider, model, storedMultimodal != 0)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	// 确保该模型属于该服务商的启用集合,否则拒绝
-	var n int
-	_ = tx.QueryRow(`
-		SELECT COUNT(*) FROM provider_models WHERE provider_id = ? AND model = ?`,
-		providerID, model).Scan(&n)
-	if n == 0 {
-		return errors.New("该模型未在此服务商下启用,请先在设置中启用")
-	}
 	if _, err := tx.Exec("UPDATE providers SET is_default = 0"); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`
+		UPDATE provider_models SET multimodal = ? WHERE provider_id = ? AND model = ?`,
+		boolToInt(multimodal), providerID, model); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(
-		"UPDATE providers SET model = ?, is_default = 1 WHERE id = ?", model, providerID); err != nil {
+		"UPDATE providers SET model = ?, multimodal = ?, is_default = 1 WHERE id = ?",
+		model, boolToInt(multimodal), providerID); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -346,6 +369,28 @@ func (s *SettingsService) SetProviderModel(providerID int64, model string) error
 	return nil
 }
 
+func (s *SettingsService) providerModelMultimodal(provider Provider, model string, stored bool) (bool, error) {
+	if multimodal, found := modelMultimodal(provider.Kind, model); found {
+		return multimodal, nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(provider.Kind), "herdsman") {
+		return stored, nil
+	}
+	models, err := s.DiscoverProviderModels(ProviderInput{
+		ID: provider.ID, Name: provider.Name, Kind: provider.Kind, BaseURL: provider.BaseURL,
+		APIKey: provider.APIKey, Model: model,
+	})
+	if err != nil {
+		return false, fmt.Errorf("获取 Herdsman 模型能力失败: %w", err)
+	}
+	for _, candidate := range models {
+		if strings.EqualFold(candidate.ID, model) {
+			return candidate.Multimodal, nil
+		}
+	}
+	return false, fmt.Errorf("Herdsman 未返回模型 %q", model)
+}
+
 // EnableModel 启用某服务商下的一个模型(设置页即时开关用)。
 // 内置模型传 catalog label;自定义模型由前端传入。
 func (s *SettingsService) EnableModel(providerID int64, model, label string, custom bool) error {
@@ -353,6 +398,11 @@ func (s *SettingsService) EnableModel(providerID int64, model, label string, cus
 	if model == "" {
 		return errors.New("模型不能为空")
 	}
+	provider, err := s.getProvider(providerID)
+	if err != nil {
+		return err
+	}
+	multimodal, _ := modelMultimodal(provider.Kind, model)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -368,15 +418,16 @@ func (s *SettingsService) EnableModel(providerID int64, model, label string, cus
 		cus = 1
 	}
 	if _, err := tx.Exec(`
-		INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, created_at)
-		VALUES (?, ?, ?, ?, ?)`, providerID, model, label, cus, now()); err != nil {
+		INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`, providerID, model, label, cus, boolToInt(multimodal), now()); err != nil {
 		return err
 	}
 	// 若该服务商尚无当前模型,自动把新启用模型设为当前
 	var cur string
 	_ = tx.QueryRow("SELECT model FROM providers WHERE id = ?", providerID).Scan(&cur)
 	if strings.TrimSpace(cur) == "" {
-		if _, err := tx.Exec("UPDATE providers SET model = ? WHERE id = ?", model, providerID); err != nil {
+		if _, err := tx.Exec("UPDATE providers SET model = ?, multimodal = ? WHERE id = ?",
+			model, boolToInt(multimodal), providerID); err != nil {
 			return err
 		}
 	}
@@ -410,13 +461,15 @@ func (s *SettingsService) DisableModel(providerID int64, model string) error {
 	_ = tx.QueryRow("SELECT model FROM providers WHERE id = ?", providerID).Scan(&cur)
 	if model == cur {
 		var fallback string
+		var fallbackMultimodal int
 		_ = tx.QueryRow(`
-			SELECT model FROM provider_models WHERE provider_id = ? AND model <> ?
-			ORDER BY custom ASC, model ASC LIMIT 1`, providerID, model).Scan(&fallback)
+			SELECT model, multimodal FROM provider_models WHERE provider_id = ? AND model <> ?
+			ORDER BY custom ASC, model ASC LIMIT 1`, providerID, model).Scan(&fallback, &fallbackMultimodal)
 		if fallback == "" {
 			return errors.New("无法停用最后一个可用模型")
 		}
-		if _, err := tx.Exec("UPDATE providers SET model = ? WHERE id = ?", fallback, providerID); err != nil {
+		if _, err := tx.Exec("UPDATE providers SET model = ?, multimodal = ? WHERE id = ?",
+			fallback, fallbackMultimodal, providerID); err != nil {
 			return err
 		}
 	}

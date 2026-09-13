@@ -1,15 +1,22 @@
 ---
 name: reminder
-description: 到期提醒管理。当用户询问即将到期/逾期事项,或要调整提醒开关、提前量时使用。
+description: 查询逾期或即将到期事项，以及读取和修改提醒设置。
 ---
 
-# reminder — 到期提醒管理(子命令式)
+# Reminder
 
-提醒引擎每分钟自动扫描未完成待办的截止时间,双通道触达(系统通知 + 应用内提醒中心)。用户话术形如:`reminder list`、`reminder upcoming`、`reminder enable/disable`、`reminder lead 提前2小时`。映射到 subcommand(工具):
+使用 `skill_run` 执行本 Skill。固定传入 `skill: "reminder"`，`command` 是下列子命令，所有 flag 和值必须拆成独立的 `args` 数组元素。不得拼接 shell 命令。
 
-| 子命令 | 触发话术示例 | 工具 |
-| --- | --- | --- |
-| `reminder list` | "reminder upcoming""最近有什么到期/逾期" | reminder_upcoming(逾期 + 提前量内即将到期) |
-| `reminder set` | "把提醒关掉/打开""提前 1 天提醒" | reminder_settings(enabled、leadHours) |
+## Commands
 
-规则:leadHours 为整数小时(默认 24);enabled 取值 on/off。查询结果基于真实待办数据,不要编造。
+- `upcoming [--lead-hours <hours>]`
+- `settings get`
+- `settings set [--enabled true|false] [--lead-hours <hours>]`
+
+调用嵌套命令时，例如读取设置：
+
+```json
+{"skill":"reminder","command":"settings","args":["get"]}
+```
+
+`lead-hours` 必须是正整数。以 stdout 的 JSON `data` 为真实结果；`exitCode` 非 0 时根据 stderr 修正参数，不得编造提醒或设置状态。

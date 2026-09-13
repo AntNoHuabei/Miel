@@ -122,6 +122,52 @@ func TestDiscoverProviderModelsMergesHerdsmanCapabilities(t *testing.T) {
 	}
 }
 
+func TestSetProviderModelSyncsHerdsmanMultimodalCapability(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"text-chat"},{"id":"vision-chat"}]}`))
+		case "/api/v1/models":
+			_, _ = w.Write([]byte(`[
+				{"name":"text-chat","type":"text-generation"},
+				{"name":"vision-chat","type":"multimodal"}
+			]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	db := newSettingsTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO providers (id, name, kind, base_url, api_key, model, multimodal, is_default, created_at)
+		VALUES (1, 'Herdsman', 'herdsman', ?, '', 'text-chat', 0, 1, 1);
+		INSERT INTO provider_models (provider_id, model, label, custom, created_at)
+		VALUES (1, 'text-chat', '', 1, 1), (1, 'vision-chat', '', 1, 1);`, server.URL+"/v1"); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewSettingsService(db)
+	assertCurrent := func(model string, multimodal bool) {
+		t.Helper()
+		if err := service.SetProviderModel(1, model); err != nil {
+			t.Fatal(err)
+		}
+		var gotModel string
+		var gotMultimodal bool
+		if err := db.QueryRow("SELECT model, multimodal FROM providers WHERE id = 1").Scan(&gotModel, &gotMultimodal); err != nil {
+			t.Fatal(err)
+		}
+		if gotModel != model || gotMultimodal != multimodal {
+			t.Fatalf("provider = model %q multimodal %v, want %q %v", gotModel, gotMultimodal, model, multimodal)
+		}
+	}
+
+	assertCurrent("vision-chat", true)
+	assertCurrent("text-chat", false)
+}
+
 func TestBuildModelSendsImageForDeepSeekFlash(t *testing.T) {
 	bodyCh := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

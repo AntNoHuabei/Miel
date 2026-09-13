@@ -255,6 +255,60 @@ func TestSetProviderModelPersistsAcrossDatabaseReopen(t *testing.T) {
 	}
 }
 
+func TestCustomProviderPersistsMultimodalPerModel(t *testing.T) {
+	db := newSettingsTestDB(t)
+	service := NewSettingsService(db)
+	provider, err := service.SaveProvider(ProviderInput{
+		Name: "OpenAI compatible", Kind: "custom", BaseURL: "http://localhost/v1",
+		Model: "vision-model", Multimodal: false,
+		Models: []ProviderModelInput{
+			{Model: "text-model", Custom: true, Multimodal: false},
+			{Model: "vision-model", Custom: true, Multimodal: true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !provider.Multimodal {
+		t.Fatal("current vision model did not set provider multimodal capability")
+	}
+	models, err := service.ProviderModels(provider.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities := make(map[string]bool, len(models))
+	for _, model := range models {
+		capabilities[model.Model] = model.Multimodal
+	}
+	if capabilities["text-model"] || !capabilities["vision-model"] {
+		t.Fatalf("model capabilities = %#v", capabilities)
+	}
+
+	if err := service.SetProviderModel(provider.ID, "text-model"); err != nil {
+		t.Fatal(err)
+	}
+	current, err := service.getProvider(provider.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Model != "text-model" || current.Multimodal {
+		t.Fatalf("text current provider = %#v", current)
+	}
+	if err := service.SetProviderModel(provider.ID, "vision-model"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DisableModel(provider.ID, "vision-model"); err != nil {
+		t.Fatal(err)
+	}
+	current, err = service.getProvider(provider.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Model != "text-model" || current.Multimodal {
+		t.Fatalf("fallback provider = %#v", current)
+	}
+}
+
 func TestDefaultModelSupportsVisionUsesCurrentCatalogModel(t *testing.T) {
 	db := newSettingsTestDB(t)
 	if _, err := db.Exec(`

@@ -139,7 +139,13 @@ export default function SettingsView() {
   const enabledOf = (pid: number, model: string) =>
     (modelsMap[pid] ?? []).some((m) => m.model === model)
 
-  const renderModelRow = (p: ProviderLite, key: string, label: string, custom: boolean) => {
+  const renderModelRow = (
+    p: ProviderLite,
+    key: string,
+    label: string,
+    custom: boolean,
+    multimodal: boolean,
+  ) => {
     const on = enabledOf(p.id, key)
     const isCurrent = on && p.model === key
     return (
@@ -150,7 +156,7 @@ export default function SettingsView() {
             checked={on}
             aria-label={`${on ? '停用' : '启用'} ${label}`}
             onChange={(v) => {
-              if (custom) void toggleCustom(p, { model: key, label, custom }, v)
+              if (custom) void toggleCustom(p, { model: key, label, custom, multimodal }, v)
               else {
                 const cm: CatalogModelLite = {
                   id: key,
@@ -165,6 +171,7 @@ export default function SettingsView() {
           <div className="bm-settings-model-label">
             <Text ellipsis={{ tooltip: label }}>{label}</Text>
             {custom && <span className="bm-settings-model-kind">自定义</span>}
+            {multimodal && <span className="bm-settings-model-kind">支持图片</span>}
           </div>
         </div>
         <div className="bm-settings-model-state">
@@ -185,11 +192,11 @@ export default function SettingsView() {
     const rows: ReactNode[] = []
     if (cat && cat.models.length > 0) {
       for (const m of cat.models) {
-        rows.push(renderModelRow(p, m.id, m.label, false))
+        rows.push(renderModelRow(p, m.id, m.label, false, m.multimodal))
       }
     }
     for (const m of modelsMap[p.id] ?? []) {
-      if (m.custom) rows.push(renderModelRow(p, m.model, m.label || m.model, true))
+      if (m.custom) rows.push(renderModelRow(p, m.model, m.label || m.model, true, m.multimodal))
     }
     if (rows.length === 0) {
       rows.push(

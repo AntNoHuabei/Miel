@@ -98,16 +98,18 @@ type ProviderInput struct {
 
 // ProviderModel 服务商启用的单个模型(内置或自定义)。
 type ProviderModel struct {
-	Model  string `json:"model"`
-	Label  string `json:"label"`
-	Custom bool   `json:"custom"`
+	Model      string `json:"model"`
+	Label      string `json:"label"`
+	Custom     bool   `json:"custom"`
+	Multimodal bool   `json:"multimodal"`
 }
 
 // ProviderModelInput 前端提交的启用模型条目。
 type ProviderModelInput struct {
-	Model  string `json:"model"`
-	Label  string `json:"label"`
-	Custom bool   `json:"custom"`
+	Model      string `json:"model"`
+	Label      string `json:"label"`
+	Custom     bool   `json:"custom"`
+	Multimodal bool   `json:"multimodal"`
 }
 
 // DiscoveredModel 是从 OpenAI 兼容服务动态发现的模型及能力。
@@ -126,6 +128,7 @@ type ModelOption struct {
 	Model        string `json:"model"`
 	Label        string `json:"label"`
 	Custom       bool   `json:"custom"`
+	Multimodal   bool   `json:"multimodal"`
 	IsDefault    bool   `json:"isDefault"` // 是否为当前使用模型
 }
 

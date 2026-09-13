@@ -98,10 +98,15 @@ export default function ProviderFormModal({
   const extraModelOptions = useMemo(() => {
     const seen = new Set(enabled.map((e) => e.model))
     const builtin = new Set(builtinModels.map((m) => m.id))
-    const list: { value: string; label: string }[] = []
+    const list: { value: string; label: string; modelLabel: string; multimodal: boolean }[] = []
     for (const model of remoteModels) {
       if (!seen.has(model.id) && !builtin.has(model.id)) {
-        list.push({ value: model.id, label: model.id })
+        list.push({
+          value: model.id,
+          label: model.multimodal ? `${model.id} · 支持图片` : model.id,
+          modelLabel: model.id,
+          multimodal: model.multimodal,
+        })
         seen.add(model.id)
       }
     }
@@ -110,7 +115,12 @@ export default function ProviderFormModal({
         if (c.kind === kind) continue
         for (const m of c.models) {
           if (!seen.has(m.id)) {
-            list.push({ value: m.id, label: `${c.name} · ${m.label}` })
+            list.push({
+              value: m.id,
+              label: `${c.name} · ${m.label}`,
+              modelLabel: m.label,
+              multimodal: m.multimodal,
+            })
             seen.add(m.id)
           }
         }
@@ -141,12 +151,17 @@ export default function ProviderFormModal({
             model: r.model,
             label: r.label,
             custom: r.custom,
+            multimodal: r.multimodal,
           }))
           setEnabled(
-            list.length > 0 ? list : [{ model: existing.model, custom: false }],
+            list.length > 0
+              ? list
+              : [{ model: existing.model, custom: false, multimodal: existing.multimodal }],
           )
         })
-        .catch(() => setEnabled([{ model: existing.model, custom: false }]))
+        .catch(() =>
+          setEnabled([{ model: existing.model, custom: false, multimodal: existing.multimodal }]),
+        )
     } else if (template) {
       const models = catalog.find((c) => c.kind === template.kind)?.models ?? []
       const first = template.model || models[0]?.id || ''
@@ -159,7 +174,12 @@ export default function ProviderFormModal({
         multimodal: template.multimodal,
         isDefault: true,
       })
-      setEnabled(first ? [{ model: first, label: first, custom: false }] : [])
+      const selected = models.find((model) => model.id === first)
+      setEnabled(
+        first
+          ? [{ model: first, label: selected?.label ?? first, custom: false, multimodal: selected?.multimodal }]
+          : [],
+      )
     } else {
       form.setFieldsValue({
         name: '',
@@ -184,7 +204,12 @@ export default function ProviderFormModal({
         ? { kind: k, name: cat.name, baseUrl: cat.baseUrl, model: first }
         : { kind: k, name: '自定义服务商', baseUrl: '', model: '' },
     )
-    setEnabled(first ? [{ model: first, label: first, custom: false }] : [])
+    const selected = models.find((model) => model.id === first)
+    setEnabled(
+      first
+        ? [{ model: first, label: selected?.label ?? first, custom: false, multimodal: selected?.multimodal }]
+        : [],
+    )
     setRemoteModels([])
   }
 
@@ -203,13 +228,13 @@ export default function ProviderFormModal({
     setEnabled((prev) =>
       prev.some((e) => e.model === m.id)
         ? prev
-        : [...prev, { model: m.id, label: m.label, custom: false }],
+        : [...prev, { model: m.id, label: m.label, custom: false, multimodal: m.multimodal }],
     )
     if (!currentModel) form.setFieldsValue({ model: m.id })
   }
 
   // 添加“其它模型”:可从目录下拉选择,也可输入未收录的模型名
-  const addCustom = (name: string, label?: string, isCustom = true) => {
+  const addCustom = (name: string, label?: string, isCustom = true, multimodal = false) => {
     const n = (name || '').trim()
     if (!n) {
       message.warning('请选择或输入模型名')
@@ -221,7 +246,7 @@ export default function ProviderFormModal({
     }
     setEnabled((prev) => [
       ...prev,
-      { model: n, label: label ?? n, custom: isCustom },
+      { model: n, label: label ?? n, custom: isCustom, multimodal },
     ])
     if (!currentModel) form.setFieldsValue({ model: n })
     setCustomName('')
@@ -237,23 +262,48 @@ export default function ProviderFormModal({
     if (currentModel === model) form.setFieldsValue({ model: rest[0].model })
   }
 
-  const toInput = (v: FormValues) => ({
-    id: existing?.id ?? 0,
-    name: (v.name ?? '').trim(),
-    kind: (v.kind ?? '').trim(),
-    baseUrl: (v.baseUrl ?? '').trim(),
-    apiKey: (v.apiKey ?? '').trim(),
-    model: (v.model ?? '').trim(),
-    multimodal: !!v.multimodal,
-    // 默认服务商由“当前模型切换”产生;后端在无默认时自动为第一个服务商设默认
-    isDefault: false,
-    // 完整化每个启用模型条目(bindings 类型要求 label/custom 必填)
-    models: enabled.map((e) => ({
-      model: e.model,
-      label: e.label ?? '',
-      custom: !!e.custom,
-    })),
-  })
+  const setModelMultimodal = (model: string, multimodal: boolean) => {
+    setEnabled((prev) =>
+      prev.map((item) => (item.model === model ? { ...item, multimodal } : item)),
+    )
+  }
+
+  const toInput = (v: FormValues) => {
+    const providerKind = (v.kind ?? '').trim().toLowerCase()
+    const selectedModel = (v.model ?? '').trim()
+    const discovered = remoteModels.find(
+      (model) => model.id.toLowerCase() === selectedModel.toLowerCase(),
+    )
+    const selected = enabled.find(
+      (model) => model.model.toLowerCase() === selectedModel.toLowerCase(),
+    )
+    const existingCapability =
+      existing?.kind.toLowerCase() === 'herdsman' &&
+      existing.model.toLowerCase() === selectedModel.toLowerCase()
+        ? existing.multimodal
+        : false
+    return {
+      id: existing?.id ?? 0,
+      name: (v.name ?? '').trim(),
+      kind: (v.kind ?? '').trim(),
+      baseUrl: (v.baseUrl ?? '').trim(),
+      apiKey: (v.apiKey ?? '').trim(),
+      model: selectedModel,
+      multimodal:
+        providerKind === 'herdsman'
+          ? (discovered?.multimodal ?? selected?.multimodal ?? existingCapability)
+          : (selected?.multimodal ?? !!v.multimodal),
+      // 默认服务商由“当前模型切换”产生;后端在无默认时自动为第一个服务商设默认
+      isDefault: false,
+      // 完整化每个启用模型条目(bindings 类型要求 label/custom 必填)
+      models: enabled.map((e) => ({
+        model: e.model,
+        label: e.label ?? '',
+        custom: !!e.custom,
+        multimodal: !!e.multimodal,
+      })),
+    }
+  }
 
   const handleFetchModels = async () => {
     try {
@@ -262,6 +312,19 @@ export default function ProviderFormModal({
       const values = form.getFieldsValue(true) as FormValues
       const list = ((await SettingsService.DiscoverProviderModels(toInput(values))) ?? []) as unknown as DiscoveredModelLite[]
       setRemoteModels(list)
+      if ((values.kind ?? '').trim().toLowerCase() === 'herdsman') {
+        setEnabled((prev) =>
+          prev.map((item) => {
+            const capability = list.find(
+              (model) => model.id.toLowerCase() === item.model.toLowerCase(),
+            )
+            return capability ? { ...item, multimodal: capability.multimodal } : item
+          }),
+        )
+      }
+      const current = (values.model ?? '').trim().toLowerCase()
+      const currentCapability = list.find((model) => model.id.toLowerCase() === current)
+      if (currentCapability) form.setFieldValue('multimodal', currentCapability.multimodal)
       message.success(`已获取 ${list.length} 个模型`)
     } catch (err) {
       message.error(`获取模型列表失败:${String(err)}`)
@@ -319,7 +382,7 @@ export default function ProviderFormModal({
         form.setFieldsValue({ model: cur })
       }
       setSaving(true)
-      await SettingsService.SaveProvider({ ...toInput(v), model: cur })
+      await SettingsService.SaveProvider(toInput({ ...v, model: cur }))
       message.success('已保存模型服务商配置')
       onSaved()
     } catch (err) {
@@ -421,6 +484,11 @@ export default function ProviderFormModal({
                           {tag.text}
                         </Tag>
                       )}
+                      {m.multimodal && (
+                        <Tag color="blue" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                          支持图片
+                        </Tag>
+                      )}
                     </Space>
                     {on && (
                       <Radio value={m.id}>
@@ -436,31 +504,51 @@ export default function ProviderFormModal({
               {/* 其它/自定义模型 */}
               {enabled
                 .filter((e) => e.custom)
-                .map((e) => (
-                  <Flex key={e.model} align="center" justify="space-between" gap={8}>
-                    <Space size={6}>
-                      <Tag color="orange" style={{ fontSize: 11, marginInlineEnd: 0 }}>
-                        自定义
-                      </Tag>
-                      <Typography.Text style={{ fontSize: 13 }}>
-                        {e.label && e.label !== e.model ? `${e.label}` : e.model}
-                      </Typography.Text>
-                    </Space>
-                    <Space size={2}>
-                      <Radio value={e.model}>
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {e.model === currentModel ? '当前' : '设为当前'}
+                .map((e) => {
+                  const discovered = remoteModels.find(
+                    (model) => model.id.toLowerCase() === e.model.toLowerCase(),
+                  )
+                  const modelMultimodal = discovered?.multimodal ?? !!e.multimodal
+                  const isHerdsmanModel = kind.toLowerCase() === 'herdsman'
+                  return (
+                    <Flex key={e.model} align="center" justify="space-between" gap={8}>
+                      <Space size={6} wrap>
+                        <Tag color="orange" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                          自定义
+                        </Tag>
+                        <Typography.Text style={{ fontSize: 13 }}>
+                          {e.label && e.label !== e.model ? `${e.label}` : e.model}
                         </Typography.Text>
-                      </Radio>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        onClick={() => removeModel(e.model)}
-                      />
-                    </Space>
-                  </Flex>
-                ))}
+                        {isHerdsmanModel && modelMultimodal && (
+                          <Tag color="blue" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                            支持图片
+                          </Tag>
+                        )}
+                        {!isHerdsmanModel && (
+                          <Checkbox
+                            checked={modelMultimodal}
+                            onChange={(event) => setModelMultimodal(e.model, event.target.checked)}
+                          >
+                            图片输入
+                          </Checkbox>
+                        )}
+                      </Space>
+                      <Space size={2}>
+                        <Radio value={e.model}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {e.model === currentModel ? '当前' : '设为当前'}
+                          </Typography.Text>
+                        </Radio>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={() => removeModel(e.model)}
+                        />
+                      </Space>
+                    </Flex>
+                  )
+                })}
 
               {/* 无内置列表的服务商(自定义等):用下拉添加模型 */}
               {(builtinModels.length === 0 || remoteModels.length > 0) && (
@@ -473,7 +561,7 @@ export default function ProviderFormModal({
                         return
                       }
                       const opt = extraModelOptions.find((o) => o.value === v)
-                      addCustom(String(v), opt?.label, true)
+                      addCustom(String(v), opt?.modelLabel, true, opt?.multimodal)
                     }}
                     options={extraModelOptions}
                     placeholder={remoteModels.length > 0 ? '选择服务商返回的模型…' : '选择要启用的模型…'}
@@ -502,19 +590,6 @@ export default function ProviderFormModal({
           </Radio.Group>
         </Form.Item>
 
-        {/* 图片输入能力:内置服务商由目录 manifest 自动决定(不展示任何勾选);
-            仅完全无内置列表的服务商(自定义/Ollama)需手动标注 */}
-        {builtinModels.length === 0 && (
-          <Form.Item
-            label="支持图片输入"
-            name="multimodal"
-            valuePropName="checked"
-            style={{ marginBottom: 8 }}
-            tooltip="该服务商没有内置目录,图片输入能力需手动标注(截图转待办/问答需要)"
-          >
-            <Checkbox />
-          </Form.Item>
-        )}
       </Form>
     </Modal>
   )
