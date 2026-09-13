@@ -51,7 +51,7 @@ func NewClipboardService(todo *TodoService, settings *SettingsService, memoryRun
 		todo:      todo,
 		settings:  settings,
 		memory:    memoryRuntime,
-		sourceDir: filepath.Join(dataDir(), "sources", "clipboard"),
+		sourceDir: appDirectories.Path(DirectoryClipboardSource),
 		drafts:    make(map[string]clipboardDraftPayload),
 	}
 	_ = os.RemoveAll(filepath.Join(service.sourceDirectory(), ".draft"))
@@ -62,7 +62,7 @@ func (s *ClipboardService) sourceDirectory() string {
 	if s.sourceDir != "" {
 		return s.sourceDir
 	}
-	return filepath.Join(dataDir(), "sources", "clipboard")
+	return appDirectories.Path(DirectoryClipboardSource)
 }
 
 func (s *ClipboardService) ExtractTodos() (ClipboardTodoDraft, error) {

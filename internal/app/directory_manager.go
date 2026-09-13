@@ -17,47 +17,47 @@ import (
 type DirectoryKind string
 
 const (
-	DirectoryRoot             DirectoryKind = "root"
-	DirectoryLogs             DirectoryKind = "logs"
-	DirectoryScreenshots      DirectoryKind = "screenshots"
-	DirectorySources          DirectoryKind = "sources"
-	DirectoryClipboardSource  DirectoryKind = "sources.clipboard"
-	DirectorySkills           DirectoryKind = "skills"
-	DirectoryOutputs          DirectoryKind = "outputs"
-	DirectoryOutputReports    DirectoryKind = "outputs.reports"
-	DirectoryOutputDocuments  DirectoryKind = "outputs.documents"
-	DirectoryOutputTables     DirectoryKind = "outputs.tables"
-	DirectoryOutputMemories   DirectoryKind = "outputs.memories"
-	DirectoryAttachments      DirectoryKind = "attachments"
-	DirectoryChatAttachments  DirectoryKind = "attachments.chat"
-	DirectoryChatDrafts       DirectoryKind = "attachments.chat.drafts"
-	DirectoryChatFiles        DirectoryKind = "attachments.chat.files"
-	DirectoryChatThumbnails   DirectoryKind = "attachments.chat.thumbnails"
+	DirectoryRoot            DirectoryKind = "root"
+	DirectoryLogs            DirectoryKind = "logs"
+	DirectoryScreenshots     DirectoryKind = "screenshots"
+	DirectorySources         DirectoryKind = "sources"
+	DirectoryClipboardSource DirectoryKind = "sources.clipboard"
+	DirectorySkills          DirectoryKind = "skills"
+	DirectoryOutputs         DirectoryKind = "outputs"
+	DirectoryOutputReports   DirectoryKind = "outputs.reports"
+	DirectoryOutputDocuments DirectoryKind = "outputs.documents"
+	DirectoryOutputTables    DirectoryKind = "outputs.tables"
+	DirectoryOutputMemories  DirectoryKind = "outputs.memories"
+	DirectoryAttachments     DirectoryKind = "attachments"
+	DirectoryChatAttachments DirectoryKind = "attachments.chat"
+	DirectoryChatDrafts      DirectoryKind = "attachments.chat.drafts"
+	DirectoryChatFiles       DirectoryKind = "attachments.chat.files"
+	DirectoryChatThumbnails  DirectoryKind = "attachments.chat.thumbnails"
 )
 
 // DirectoryPaths is the stable, inspectable path contract for the application.
 // Database files intentionally remain at the root for compatibility with prior releases.
 type DirectoryPaths struct {
-	Root              string `json:"root"`
-	Database          string `json:"database"`
-	AGUIDatabase      string `json:"aguiDatabase"`
-	MemoryDatabase    string `json:"memoryDatabase"`
-	Logs              string `json:"logs"`
-	LogFile           string `json:"logFile"`
-	Screenshots       string `json:"screenshots"`
-	Sources           string `json:"sources"`
-	ClipboardSources  string `json:"clipboardSources"`
-	Skills            string `json:"skills"`
-	Outputs           string `json:"outputs"`
-	Reports           string `json:"reports"`
-	Documents         string `json:"documents"`
-	Tables            string `json:"tables"`
-	Memories          string `json:"memories"`
-	Attachments       string `json:"attachments"`
-	ChatAttachments   string `json:"chatAttachments"`
-	ChatDrafts        string `json:"chatDrafts"`
-	ChatFiles         string `json:"chatFiles"`
-	ChatThumbnails    string `json:"chatThumbnails"`
+	Root             string `json:"root"`
+	Database         string `json:"database"`
+	AGUIDatabase     string `json:"aguiDatabase"`
+	MemoryDatabase   string `json:"memoryDatabase"`
+	Logs             string `json:"logs"`
+	LogFile          string `json:"logFile"`
+	Screenshots      string `json:"screenshots"`
+	Sources          string `json:"sources"`
+	ClipboardSources string `json:"clipboardSources"`
+	Skills           string `json:"skills"`
+	Outputs          string `json:"outputs"`
+	Reports          string `json:"reports"`
+	Documents        string `json:"documents"`
+	Tables           string `json:"tables"`
+	Memories         string `json:"memories"`
+	Attachments      string `json:"attachments"`
+	ChatAttachments  string `json:"chatAttachments"`
+	ChatDrafts       string `json:"chatDrafts"`
+	ChatFiles        string `json:"chatFiles"`
+	ChatThumbnails   string `json:"chatThumbnails"`
 }
 
 // DirectoryManager owns all persistent application paths and their creation.
@@ -94,22 +94,40 @@ func (d *DirectoryManager) DatabasePath(name string) string {
 }
 
 // LogFilePath returns the append-only application log path.
-func (d *DirectoryManager) LogFilePath() string { return filepath.Join(d.Path(DirectoryLogs), "blankmind.log") }
+func (d *DirectoryManager) LogFilePath() string {
+	return filepath.Join(d.Path(DirectoryLogs), "blankmind.log")
+}
 
 // OutputPath returns a path under a validated output category.
 func (d *DirectoryManager) OutputPath(category, filename string) (string, error) {
-	if strings.TrimSpace(category) == "" || strings.TrimSpace(filename) == "" {
-		return "", errors.New("产物目录和文件名不能为空")
+	if strings.TrimSpace(filename) == "" {
+		return "", errors.New("产物文件名不能为空")
 	}
 	cleanName := filepath.Base(filename)
 	if cleanName == "." || cleanName == string(filepath.Separator) || cleanName != filename {
 		return "", errors.New("产物文件名不可包含目录")
 	}
+	dir, err := d.OutputDirectory(category)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, cleanName), nil
+}
+
+// OutputDirectory returns and creates a validated output category directory.
+func (d *DirectoryManager) OutputDirectory(category string) (string, error) {
+	category = strings.TrimSpace(category)
+	if category == "" {
+		return "", errors.New("产物目录不能为空")
+	}
 	dir := filepath.Join(d.Path(DirectoryOutputs), filepath.Clean(category))
 	if !isWithin(d.Path(DirectoryOutputs), dir) {
 		return "", errors.New("产物目录无效")
 	}
-	return filepath.Join(dir, cleanName), nil
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("创建产物目录失败: %w", err)
+	}
+	return dir, nil
 }
 
 // Path resolves a managed directory without creating it.
@@ -216,4 +234,3 @@ func isWithin(root, candidate string) bool {
 	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
-

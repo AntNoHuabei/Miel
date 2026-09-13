@@ -20,7 +20,7 @@ import {
   FolderOpenOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
-import { SettingsService } from '../api'
+import { DirectoryService, SettingsService } from '../api'
 import type {
   CatalogModelLite,
   CatalogProviderLite,
@@ -80,8 +80,8 @@ export default function SettingsView() {
   }, [loadAll])
 
   useEffect(() => {
-    SettingsService.DataDir()
-      .then((d) => setDataDir(d))
+    DirectoryService.Paths()
+      .then((paths) => setDataDir(paths.root))
       .catch(() => undefined)
   }, [])
 
@@ -378,7 +378,7 @@ export default function SettingsView() {
                 <Text type="secondary">截图、周报、文档、表格和技能文件保存在此目录</Text>
                 <code>{dataDir || '读取中...'}</code>
               </div>
-              <Button icon={<FolderOpenOutlined />} onClick={() => void SettingsService.OpenDataDir()}>
+              <Button icon={<FolderOpenOutlined />} onClick={() => void DirectoryService.OpenDataDir()}>
                 打开目录
               </Button>
             </div>

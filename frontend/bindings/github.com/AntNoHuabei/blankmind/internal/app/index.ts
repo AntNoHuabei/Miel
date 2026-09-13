@@ -4,6 +4,7 @@
 import * as AgentService from "./agentservice.js";
 import * as ChatAttachmentService from "./chatattachmentservice.js";
 import * as ClipboardService from "./clipboardservice.js";
+import * as DirectoryService from "./directoryservice.js";
 import * as MemoryService from "./memoryservice.js";
 import * as ScreenshotService from "./screenshotservice.js";
 import * as SettingsService from "./settingsservice.js";
@@ -13,6 +14,7 @@ export {
     AgentService,
     ChatAttachmentService,
     ClipboardService,
+    DirectoryService,
     MemoryService,
     ScreenshotService,
     SettingsService,
@@ -32,6 +34,7 @@ export type {
     ConfirmClipboardTodosReq,
     ConfirmExtractedReq,
     Conversation,
+    DirectoryPaths,
     DiscoveredModel,
     Event,
     ExtractedTodo,

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,7 +28,7 @@ const (
 
 // NewAgentService 创建持久化 AG-UI 会话服务。模型 runner 仍按每轮配置动态构建。
 func NewAgentService(memoryRuntime *memoryRuntime, attachments *ChatAttachmentService) (*AgentService, error) {
-	db, err := sql.Open("sqlite", filepath.Join(dataDir(), "agui.db"))
+	db, err := sql.Open("sqlite", appDirectories.DatabasePath("agui.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open AG-UI session store: %w", err)
 	}

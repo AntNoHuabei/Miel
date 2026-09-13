@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 
 export const AgentService = Services.AgentService
 export const SettingsService = Services.SettingsService
+export const DirectoryService = Services.DirectoryService
 export const MemoryService = Services.MemoryService
 export const TodoService = Services.TodoService
 export const ScreenshotService = Services.ScreenshotService

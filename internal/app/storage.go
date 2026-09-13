@@ -3,11 +3,8 @@ package app
 import (
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/adrg/xdg"
 	_ "modernc.org/sqlite"
 )
 
@@ -16,16 +13,17 @@ var store *sql.DB
 
 // dataDir 返回应用数据目录(Windows 下为 %LOCALAPPDATA%\BlankMind)。
 func dataDir() string {
-	dir := filepath.Join(xdg.DataHome, "BlankMind")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := appDirectories.Ensure(DirectoryRoot)
+	if err != nil {
 		fmt.Println("create data dir failed:", err)
+		return appDirectories.Root()
 	}
 	return dir
 }
 
 // openStore 打开(必要时创建)SQLite 数据库并执行迁移。
 func openStore() error {
-	dbPath := filepath.Join(dataDir(), "blankmind.db")
+	dbPath := appDirectories.DatabasePath("blankmind.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)

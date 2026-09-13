@@ -53,6 +53,7 @@ npm run build     # tsc + vite 生产打包
 | `blankmind.db` | SQLite:providers / todos / events / conversations / messages / screenshots / settings |
 | `agui.db` | trpc-agent-go 会话与 AG-UI 消息轨迹 |
 | `memory.db` | 跨会话长期记忆，作用域为 `blankmind-app/user` |
+| `logs/blankmind.log` | 应用运行日志(同时保留标准输出) |
 | `screenshots/` | 截图原图 |
 | `sources/clipboard/` | 已确认待办关联的粘贴板图片来源 |
 | `outputs/reports/` | 生成的周报(markdown) |
@@ -60,6 +61,8 @@ npm run build     # tsc + vite 生产打包
 | `outputs/tables/` | 生成的表格(CSV)与待办导出 |
 | `outputs/memories/` | 设置页导出的完整记忆 JSON |
 | `skills/` | 用户 Skill 目录(`<name>/SKILL.md`) |
+
+所有持久化路径由 Go 侧 `DirectoryManager` 统一管理，Wails `DirectoryService.Paths()` 返回同一份路径契约。新增数据库、日志、附件或产物类型时，应先在 `internal/app/directory_manager.go` 增加目录类型，再由业务服务引用，避免直接拼接应用根目录。
 
 ## 🧩 添加自定义 Skill
 
@@ -82,6 +85,8 @@ npm run build     # tsc + vite 生产打包
 | `reminder_service.go` | 每分钟 deadline 扫描提醒引擎 |
 | `system_service.go` | 系统托盘与全局快捷键注册 |
 | `outputs.go` | 产物目录与“打开数据目录” |
+| `directory_manager.go` | 数据库、日志、附件、来源、skills 与产物的统一路径管理 |
+| `directory_service.go` | 向 Wails/前端暴露统一目录路径接口 |
 | `model_client.go` | OpenAI 兼容模型客户端构建 / Ping |
 | `memory_runtime.go` | SQLite Memory、召回工具与后台提取队列 |
 | `memory_service.go` | 记忆设置、管理与 JSON 导出 API |

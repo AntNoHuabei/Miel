@@ -121,6 +121,33 @@ export interface Conversation {
 }
 
 /**
+ * DirectoryPaths is the stable, inspectable path contract for the application.
+ * Database files intentionally remain at the root for compatibility with prior releases.
+ */
+export interface DirectoryPaths {
+    "root": string;
+    "database": string;
+    "aguiDatabase": string;
+    "memoryDatabase": string;
+    "logs": string;
+    "logFile": string;
+    "screenshots": string;
+    "sources": string;
+    "clipboardSources": string;
+    "skills": string;
+    "outputs": string;
+    "reports": string;
+    "documents": string;
+    "tables": string;
+    "memories": string;
+    "attachments": string;
+    "chatAttachments": string;
+    "chatDrafts": string;
+    "chatFiles": string;
+    "chatThumbnails": string;
+}
+
+/**
  * DiscoveredModel 是从 OpenAI 兼容服务动态发现的模型及能力。
  */
 export interface DiscoveredModel {

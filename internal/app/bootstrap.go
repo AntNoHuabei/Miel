@@ -8,6 +8,7 @@ var Emit = func(_ string, _ any) {}
 
 // Services 是装配产物,供 main 注册为 wails 服务。
 type Services struct {
+	Directories     *DirectoryService
 	Settings        *SettingsService
 	Memory          *MemoryService
 	Todo            *TodoService
@@ -21,6 +22,9 @@ type Services struct {
 // Bootstrap 初始化存储与内置 skills,构造并装配各业务服务
 // (服务间引用与事件出口都在这里收敛,main 只做注册)。
 func Bootstrap() (*Services, error) {
+	if err := appDirectories.EnsureAll(); err != nil {
+		return nil, err
+	}
 	if err := openStore(); err != nil {
 		return nil, err
 	}
@@ -56,6 +60,7 @@ func Bootstrap() (*Services, error) {
 
 	rem.Start(context.Background())
 	return &Services{
+		Directories:     NewDirectoryService(appDirectories),
 		Settings:        settings,
 		Memory:          memoryService,
 		Todo:            todo,

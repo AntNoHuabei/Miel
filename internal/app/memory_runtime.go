@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -49,7 +48,7 @@ type memoryRuntime struct {
 }
 
 func newMemoryRuntime() (*memoryRuntime, error) {
-	return newMemoryRuntimeAt(filepath.Join(dataDir(), "memory.db"))
+	return newMemoryRuntimeAt(appDirectories.DatabasePath("memory.db"))
 }
 
 func newMemoryRuntimeAt(dbPath string) (*memoryRuntime, error) {

@@ -94,8 +94,8 @@ func (s *ScreenshotService) Capture() (ScreenshotResult, error) {
 	}
 	data := buf.Bytes()
 
-	dir := filepath.Join(dataDir(), "screenshots")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := appDirectories.Ensure(DirectoryScreenshots)
+	if err != nil {
 		return ScreenshotResult{}, fmt.Errorf("创建截图目录失败: %w", err)
 	}
 	path := filepath.Join(dir, fmt.Sprintf("shot_%d.jpg", now()))

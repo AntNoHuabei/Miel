@@ -3,8 +3,6 @@ package app
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -17,9 +15,10 @@ import (
 //	  documents/ 文档(markdown)
 //	  tables/    表格(CSV)
 func outputDir(sub string) string {
-	dir := filepath.Join(dataDir(), "outputs", sub)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := appDirectories.OutputDirectory(sub)
+	if err != nil {
 		fmt.Println("create output dir failed:", err)
+		return appDirectories.Path(DirectoryOutputs)
 	}
 	return dir
 }
@@ -46,8 +45,10 @@ func stamp() string { return time.Now().Format("20060102_150405") }
 
 // writeOutput 写入产物文件并返回路径。
 func writeOutput(sub, filename string, content []byte) (string, error) {
-	dir := outputDir(sub)
-	path := filepath.Join(dir, filename)
+	path, err := appDirectories.OutputPath(sub, filename)
+	if err != nil {
+		return "", err
+	}
 	if err := os.WriteFile(path, content, 0o644); err != nil {
 		return "", fmt.Errorf("写入文件失败: %w", err)
 	}
@@ -58,11 +59,4 @@ func writeOutput(sub, filename string, content []byte) (string, error) {
 func (s *SettingsService) DataDir() string { return dataDir() }
 
 // OpenDataDir 在系统文件管理器中打开应用数据目录。
-func (s *SettingsService) OpenDataDir() error {
-	dir := dataDir()
-	cmd := exec.Command("explorer", dir)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("打开数据目录失败: %w", err)
-	}
-	return nil
-}
+func (s *SettingsService) OpenDataDir() error { return appDirectories.OpenRoot() }

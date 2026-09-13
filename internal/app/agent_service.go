@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -445,9 +444,10 @@ func (s *AgentService) ServiceShutdown() error {
 
 // skillsDir 返回用户 skills 目录;不存在则创建。
 func skillsDir() string {
-	dir := filepath.Join(dataDir(), "skills")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := appDirectories.Ensure(DirectorySkills)
+	if err != nil {
 		log.Println("create skills dir failed:", err)
+		return appDirectories.Path(DirectorySkills)
 	}
 	return dir
 }

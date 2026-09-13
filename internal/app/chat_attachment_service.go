@@ -64,7 +64,7 @@ type ChatAttachmentService struct {
 func NewChatAttachmentService(db *sql.DB) *ChatAttachmentService {
 	service := &ChatAttachmentService{
 		db:      db,
-		rootDir: filepath.Join(dataDir(), "attachments", "chat"),
+		rootDir: appDirectories.Path(DirectoryChatAttachments),
 		drafts:  make(map[string]*chatAttachmentPayload),
 	}
 	_ = service.cleanupOwnedFiles()
