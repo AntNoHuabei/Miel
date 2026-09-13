@@ -19,8 +19,19 @@ describe('AppShell navigation', () => {
   it('keeps chat mounted while feature pages cover the viewport', () => {
     render(<AppShell />)
     expect(screen.getByText('chat stays mounted')).toBeInTheDocument()
-    act(() => useShellStore.getState().navigate('settings'))
-    expect(screen.getByText('chat stays mounted')).toBeInTheDocument()
-    expect(screen.getByText('settings page')).toBeInTheDocument()
+
+    const featurePages = [
+      ['todos', 'todos page'],
+      ['milestones', 'milestones page'],
+      ['reminders', 'reminders page'],
+      ['settings', 'settings page'],
+    ] as const
+
+    for (const [view, content] of featurePages) {
+      act(() => useShellStore.getState().navigate(view))
+      expect(screen.getByText('chat stays mounted')).toBeInTheDocument()
+      expect(screen.getByText(content)).toBeInTheDocument()
+      expect(screen.getByText(content).closest('.bm-shell-feature-layer')).toHaveClass('bm-feature-page')
+    }
   })
 })
