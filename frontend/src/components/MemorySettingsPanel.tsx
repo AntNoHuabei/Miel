@@ -26,7 +26,8 @@ import {
   ReloadOutlined,
   SaveOutlined,
 } from '@ant-design/icons'
-import { MemoryService, useWailsEvent } from '../api'
+import { memoryRepository } from '../shared/repositories'
+import { useWailsEvent } from '../shared/wails/events'
 import type {
   MemoryConfigLite,
   MemoryInputLite,
@@ -70,14 +71,13 @@ export default function MemorySettingsPanel() {
   const [editorSaving, setEditorSaving] = useState(false)
 
   const loadSettings = useCallback(async () => {
-    const next = (await MemoryService.GetSettings()) as unknown as MemorySettingsLite
+    const next = await memoryRepository.getSettings()
     setSettings(next)
     setDraft(next.config)
   }, [])
 
   const loadMemories = useCallback(async () => {
-    const rows = (await MemoryService.ListMemories()) as unknown as MemoryItemLite[] | null
-    setMemories(rows ?? [])
+    setMemories(await memoryRepository.list())
   }, [])
 
   const loadAll = useCallback(async () => {
@@ -132,10 +132,10 @@ export default function MemorySettingsPanel() {
     }
     setSaving(true)
     try {
-      const next = (await MemoryService.SaveSettings({
+      const next = await memoryRepository.saveSettings({
         ...draft,
         customPrompt: draft.customPrompt.trim(),
-      })) as unknown as MemorySettingsLite
+      })
       setSettings(next)
       setDraft(next.config)
       message.success('记忆设置已保存')
@@ -177,8 +177,8 @@ export default function MemorySettingsPanel() {
     setEditorSaving(true)
     try {
       const input = { ...memoryDraft, content: memoryDraft.content.trim() }
-      if (editing) await MemoryService.UpdateMemory({ id: editing.id, ...input })
-      else await MemoryService.AddMemory(input)
+      if (editing) await memoryRepository.update({ id: editing.id, ...input })
+      else await memoryRepository.add(input)
       setEditorOpen(false)
       await loadMemories()
       message.success(editing ? '记忆已更新' : '记忆已添加')
@@ -191,7 +191,7 @@ export default function MemorySettingsPanel() {
 
   const removeMemory = async (id: string) => {
     try {
-      await MemoryService.DeleteMemory(id)
+      await memoryRepository.delete(id)
       await loadMemories()
       message.success('记忆已删除')
     } catch (err) {
@@ -201,7 +201,7 @@ export default function MemorySettingsPanel() {
 
   const clearMemories = async () => {
     try {
-      await MemoryService.ClearMemories()
+      await memoryRepository.clear()
       await loadMemories()
       message.success('全部记忆已清空')
     } catch (err) {
@@ -211,7 +211,7 @@ export default function MemorySettingsPanel() {
 
   const exportMemories = async () => {
     try {
-      const path = await MemoryService.ExportMemories()
+      const path = await memoryRepository.export()
       message.success(`已导出到 ${path}`)
     } catch (err) {
       message.error(String(err))

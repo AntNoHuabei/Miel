@@ -68,6 +68,7 @@ func NewChatAttachmentService(db *sql.DB) *ChatAttachmentService {
 		drafts:  make(map[string]*chatAttachmentPayload),
 	}
 	_ = service.cleanupOwnedFiles()
+	cleanupOptimizedImageCache()
 	return service
 }
 

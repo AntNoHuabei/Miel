@@ -10,4 +10,9 @@ export default defineConfig({
     strictPort: true,
   },
   plugins: [react(), wails("./bindings")],
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
+    css: true,
+  },
 });

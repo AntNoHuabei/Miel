@@ -7,8 +7,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"image"
 	"image/png"
+	"math/bits"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -22,6 +25,9 @@ const (
 	clipboardFormatUnicodeText = 13
 	clipboardFormatDIB         = 8
 	clipboardFormatDIBV5       = 17
+	clipboardCompressionRGB    = 0
+	clipboardCompressionFields = 3
+	clipboardCompressionAlpha  = 6
 	maxClipboardTextBytes      = 4 << 20
 	maxClipboardImageBytes     = 20 << 20
 	clipboardReadAttempts      = 41
@@ -35,9 +41,12 @@ var (
 	clipboardCloseProc           = clipboardUser32.NewProc("CloseClipboard")
 	clipboardFormatAvailableProc = clipboardUser32.NewProc("IsClipboardFormatAvailable")
 	clipboardGetDataProc         = clipboardUser32.NewProc("GetClipboardData")
+	clipboardRegisterFormatProc  = clipboardUser32.NewProc("RegisterClipboardFormatW")
 	clipboardGlobalSizeProc      = clipboardKernel32.NewProc("GlobalSize")
 	errClipboardOpenUnavailable  = errors.New("无法打开剪贴板,请稍后重试")
 	errClipboardDataUnavailable  = errors.New("无法读取剪贴板内容")
+	clipboardPNGFormatOnce       sync.Once
+	clipboardPNGFormat           uint32
 )
 
 type clipboardPayload struct {
@@ -76,6 +85,20 @@ func readWindowsClipboardAttempt() (clipboardPayload, error) {
 		return clipboardPayload{}, errClipboardOpenUnavailable
 	}
 	defer clipboardCloseProc.Call() //nolint:errcheck
+
+	if format := registeredPNGClipboardFormat(); format != 0 {
+		available, _, _ := clipboardFormatAvailableProc.Call(uintptr(format))
+		if available != 0 {
+			raw, err := clipboardData(format, maxClipboardImageBytes)
+			if err != nil {
+				return clipboardPayload{}, err
+			}
+			if err := validatePNG(raw); err != nil {
+				return clipboardPayload{}, fmt.Errorf("读取剪贴板 PNG 失败: %w", err)
+			}
+			return clipboardPayload{kind: "clipboard_image", imagePNG: raw}, nil
+		}
+	}
 
 	for _, format := range []uint32{clipboardFormatDIBV5, clipboardFormatDIB} {
 		available, _, _ := clipboardFormatAvailableProc.Call(uintptr(format))
@@ -116,6 +139,29 @@ func readWindowsClipboardAttempt() (clipboardPayload, error) {
 		return clipboardPayload{}, errors.New("剪贴板文本为空")
 	}
 	return clipboardPayload{kind: "clipboard_text", text: text}, nil
+}
+
+func registeredPNGClipboardFormat() uint32 {
+	clipboardPNGFormatOnce.Do(func() {
+		name, err := windows.UTF16PtrFromString("PNG")
+		if err != nil {
+			return
+		}
+		format, _, _ := clipboardRegisterFormatProc.Call(uintptr(unsafe.Pointer(name)))
+		clipboardPNGFormat = uint32(format)
+	})
+	return clipboardPNGFormat
+}
+
+func validatePNG(data []byte) error {
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 50_000_000 {
+		return errors.New("剪贴板图片尺寸无效或过大")
+	}
+	return nil
 }
 
 func clipboardData(format uint32, maxBytes int) ([]byte, error) {
@@ -161,6 +207,13 @@ func dibToPNG(dib []byte) ([]byte, error) {
 	}
 	bitCount := binary.LittleEndian.Uint16(dib[14:16])
 	compression := binary.LittleEndian.Uint32(dib[16:20])
+	if bitCount == 16 || compression == clipboardCompressionFields || compression == clipboardCompressionAlpha {
+		img, err := decodeBitfieldDIB(dib)
+		if err != nil {
+			return nil, err
+		}
+		return encodePNG(img)
+	}
 	colorsUsed := binary.LittleEndian.Uint32(dib[32:36])
 	paletteEntries := int(colorsUsed)
 	if paletteEntries == 0 && bitCount <= 8 {
@@ -195,9 +248,158 @@ func dibToPNG(dib []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return encodePNG(img)
+}
+
+func encodePNG(img image.Image) ([]byte, error) {
 	var out bytes.Buffer
 	if err := png.Encode(&out, img); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func decodeBitfieldDIB(dib []byte) (image.Image, error) {
+	if len(dib) < 40 {
+		return nil, errors.New("DIB 数据不完整")
+	}
+	headerSize := int(binary.LittleEndian.Uint32(dib[0:4]))
+	if headerSize < 40 || headerSize > len(dib) {
+		return nil, errors.New("DIB 头无效")
+	}
+	width := int64(int32(binary.LittleEndian.Uint32(dib[4:8])))
+	signedHeight := int64(int32(binary.LittleEndian.Uint32(dib[8:12])))
+	planes := binary.LittleEndian.Uint16(dib[12:14])
+	bitCount := binary.LittleEndian.Uint16(dib[14:16])
+	compression := binary.LittleEndian.Uint32(dib[16:20])
+	if width <= 0 || signedHeight == 0 || planes != 1 || (bitCount != 16 && bitCount != 32) {
+		return nil, errors.New("DIB 位图参数不受支持")
+	}
+	topDown := signedHeight < 0
+	height := signedHeight
+	if height < 0 {
+		height = -height
+	}
+	if width*height > 50_000_000 {
+		return nil, errors.New("剪贴板图片尺寸无效或过大")
+	}
+
+	redMask, greenMask, blueMask, alphaMask, externalMaskBytes, err := dibChannelMasks(dib, headerSize, bitCount, compression)
+	if err != nil {
+		return nil, err
+	}
+	colorsUsed := int64(binary.LittleEndian.Uint32(dib[32:36]))
+	pixelOffset := int64(headerSize+externalMaskBytes) + colorsUsed*4
+	rowStride := ((width*int64(bitCount) + 31) / 32) * 4
+	pixelBytes := rowStride * height
+	if pixelOffset < 0 || pixelBytes < 0 || pixelOffset+pixelBytes > int64(len(dib)) {
+		return nil, errors.New("DIB 像素数据不完整")
+	}
+
+	img := image.NewNRGBA(image.Rect(0, 0, int(width), int(height)))
+	bytesPerPixel := int(bitCount / 8)
+	anyAlpha := false
+	for sourceY := int64(0); sourceY < height; sourceY++ {
+		targetY := sourceY
+		if !topDown {
+			targetY = height - 1 - sourceY
+		}
+		rowStart := pixelOffset + sourceY*rowStride
+		for x := int64(0); x < width; x++ {
+			offset := rowStart + x*int64(bytesPerPixel)
+			var value uint32
+			if bitCount == 16 {
+				value = uint32(binary.LittleEndian.Uint16(dib[offset : offset+2]))
+			} else {
+				value = binary.LittleEndian.Uint32(dib[offset : offset+4])
+			}
+			alpha := uint8(0xff)
+			if alphaMask != 0 {
+				alpha = scaleDIBChannel(value, alphaMask)
+				anyAlpha = anyAlpha || alpha != 0
+			}
+			pixel := img.Pix[int(targetY)*img.Stride+int(x)*4:]
+			pixel[0] = scaleDIBChannel(value, redMask)
+			pixel[1] = scaleDIBChannel(value, greenMask)
+			pixel[2] = scaleDIBChannel(value, blueMask)
+			pixel[3] = alpha
+		}
+	}
+	// Some Windows producers declare an alpha mask but leave every alpha bit at
+	// zero. Treat that inconsistent representation as opaque instead of blank.
+	if alphaMask != 0 && !anyAlpha {
+		for offset := 3; offset < len(img.Pix); offset += 4 {
+			img.Pix[offset] = 0xff
+		}
+	}
+	return img, nil
+}
+
+func dibChannelMasks(dib []byte, headerSize int, bitCount uint16, compression uint32) (
+	red, green, blue, alpha uint32, externalBytes int, err error,
+) {
+	switch compression {
+	case clipboardCompressionRGB:
+		if bitCount == 16 {
+			return 0x7c00, 0x03e0, 0x001f, 0, 0, nil
+		}
+		return 0x00ff0000, 0x0000ff00, 0x000000ff, 0, 0, nil
+	case clipboardCompressionFields, clipboardCompressionAlpha:
+		maskOffset := 40
+		maskCount := 3
+		if compression == clipboardCompressionAlpha {
+			maskCount = 4
+		}
+		if headerSize == 40 {
+			externalBytes = maskCount * 4
+		} else if headerSize < 52 || (maskCount == 4 && headerSize < 56) {
+			return 0, 0, 0, 0, 0, errors.New("DIB 位域掩码不完整")
+		}
+		if len(dib) < maskOffset+maskCount*4 {
+			return 0, 0, 0, 0, 0, errors.New("DIB 位域掩码不完整")
+		}
+		red = binary.LittleEndian.Uint32(dib[maskOffset : maskOffset+4])
+		green = binary.LittleEndian.Uint32(dib[maskOffset+4 : maskOffset+8])
+		blue = binary.LittleEndian.Uint32(dib[maskOffset+8 : maskOffset+12])
+		if maskCount == 4 {
+			alpha = binary.LittleEndian.Uint32(dib[maskOffset+12 : maskOffset+16])
+		} else if headerSize >= 56 {
+			alpha = binary.LittleEndian.Uint32(dib[52:56])
+		}
+		if !validDIBMasks(red, green, blue, alpha) {
+			return 0, 0, 0, 0, 0, errors.New("DIB 位域掩码无效")
+		}
+		return red, green, blue, alpha, externalBytes, nil
+	default:
+		return 0, 0, 0, 0, 0, fmt.Errorf("不支持的 DIB 压缩格式: %d", compression)
+	}
+}
+
+func validDIBMasks(red, green, blue, alpha uint32) bool {
+	if red == 0 || green == 0 || blue == 0 || red&green != 0 || red&blue != 0 || green&blue != 0 {
+		return false
+	}
+	if alpha != 0 && alpha&(red|green|blue) != 0 {
+		return false
+	}
+	for _, mask := range []uint32{red, green, blue, alpha} {
+		if mask == 0 {
+			continue
+		}
+		normalized := mask >> bits.TrailingZeros32(mask)
+		if normalized&(normalized+1) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func scaleDIBChannel(value, mask uint32) uint8 {
+	if mask == 0 {
+		return 0
+	}
+	shift := bits.TrailingZeros32(mask)
+	maximum := mask >> shift
+	component := (value & mask) >> shift
+	return uint8((uint64(component)*255 + uint64(maximum)/2) / uint64(maximum))
 }

@@ -6,8 +6,10 @@ import * as ChatAttachmentService from "./chatattachmentservice.js";
 import * as ClipboardService from "./clipboardservice.js";
 import * as DirectoryService from "./directoryservice.js";
 import * as MemoryService from "./memoryservice.js";
+import * as PermissionService from "./permissionservice.js";
 import * as ScreenshotService from "./screenshotservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as SkillService from "./skillservice.js";
 import * as TodoService from "./todoservice.js";
 import * as WindowThemeService from "./windowthemeservice.js";
 export {
@@ -16,13 +18,21 @@ export {
     ClipboardService,
     DirectoryService,
     MemoryService,
+    PermissionService,
     ScreenshotService,
     SettingsService,
+    SkillService,
     TodoService,
     WindowThemeService
 };
 
+export {
+    ApprovalDecision,
+    PermissionMode
+} from "./models.js";
+
 export type {
+    ApprovalRequest,
     AskShotReq,
     CatalogModel,
     CatalogProvider,
@@ -47,6 +57,7 @@ export type {
     MemoryStrategyDefinition,
     MemoryUpdateInput,
     ModelOption,
+    PermissionState,
     PingResult,
     Provider,
     ProviderInput,
@@ -57,6 +68,9 @@ export type {
     SaveShotReq,
     ScreenshotResult,
     Setting,
+    Skill,
+    SkillHubPage,
+    SkillHubSkill,
     Todo,
     TodoInput,
     TodoSource,

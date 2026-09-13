@@ -1,121 +1,57 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import type { MouseEvent } from 'react'
 import { Button, Tooltip } from 'antd'
-import {
-  BorderOutlined,
-  CloseOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  MinusOutlined,
-  PlusOutlined,
-} from '@ant-design/icons'
+import { BorderOutlined, CloseOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
+import { Window as WailsWindow } from '@wailsio/runtime'
 import SettingsView from './SettingsView'
 import RemindersView from './RemindersView'
 import ChatView from './ChatView'
 import TodosView from './TodosView'
 import MilestonesView from './MilestonesView'
 import ScreenshotModal from '../components/ScreenshotModal'
-import { useWailsEvent } from '../api'
-import { Window as WailsWindow } from '@wailsio/runtime'
+import { parseEventData, useWailsEvent } from '../shared/wails/events'
+import { refreshTodosIfLoaded } from '../features/todos/todoController'
+import { useShellStore } from '../features/shell/shellStore'
+import type { ReminderItem, ViewKey } from '../features/shell/shellStore'
 
-type ViewKey = 'chat' | 'todos' | 'milestones' | 'reminders' | 'settings'
+const viewLabel: Record<ViewKey, string> = { chat: '对话', todos: '待办', milestones: '里程碑', reminders: '提醒中心', settings: '设置' }
+export default function AppShell() {
+  const view = useShellStore((state) => state.view)
+  const sidebarOpen = useShellStore((state) => state.sidebarOpen)
+  const reminders = useShellStore((state) => state.reminders)
+  const navigate = useShellStore((state) => state.navigate)
+  const toggleSidebar = useShellStore((state) => state.toggleSidebar)
+  const requestNewChat = useShellStore((state) => state.requestNewChat)
+  const openConversation = useShellStore((state) => state.openConversation)
+  const addReminder = useShellStore((state) => state.addReminder)
+  const clearReminders = useShellStore((state) => state.clearReminders)
 
-export interface ReminderLite {
-  type: 'dueSoon' | 'overdue'
-  id: number
-  title: string
-  deadline: number
-  ts: number
-  text: string
-}
-
-const viewLabel: Record<ViewKey, string> = {
-  chat: '对话',
-  todos: '待办',
-  milestones: '里程碑',
-  reminders: '提醒中心',
-  settings: '设置',
-}
-
-// 窗口外壳:标题栏 + 所有功能共享的应用侧栏与内容区。
-export default function MainLayout() {
-  const [view, setView] = useState<ViewKey>('chat')
-  const [reminders, setReminders] = useState<ReminderLite[]>([])
-  const [unread, setUnread] = useState(0)
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(false)
-  const [newChatRequest, setNewChatRequest] = useState(0)
-  const [openConversationRequest, setOpenConversationRequest] = useState({ id: 0, seq: 0 })
-
-  // 申请系统通知权限(用于到期提醒的系统通知通道)
   useEffect(() => {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      void Notification.requestPermission()
-    }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission()
   }, [])
 
-  // 双通道提醒:Go 每分钟扫描 deadline 后经 reminders.changed 推送;
-  // 此处负责“系统通知 + 应用内提醒中心/角标”。
-  useWailsEvent<string>(
-    'reminders.changed',
-    useCallback((raw) => {
-      try {
-        const ev = JSON.parse(raw) as ReminderLite
-        setReminders((prev) => [ev, ...prev].slice(0, 200))
-        setUnread((n) => n + 1)
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification('BlankMind 提醒', { body: ev.text })
-        }
-      } catch {
-        // 忽略无法解析的载荷
-      }
-    }, []),
-  )
+  useWailsEvent<string | ReminderItem>('reminders.changed', useCallback((raw) => {
+    const reminder = parseEventData<ReminderItem>(raw)
+    if (!reminder) return
+    addReminder(reminder)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('BlankMind 提醒', { body: reminder.text })
+  }, [addReminder]))
+  useWailsEvent('todos.changed', refreshTodosIfLoaded, [])
 
-  const navigate = useCallback((key: ViewKey) => {
-    setView(key)
-    if (key === 'reminders') setUnread(0)
-  }, [])
-
-  const featureContent =
-    view === 'todos' ? (
-      <TodosView
-        onOpenConversation={(id) => {
-          setOpenConversationRequest((request) => ({ id, seq: request.seq + 1 }))
-          navigate('chat')
-        }}
-      />
-    ) : view === 'milestones' ? (
-      <MilestonesView onGoTodos={() => navigate('todos')} />
-    ) : view === 'reminders' ? (
-      <RemindersView items={reminders} onClear={() => setReminders([])} />
-    ) : view === 'settings' ? (
-      <SettingsView />
-    ) : undefined
+  const feature = view === 'todos'
+    ? <TodosView onOpenConversation={openConversation} />
+    : view === 'milestones'
+      ? <MilestonesView onGoTodos={() => navigate('todos')} />
+      : view === 'reminders'
+        ? <RemindersView items={reminders} onClear={clearReminders} />
+        : view === 'settings' ? <SettingsView /> : null
 
   return (
     <div className="bm-window-shell">
       <header className="bm-window-titlebar">
         <div className="bm-window-title-actions">
-          <Tooltip title={chatSidebarOpen ? '收起侧栏' : '展开侧栏'}>
-            <Button
-              type="text"
-              aria-label={chatSidebarOpen ? '收起侧栏' : '展开侧栏'}
-              icon={chatSidebarOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
-              onMouseUp={releaseMouseFocus}
-              onClick={() => setChatSidebarOpen((open) => !open)}
-            />
-          </Tooltip>
-          {!chatSidebarOpen && (
-            <Tooltip title="新建会话">
-              <Button
-                type="text"
-                aria-label="新建会话"
-                icon={<PlusOutlined />}
-                onMouseUp={releaseMouseFocus}
-                onClick={() => setNewChatRequest((request) => request + 1)}
-              />
-            </Tooltip>
-          )}
+          <Tooltip title={sidebarOpen ? '收起会话侧栏' : '展开会话侧栏'}><Button type="text" aria-label={sidebarOpen ? '收起会话侧栏' : '展开会话侧栏'} icon={sidebarOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />} onMouseUp={releaseMouseFocus} onClick={toggleSidebar} /></Tooltip>
+          {!sidebarOpen && <Tooltip title="新建会话"><Button type="text" aria-label="新建会话" icon={<PlusOutlined />} onMouseUp={releaseMouseFocus} onClick={requestNewChat} /></Tooltip>}
           <span className="bm-window-title-name">BlankMind</span>
         </div>
         <div className="bm-window-title-drag" />
@@ -125,18 +61,11 @@ export default function MainLayout() {
           <Button type="text" className="is-close" aria-label="关闭" icon={<CloseOutlined />} onMouseUp={releaseMouseFocus} onClick={() => runWindowAction(() => WailsWindow.Close())} />
         </div>
       </header>
-
-      <div className="bm-window-body">
-        <ChatView
-          activeView={view}
-          featureTitle={viewLabel[view]}
-          featureContent={featureContent}
-          reminderCount={unread}
-          onNavigate={navigate}
-          sidebarOpen={chatSidebarOpen}
-          newChatRequest={newChatRequest}
-          openConversationRequest={openConversationRequest}
-        />
+      <div className="bm-window-body bm-app-shell">
+        <main className="bm-shell-viewport">
+          <div className="bm-shell-chat-layer"><ChatView /></div>
+          {view !== 'chat' && <section className={`bm-shell-feature-layer ${sidebarOpen ? 'is-sidebar-open' : ''} bm-feature-page`}><header className="bm-feature-header"><span>{viewLabel[view]}</span></header><div className="bm-feature-content">{feature}</div></section>}
+        </main>
       </div>
       <ScreenshotModal />
     </div>
@@ -147,7 +76,4 @@ function runWindowAction(action: () => Promise<void>) {
   const runtime = (window as typeof window & { _wails?: { environment?: unknown } })._wails
   if (runtime?.environment) void action()
 }
-
-function releaseMouseFocus(event: MouseEvent<HTMLButtonElement>) {
-  event.currentTarget.blur()
-}
+function releaseMouseFocus(event: MouseEvent<HTMLButtonElement>) { event.currentTarget.blur() }

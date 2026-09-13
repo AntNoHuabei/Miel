@@ -27,7 +27,7 @@ const (
 )
 
 // NewAgentService 创建持久化 AG-UI 会话服务。模型 runner 仍按每轮配置动态构建。
-func NewAgentService(memoryRuntime *memoryRuntime, attachments *ChatAttachmentService) (*AgentService, error) {
+func NewAgentService(memoryRuntime *memoryRuntime, attachments *ChatAttachmentService, permissions ...*PermissionService) (*AgentService, error) {
 	db, err := sql.Open("sqlite", appDirectories.DatabasePath("agui.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open AG-UI session store: %w", err)
@@ -44,6 +44,9 @@ func NewAgentService(memoryRuntime *memoryRuntime, attachments *ChatAttachmentSe
 	}
 	service.memory = memoryRuntime
 	service.attachments = attachments
+	if len(permissions) > 0 {
+		service.permissions = permissions[0]
+	}
 	return service, nil
 }
 

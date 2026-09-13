@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useStore } from 'zustand'
 import {
   App as AntApp,
   Button,
@@ -11,7 +12,8 @@ import {
   Typography,
 } from 'antd'
 import dayjs from 'dayjs'
-import { TodoService, useWailsEvent } from '../api'
+import { reloadTodos } from '../features/todos/todoController'
+import { todoStore } from '../features/todos/todoStore'
 import type { TodoLite } from '../api'
 
 const { Text, Title } = Typography
@@ -25,28 +27,18 @@ interface MilestoneCard {
 // 里程碑页:未完成的里程碑以倒计时卡片展示(逾期红色预警 / 当日 / 临近)。
 export default function MilestonesView({ onGoTodos }: { onGoTodos?: () => void }) {
   const { message } = AntApp.useApp()
-  const [items, setItems] = useState<TodoLite[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const reload = useCallback(async () => {
-    try {
-      const list = (await TodoService.ListTodos()) as unknown as TodoLite[]
-      setItems(list.filter((t) => t.isMilestone && t.status !== 'done'))
-    } catch (err) {
-      message.error(`加载失败:${String(err)}`)
-    } finally {
-      setLoading(false)
-    }
-  }, [message])
+  const allItems = useStore(todoStore, (state) => state.items)
+  const items = allItems.filter((todo) => todo.isMilestone && todo.status !== 'done')
+  const loading = useStore(todoStore, (state) => state.loading || !state.loaded)
+  const loadError = useStore(todoStore, (state) => state.error)
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    void reloadTodos()
+  }, [])
 
-  useWailsEvent<string>(
-    'todos.changed',
-    useCallback(() => void reload(), [reload]),
-  )
+  useEffect(() => {
+    if (loadError) message.error(`加载失败:${loadError}`)
+  }, [loadError, message])
 
   const cards: MilestoneCard[] = items.map((t) => {
     const ms = t.deadline > 0 ? t.deadline * 1000 - Date.now() : null

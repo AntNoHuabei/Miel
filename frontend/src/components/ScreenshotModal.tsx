@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import {
   Alert,
   Button,
@@ -14,7 +14,9 @@ import {
   message,
 } from 'antd'
 import { MessageOutlined, SaveOutlined, ScanOutlined } from '@ant-design/icons'
-import { ScreenshotService, SettingsService, useWailsEvent } from '../api'
+import { screenshotRepository, settingsRepository } from '../shared/repositories'
+import { useWailsEvent } from '../shared/wails/events'
+import { captureReducer, initialCaptureState } from '../features/capture/captureState'
 
 const { Text } = Typography
 
@@ -34,8 +36,6 @@ export interface ExtractedTodoLite {
   dueDate: string
 }
 
-type Stage = 'menu' | 'busy' | 'extracted' | 'answer'
-
 // 全局截图处理弹层。
 // 触发方式:① 系统全局热键(默认 Ctrl+Alt+S,Go 广播 screenshot.captured)
 //          ② 应用内“截图”按钮(window 派发 blankmind:capture 事件)
@@ -43,14 +43,14 @@ type Stage = 'menu' | 'busy' | 'extracted' | 'answer'
 export default function ScreenshotModal() {
   const [shot, setShot] = useState<ScreenshotCaptured | null>(null)
   const [open, setOpen] = useState(false)
-  const [stage, setStage] = useState<Stage>('menu')
+  const [capture, dispatchCapture] = useReducer(captureReducer, initialCaptureState)
+  const { stage, busy } = capture
   const [visionOK, setVisionOK] = useState<boolean | null>(null)
   const [askMode, setAskMode] = useState(false)
 
   // 转待办
   const [extracted, setExtracted] = useState<ExtractedTodoLite[]>([])
   const [checked, setChecked] = useState<number[]>([])
-  const [busy, setBusy] = useState(false)
 
   // 问答
   const [question, setQuestion] = useState('')
@@ -62,7 +62,7 @@ export default function ScreenshotModal() {
   // 判断是否配置了支持图片输入的模型(决定“转待办/问答”可用性)
   const checkVision = useCallback(async () => {
     try {
-      setVisionOK(await SettingsService.DefaultModelSupportsVision())
+      setVisionOK(await settingsRepository.defaultModelSupportsVision())
     } catch {
       setVisionOK(false)
     }
@@ -78,14 +78,13 @@ export default function ScreenshotModal() {
   )
 
   const reset = useCallback(() => {
-    setStage('menu')
+    dispatchCapture({ type: 'reset' })
     setAskMode(false)
     setExtracted([])
     setChecked([])
     setQuestion('')
     setAnswer('')
     setNote('')
-    setBusy(false)
   }, [])
 
   const openWith = useCallback(
@@ -107,8 +106,8 @@ export default function ScreenshotModal() {
   // 应用内“截图”按钮(窗口内自触发,不依赖系统热键)
   useEffect(() => {
     const h = () => {
-      ScreenshotService.Capture()
-        .then((res) => openWith(res as unknown as ScreenshotCaptured))
+      screenshotRepository.capture()
+        .then((res) => openWith(res as ScreenshotCaptured))
         .catch((err) => message.error(`截屏失败:${String(err)}`))
     }
     window.addEventListener('blankmind:capture', h)
@@ -122,28 +121,25 @@ export default function ScreenshotModal() {
 
   const extract = async () => {
     if (!shot) return
-    setBusy(true)
-    setStage('busy')
+    dispatchCapture({ type: 'processing' })
     try {
-      const items = (await ScreenshotService.ExtractTodos(shot.id)) ?? []
+      const items = (await screenshotRepository.extractTodos(shot.id)) ?? []
       setExtracted(items)
       setChecked(items.map((_, i) => i))
-      setStage('extracted')
+      dispatchCapture({ type: 'extracted' })
     } catch (err) {
       message.error(`提取失败:${String(err)}`)
-      setStage('menu')
-    } finally {
-      setBusy(false)
+      dispatchCapture({ type: 'failed', error: String(err) })
     }
   }
 
   const confirmTodos = async () => {
     if (!shot) return
-    setBusy(true)
+    dispatchCapture({ type: 'confirming' })
     try {
       const picked = extracted.filter((_, i) => checked.includes(i))
       const created =
-        (await ScreenshotService.ConfirmExtracted({
+        (await screenshotRepository.confirmExtracted({
           shotId: shot.id,
           items: picked,
         })) ?? []
@@ -151,42 +147,36 @@ export default function ScreenshotModal() {
       close()
     } catch (err) {
       message.error(`入库失败:${String(err)}`)
-    } finally {
-      setBusy(false)
+      dispatchCapture({ type: 'extracted' })
     }
   }
 
   const ask = async () => {
     if (!shot || !question.trim()) return
-    setBusy(true)
-    setStage('busy')
+    dispatchCapture({ type: 'processing' })
     try {
-      const ans = await ScreenshotService.AskAboutShot({
+      const ans = await screenshotRepository.ask({
         shotId: shot.id,
         question: question.trim(),
       })
       setAnswer(ans)
-      setStage('answer')
+      dispatchCapture({ type: 'answered' })
     } catch (err) {
       message.error(`问答失败:${String(err)}`)
-      setStage('menu')
-    } finally {
-      setBusy(false)
+      dispatchCapture({ type: 'failed', error: String(err) })
     }
   }
 
   const save = async () => {
     if (!shot) return
-    setBusy(true)
+    dispatchCapture({ type: 'saving' })
     try {
-      await ScreenshotService.SaveShot({ id: shot.id, note })
+      await screenshotRepository.save({ id: shot.id, note })
       message.success('截图已保存')
       close()
     } catch (err) {
       message.error(`保存失败:${String(err)}`)
-    } finally {
-      setBusy(false)
-    }
+    } finally { dispatchCapture({ type: 'back' }) }
   }
 
   const visionReady = visionOK === true
@@ -207,6 +197,15 @@ export default function ScreenshotModal() {
           <Spin tip="AI 正在处理截图…">
             <div style={{ padding: 24 }} />
           </Spin>
+        </Flex>
+      )
+    }
+
+    if (stage === 'error') {
+      return (
+        <Flex vertical gap={12}>
+          <Alert type="error" showIcon message="截图处理失败" description={capture.error} />
+          <Button onClick={() => dispatchCapture({ type: 'back' })}>返回</Button>
         </Flex>
       )
     }
@@ -245,7 +244,7 @@ export default function ScreenshotModal() {
             ))
           )}
           <Flex justify="space-between">
-            <Button onClick={() => setStage('menu')}>返回</Button>
+            <Button onClick={() => dispatchCapture({ type: 'back' })}>返回</Button>
             <Button
               type="primary"
               loading={busy}
@@ -276,7 +275,7 @@ export default function ScreenshotModal() {
             {answer}
           </div>
           <Flex justify="space-between">
-            <Button onClick={() => setStage('menu')}>返回</Button>
+            <Button onClick={() => dispatchCapture({ type: 'back' })}>返回</Button>
             <Button type="primary" onClick={close}>
               完成
             </Button>

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Flex, Spin, Typography } from 'antd'
-import { SettingsService } from './api'
+import { settingsRepository } from './shared/repositories'
 import SetupWizard from './views/SetupWizard'
-import MainLayout from './views/MainLayout'
+import AppShell from './views/MainLayout'
 import QuickAssistantWindow from './views/QuickAssistantWindow'
 
 // App 负责“免登录 + 首启引导”:没有任何模型服务商配置时,全屏配置向导拦住入口。
@@ -13,7 +13,7 @@ function App() {
 
   const check = async () => {
     try {
-      const has = await SettingsService.HasProviders()
+      const has = await settingsRepository.hasProviders()
       setConfigured(has)
       setError('')
     } catch (err) {
@@ -52,7 +52,7 @@ function App() {
     return <SetupWizard onDone={() => void check()} />
   }
 
-  return <MainLayout />
+  return <AppShell />
 }
 
 export default App

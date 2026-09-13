@@ -289,6 +289,7 @@
 
 .bm-chat-messages {
   background: var(--bm-chat-bg);
+  scrollbar-gutter: stable both-edges;
 }
 
 .bm-chat-message-track {
@@ -340,16 +341,16 @@
 
 .bm-chat-attachment {
   position: relative;
-  width: 56px;
-  height: 56px;
-  flex: 0 0 56px;
+  width: 80px;
+  height: 80px;
+  flex: 0 0 80px;
 }
 
 .bm-chat-attachment .ant-image,
 .bm-chat-attachment .ant-image-img {
   display: block;
-  width: 56px !important;
-  height: 56px !important;
+  width: 80px !important;
+  height: 80px !important;
   border-radius: 6px;
 }
 
@@ -692,12 +693,12 @@
 .bm-chat-workspace-option:hover,
 .bm-chat-workspace-option:focus-visible,
 .bm-chat-workspace-option.is-current {
-  background: var(--bm-chat-hover, #f2f4f7);
+  background: var(--bm-hover-bg, #f2f4f7);
 }
 
 .bm-chat-workspace-option-icon {
   flex: 0 0 auto;
-  color: var(--bm-chat-muted);
+  color: var(--bm-muted, #667085);
   font-size: 19px;
 }
 
@@ -711,7 +712,7 @@
 
 .bm-chat-workspace-option-name {
   overflow: hidden;
-  color: var(--bm-chat-text);
+  color: var(--bm-text, #1f2329);
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -719,7 +720,7 @@
 
 .bm-chat-workspace-option-path {
   overflow: hidden;
-  color: var(--bm-chat-muted);
+  color: var(--bm-muted, #667085);
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -727,7 +728,7 @@
 
 .bm-chat-workspace-option-check {
   flex: 0 0 auto;
-  color: var(--bm-chat-signal);
+  color: var(--bm-signal, #1677ff);
   font-size: 15px;
 }
 
@@ -736,12 +737,19 @@
   width: 26px;
   height: 26px;
   padding: 0 !important;
+  color: var(--bm-muted, #667085) !important;
   opacity: 0;
 }
 
 .bm-chat-workspace-option:hover .bm-chat-workspace-option-remove.ant-btn,
 .bm-chat-workspace-option:focus-within .bm-chat-workspace-option-remove.ant-btn {
   opacity: 1;
+}
+
+.bm-chat-workspace-option-remove.ant-btn:hover,
+.bm-chat-workspace-option-remove.ant-btn:focus-visible {
+  color: var(--bm-signal, #1677ff) !important;
+  background: var(--bm-hover-bg, #f2f4f7) !important;
 }
 
 .bm-chat-workspace-empty {
@@ -759,12 +767,12 @@
   width: 100%;
   height: 34px;
   padding-inline: 7px !important;
-  color: var(--bm-text, #1f2329);
+  color: var(--bm-text, #1f2329) !important;
   text-align: left;
 }
 
 .bm-chat-workspace-action.ant-btn:disabled {
-  color: var(--bm-chat-muted);
+  color: var(--bm-muted, #667085) !important;
 }
 
 .bm-chat-model-trigger.ant-btn {

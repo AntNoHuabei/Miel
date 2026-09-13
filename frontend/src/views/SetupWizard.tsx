@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { App as AntApp, Card, Col, Flex, Row, Spin, Tag, Typography } from 'antd'
-import { SettingsService } from '../api'
+import { settingsRepository } from '../shared/repositories'
 import type { ProviderTemplateLite } from '../api'
 import ProviderFormModal from '../components/ProviderFormModal'
 
@@ -19,8 +19,8 @@ export default function SetupWizard({ onDone }: Props) {
   const [picked, setPicked] = useState<ProviderTemplateLite | null>(null)
 
   useEffect(() => {
-    SettingsService.ProviderTemplates()
-      .then((t) => setTemplates(t as unknown as ProviderTemplateLite[]))
+    settingsRepository.providerTemplates()
+      .then(setTemplates)
       .catch((err) => message.error(String(err)))
       .finally(() => setLoading(false))
   }, [message])

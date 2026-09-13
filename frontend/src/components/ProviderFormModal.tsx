@@ -15,14 +15,13 @@ import {
   Typography,
 } from 'antd'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
-import { SettingsService } from '../api'
+import { providerEditorController } from '../features/settings/providerEditorController'
 import type {
   CatalogModelLite,
   CatalogProviderLite,
   DiscoveredModelLite,
   ProviderLite,
   ProviderModelInputLite,
-  ProviderModelLite,
   ProviderTemplateLite,
 } from '../api'
 
@@ -78,10 +77,8 @@ export default function ProviderFormModal({
 
   useEffect(() => {
     if (!open) return
-    SettingsService.ModelCatalog()
-      .then((list) =>
-        setCatalog((list ?? []) as unknown as CatalogProviderLite[]),
-      )
+    providerEditorController.loadCatalog()
+      .then(setCatalog)
       .catch((err) => message.warning(`模型目录加载失败:${String(err)}`))
   }, [open, message])
 
@@ -145,9 +142,9 @@ export default function ProviderFormModal({
         multimodal: existing.multimodal,
         isDefault: existing.isDefault,
       })
-      SettingsService.ProviderModels(existing.id)
+      providerEditorController.loadEnabledModels(existing.id)
         .then((rows) => {
-          const list = ((rows ?? []) as unknown as ProviderModelLite[]).map((r) => ({
+          const list = rows.map((r) => ({
             model: r.model,
             label: r.label,
             custom: r.custom,
@@ -310,7 +307,7 @@ export default function ProviderFormModal({
       await form.validateFields(['baseUrl'])
       setFetchingModels(true)
       const values = form.getFieldsValue(true) as FormValues
-      const list = ((await SettingsService.DiscoverProviderModels(toInput(values))) ?? []) as unknown as DiscoveredModelLite[]
+      const list = await providerEditorController.discoverModels(toInput(values))
       setRemoteModels(list)
       if ((values.kind ?? '').trim().toLowerCase() === 'herdsman') {
         setEnabled((prev) =>
@@ -355,7 +352,7 @@ export default function ProviderFormModal({
     try {
       const v = await form.validateFields()
       setTesting(true)
-      const res = await SettingsService.PingProvider(toInput(v))
+      const res = await providerEditorController.testConnection(toInput(v))
       if (res.ok) {
         message.success(`连接成功(${res.latencyMs}ms):${res.message}`)
       } else {
@@ -382,7 +379,7 @@ export default function ProviderFormModal({
         form.setFieldsValue({ model: cur })
       }
       setSaving(true)
-      await SettingsService.SaveProvider(toInput({ ...v, model: cur }))
+      await providerEditorController.save(toInput({ ...v, model: cur }))
       message.success('已保存模型服务商配置')
       onSaved()
     } catch (err) {

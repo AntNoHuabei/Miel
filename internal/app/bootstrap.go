@@ -10,6 +10,7 @@ var Emit = func(_ string, _ any) {}
 type Services struct {
 	Directories     *DirectoryService
 	Settings        *SettingsService
+	Permissions     *PermissionService
 	Memory          *MemoryService
 	Todo            *TodoService
 	Agent           *AgentService
@@ -17,6 +18,7 @@ type Services struct {
 	Clipboard       *ClipboardService
 	ChatAttachments *ChatAttachmentService
 	Reminder        *ReminderService
+	Skills          *SkillService
 }
 
 // Bootstrap 初始化存储与内置 skills,构造并装配各业务服务
@@ -34,6 +36,7 @@ func Bootstrap() (*Services, error) {
 	todo := NewTodoService(store)
 	settingsSvc = settings
 	todoSvc = todo
+	permissions := NewPermissionService(settings)
 
 	memoryRuntime, err := newMemoryRuntime()
 	if err != nil {
@@ -41,7 +44,7 @@ func Bootstrap() (*Services, error) {
 	}
 	memoryService := NewMemoryService(memoryRuntime, settings)
 	chatAttachments := NewChatAttachmentService(store)
-	agent, err := NewAgentService(memoryRuntime, chatAttachments)
+	agent, err := NewAgentService(memoryRuntime, chatAttachments, permissions)
 	if err != nil {
 		_ = memoryRuntime.Close()
 		return nil, err
@@ -49,12 +52,14 @@ func Bootstrap() (*Services, error) {
 	shot := NewScreenshotService(store, settings, memoryRuntime)
 	clipboard := NewClipboardService(todo, settings, memoryRuntime)
 	rem := NewReminderService(store)
+	skills := NewSkillService(appDirectories)
 
 	// 服务 → 事件总线:间接引用 var Emit,main 注入后同样生效
 	notify := func(name string, data any) { Emit(name, data) }
 	settings.setNotify(notify)
 	todo.Notify = notify
 	agent.SetNotify(notify)
+	permissions.SetNotify(notify)
 	memoryRuntime.setNotify(notify)
 	shot.SetNotify(notify)
 
@@ -62,6 +67,7 @@ func Bootstrap() (*Services, error) {
 	return &Services{
 		Directories:     NewDirectoryService(appDirectories),
 		Settings:        settings,
+		Permissions:     permissions,
 		Memory:          memoryService,
 		Todo:            todo,
 		Agent:           agent,
@@ -69,5 +75,6 @@ func Bootstrap() (*Services, error) {
 		Clipboard:       clipboard,
 		ChatAttachments: chatAttachments,
 		Reminder:        rem,
+		Skills:          skills,
 	}, nil
 }

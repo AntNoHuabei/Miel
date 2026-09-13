@@ -168,10 +168,12 @@ func visionOnce(p Provider, prompt, imgPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	msg := model.NewUserMessage(prompt)
-	if err := msg.AddImageFilePath(imgPath, "auto"); err != nil {
+	optimized, err := optimizeImageFile(imgPath, filepath.Base(imgPath))
+	if err != nil {
 		return "", fmt.Errorf("读取截图失败: %w", err)
 	}
+	msg := model.NewUserMessage(prompt)
+	msg.AddImageData(optimized.Data, "auto", optimized.Format)
 	req := model.NewRequest([]model.Message{msg})
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useStore } from 'zustand'
 import {
   App as AntApp,
   Button,
@@ -21,8 +22,9 @@ import {
 } from 'antd'
 import { EditOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { TodoService, useWailsEvent } from '../api'
-import type { TodoLite, TodoSourceLite, TodoStatsLite } from '../api'
+import { deleteTodo, loadTodoSource, reloadTodos, saveTodo, toggleTodoStatus } from '../features/todos/todoController'
+import { todoStore } from '../features/todos/todoStore'
+import type { TodoLite, TodoSourceLite } from '../api'
 
 const { Text } = Typography
 
@@ -31,9 +33,10 @@ type Filter = 'all' | 'pending' | 'done'
 // 待办页:统计卡片 + 增删改查 + 勾选完成 + 里程碑标记,数据变更经 todos.changed 自动刷新。
 export default function TodosView({ onOpenConversation }: { onOpenConversation?: (id: number) => void }) {
   const { message } = AntApp.useApp()
-  const [items, setItems] = useState<TodoLite[]>([])
-  const [stats, setStats] = useState<TodoStatsLite | null>(null)
-  const [loading, setLoading] = useState(true)
+  const items = useStore(todoStore, (state) => state.items)
+  const stats = useStore(todoStore, (state) => state.stats)
+  const loading = useStore(todoStore, (state) => state.loading || !state.loaded)
+  const loadError = useStore(todoStore, (state) => state.error)
   const [filter, setFilter] = useState<Filter>('all')
 
   // 编辑弹窗状态
@@ -49,29 +52,13 @@ export default function TodosView({ onOpenConversation }: { onOpenConversation?:
   const [sourceDetail, setSourceDetail] = useState<TodoSourceLite | null>(null)
   const [sourceError, setSourceError] = useState('')
 
-  const reload = useCallback(async () => {
-    try {
-      const [list, st] = await Promise.all([
-        TodoService.ListTodos() as unknown as Promise<TodoLite[]>,
-        TodoService.TodoStats() as unknown as Promise<TodoStatsLite>,
-      ])
-      setItems(list)
-      setStats(st)
-    } catch (err) {
-      message.error(`加载失败:${String(err)}`)
-    } finally {
-      setLoading(false)
-    }
-  }, [message])
+  useEffect(() => {
+    void reloadTodos()
+  }, [])
 
   useEffect(() => {
-    void reload()
-  }, [reload])
-
-  useWailsEvent<string>(
-    'todos.changed',
-    useCallback(() => void reload(), [reload]),
-  )
+    if (loadError) message.error(`加载失败:${loadError}`)
+  }, [loadError, message])
 
   const visible = useMemo(() => {
     switch (filter) {
@@ -119,14 +106,9 @@ export default function TodosView({ onOpenConversation }: { onOpenConversation?:
         source: editing?.source ?? 'manual',
         sourceId: editing?.sourceId ?? 0,
       }
-      if (editing) {
-        await TodoService.UpdateTodo(payload)
-      } else {
-        await TodoService.CreateTodo(payload)
-      }
+      await saveTodo(payload, editing !== null)
       message.success(editing ? '已更新' : '已添加')
       setOpen(false)
-      void reload()
     } catch (err) {
       message.error(`保存失败:${String(err)}`)
     } finally {
@@ -135,10 +117,8 @@ export default function TodosView({ onOpenConversation }: { onOpenConversation?:
   }
 
   const toggleDone = async (t: TodoLite) => {
-    const next = t.status === 'done' ? 'pending' : 'done'
     try {
-      await TodoService.SetTodoStatus(t.id, next)
-      void reload()
+      await toggleTodoStatus(t.id, t.status)
     } catch (err) {
       message.error(String(err))
     }
@@ -146,8 +126,7 @@ export default function TodosView({ onOpenConversation }: { onOpenConversation?:
 
   const remove = async (id: number) => {
     try {
-      await TodoService.DeleteTodo(id)
-      void reload()
+      await deleteTodo(id)
     } catch (err) {
       message.error(String(err))
     }
@@ -159,7 +138,7 @@ export default function TodosView({ onOpenConversation }: { onOpenConversation?:
     setSourceError('')
     setSourceDetail(null)
     try {
-      const detail = await TodoService.GetTodoSource(sourceId) as unknown as TodoSourceLite
+      const detail = await loadTodoSource(sourceId)
       setSourceDetail(detail)
     } catch (err) {
       setSourceError(String(err))

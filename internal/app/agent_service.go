@@ -48,6 +48,7 @@ type AgentService struct {
 	snapshotRun runner.Runner
 	memory      *memoryRuntime
 	attachments *ChatAttachmentService
+	permissions *PermissionService
 	historyMu   sync.Mutex
 	closeOnce   sync.Once
 	closeErr    error
@@ -75,15 +76,20 @@ const systemInstruction = `你是 BlankMind,运行在本地的办公 Agent,通�
 5. 回复保持简洁,尽量用 Markdown 结构化。
 6. 可加载用户 skills 目录中的技能获取知识,但 skill_run 仅执行 BlankMind 内置 skill。
 7. memory_search 用于查询与当前请求有关的长期记忆;仅当用户明确要求记住时调用 memory_add。
-   不保存凭据、密钥、密码、隐私秘密、模型推测或工具输出。`
+   不保存凭据、密钥、密码、隐私秘密、模型推测或工具输出。
+8. 需要查看或修改工作区文件时使用 list_directory、read_file、write_file;
+   需要运行本地命令时使用 execute_command;需要获取网页时使用 fetch_url。
+   这些工具由应用执行权限控制，不要把命令拼接到 skill_run。`
 
 // ChatRequest 一次对话入参。
 type ChatRequest struct {
-	ConversationID int64    `json:"conversationId"` // 0 = 新建会话
-	Message        string   `json:"message"`
-	Reasoning      string   `json:"reasoning"` // "" 默认/关闭 | off | on | low | medium | high | xhigh | max
-	RequestID      string   `json:"requestId"`
-	AttachmentIDs  []string `json:"attachmentIds"`
+	ConversationID      int64    `json:"conversationId"` // 0 = 新建会话
+	Message             string   `json:"message"`
+	Reasoning           string   `json:"reasoning"` // "" 默认/关闭 | off | on | low | medium | high | xhigh | max
+	RequestID           string   `json:"requestId"`
+	AttachmentIDs       []string `json:"attachmentIds"`
+	WorkspacePath       string   `json:"workspacePath"`
+	PermissionSessionID string   `json:"permissionSessionId"`
 }
 
 // applyReasoning 把思考档位映射到 GenerationConfig。
@@ -198,6 +204,10 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if store == nil {
 		return ChatResult{}, errors.New("存储未初始化")
 	}
+	workspacePath := ""
+	if settingsSvc != nil {
+		workspacePath = settingsSvc.agentWorkspacePath(req.WorkspacePath)
+	}
 	p, err := settingsSvc.DefaultProvider()
 	if err != nil {
 		return ChatResult{}, errors.New("尚未配置模型服务商,请先在设置中配置后重试")
@@ -259,9 +269,9 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	sourceContext := &todoToolSource{input: todoSourceInput{
 		Kind: "conversation", TextContent: msg, ConversationID: convID, MessageID: userMessageID,
 	}}
-	agentTools := chatAgentTools(sourceContext, nil)
+	agentTools := chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID)
 	if memoryEnabled {
-		agentTools = chatAgentTools(sourceContext, s.memory.Tools())
+		agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(m),
@@ -274,7 +284,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		opts = append(opts, llmagent.WithPreloadMemory(8))
 	}
 	// skills/<name>/SKILL.md 即插即用
-	if repo, err := skill.NewFSRepository(skillsDir()); err == nil {
+	if repo, err := newManagedSkillRepository(skillsDir()); err == nil {
 		opts = append(opts, knowledgeOnlySkillOptions(repo)...)
 	} else {
 		log.Println("load skills repo:", err)
@@ -310,7 +320,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		}),
 	)
 
-	ctx := context.Background()
+	ctx := WithPermissionContext(context.Background(), s.permissions, req.PermissionSessionID, workspacePath)
 	threadID := "conv-" + strconv.FormatInt(convID, 10)
 	aguiMsgs := make([]aguitypes.Message, 0, len(hist))
 	for _, h := range hist {
@@ -424,8 +434,19 @@ func instructionWithCurrentTime(current time.Time) string {
 	return systemInstruction + "\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")
 }
 
-func chatAgentTools(sourceContext *todoToolSource, memoryTools []tool.Tool) []tool.Tool {
+func chatAgentTools(sourceContext *todoToolSource, memoryTools []tool.Tool, args ...any) []tool.Tool {
 	tools := []tool.Tool{newSkillRunTool(todoSvc, sourceContext)}
+	if len(args) >= 3 {
+		permissions, _ := args[0].(*PermissionService)
+		workspace, _ := args[1].(string)
+		sessionID, _ := args[2].(string)
+		// Quick Assistant and legacy callers do not provide a permission session;
+		// keep the new interactive tools out of those calls so they cannot wait
+		// on an approval card that the surface does not render.
+		if permissions != nil && strings.TrimSpace(sessionID) != "" {
+			tools = append(tools, controlledWorkspaceTools(permissions, workspace, sessionID)...)
+		}
+	}
 	return append(tools, memoryTools...)
 }
 
@@ -647,9 +668,13 @@ func aguiMessageFromChatMessage(message ChatMessage) (aguitypes.Message, error) 
 		if err != nil {
 			return aguitypes.Message{}, fmt.Errorf("读取聊天图片 %q 失败: %w", attachment.OriginalName, err)
 		}
+		optimized, err := optimizeImageData(data, attachment.OriginalName)
+		if err != nil {
+			return aguitypes.Message{}, fmt.Errorf("优化聊天图片 %q 失败: %w", attachment.OriginalName, err)
+		}
 		contents = append(contents, aguitypes.InputContent{
-			Type: aguitypes.InputContentTypeBinary, MimeType: attachment.MIMEType,
-			Data: base64.StdEncoding.EncodeToString(data), Filename: attachment.OriginalName,
+			Type: aguitypes.InputContentTypeBinary, MimeType: optimized.MIMEType,
+			Data: base64.StdEncoding.EncodeToString(optimized.Data), Filename: optimized.Filename,
 		})
 	}
 	result.Content = contents
@@ -712,6 +737,9 @@ func (s *AgentService) DeleteConversation(conversationID int64) error {
 	}
 	for _, items := range attachments {
 		for _, attachment := range items {
+			if data, readErr := os.ReadFile(attachment.FilePath); readErr == nil {
+				removeOptimizedImageCache(data)
+			}
 			_ = os.Remove(attachment.FilePath)
 			_ = os.Remove(attachment.ThumbnailPath)
 		}

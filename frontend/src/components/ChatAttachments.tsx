@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ClipboardEvent as ReactClipboardEvent } from 'react'
 import { App as AntApp, Button, Image, Tooltip } from 'antd'
 import { CloseOutlined } from '@ant-design/icons'
-import { ChatAttachmentService } from '../api'
+import { attachmentRepository } from '../shared/repositories'
 import type { ChatAttachmentDraftLite, MessageAttachmentLite } from '../api'
 
 const MAX_IMAGES = 8
 const MAX_TOTAL_BYTES = 50 * 1024 * 1024
+const THUMBNAIL_SIZE = 80
 
 export type ChatImageAttachment = ChatAttachmentDraftLite | MessageAttachmentLite
 
@@ -21,7 +22,7 @@ export function useChatAttachments() {
 
   useEffect(() => () => {
     const ids = attachmentsRef.current.map((item) => item.id)
-    if (ids.length > 0) void ChatAttachmentService.DiscardDrafts(ids)
+    if (ids.length > 0) void attachmentRepository.discardDrafts(ids)
   }, [])
 
   const addDrafts = useCallback((incoming: ChatAttachmentDraftLite[]) => {
@@ -46,14 +47,14 @@ export function useChatAttachments() {
       setAttachments(next)
     }
     if (rejected.length > 0) {
-      void ChatAttachmentService.DiscardDrafts(rejected.map((item) => item.id))
+      void attachmentRepository.discardDrafts(rejected.map((item) => item.id))
       message.warning('最多添加 8 张图片，单次总大小不能超过 50 MB')
     }
   }, [message])
 
   const pickImages = useCallback(async () => {
     try {
-      const picked = await ChatAttachmentService.PickImages() as unknown as ChatAttachmentDraftLite[]
+      const picked = await attachmentRepository.pickImages()
       addDrafts(picked ?? [])
     } catch (error) {
       message.error(`添加图片失败：${String(error)}`)
@@ -62,7 +63,7 @@ export function useChatAttachments() {
 
   const pasteImage = useCallback(async () => {
     try {
-      const pasted = await ChatAttachmentService.PasteImage() as unknown as ChatAttachmentDraftLite | null
+      const pasted = await attachmentRepository.pasteImage()
       if (pasted) addDrafts([pasted])
     } catch (error) {
       message.error(`粘贴图片失败：${String(error)}`)
@@ -80,14 +81,14 @@ export function useChatAttachments() {
     const next = attachmentsRef.current.filter((item) => item.id !== id)
     attachmentsRef.current = next
     setAttachments(next)
-    void ChatAttachmentService.DiscardDrafts([id])
+    void attachmentRepository.discardDrafts([id])
   }, [])
 
   const discardAttachments = useCallback(() => {
     const ids = attachmentsRef.current.map((item) => item.id)
     attachmentsRef.current = []
     setAttachments([])
-    if (ids.length > 0) void ChatAttachmentService.DiscardDrafts(ids)
+    if (ids.length > 0) void attachmentRepository.discardDrafts(ids)
   }, [])
 
   const consumeAttachments = useCallback(() => {
@@ -146,7 +147,7 @@ function LazyAttachmentImage({ attachment }: { attachment: ChatImageAttachment }
     if (previewSource || loadingRef.current) return
     loadingRef.current = true
     try {
-      setPreviewSource(await ChatAttachmentService.GetImageDataURI(attachment.id))
+      setPreviewSource(await attachmentRepository.imageDataUri(attachment.id))
     } catch (error) {
       message.error(`加载原图失败：${String(error)}`)
     } finally {
@@ -158,8 +159,8 @@ function LazyAttachmentImage({ attachment }: { attachment: ChatImageAttachment }
     <Image
       src={attachment.thumbnailDataUri}
       alt={attachment.name || '对话图片'}
-      width={56}
-      height={56}
+      width={THUMBNAIL_SIZE}
+      height={THUMBNAIL_SIZE}
       preview={{
         src: previewSource || attachment.thumbnailDataUri,
         onVisibleChange: (visible) => {

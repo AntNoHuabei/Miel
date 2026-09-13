@@ -1,0 +1,4 @@
+export interface TodoLite { id: number; title: string; description: string; deadline: number; isMilestone: boolean; status: string; source: string; sourceId: number; createdAt: number; doneAt: number }
+export interface TodoStatsLite { total: number; pending: number; done: number; milestones: number; overdue: number; dueSoon: number }
+export interface EventLite { id: number; ts: number; type: string; summary: string; refId: number }
+export interface TodoSourceLite { id: number; kind: 'clipboard_text' | 'clipboard_image' | 'screenshot' | 'conversation' | string; textContent: string; filePath: string; mimeType: string; dataUri: string; conversationId: number; messageId: number; conversationTitle: string; conversationAvailable: boolean; screenshotId: number; screenshotNote: string; createdAt: number; available: boolean; error: string }

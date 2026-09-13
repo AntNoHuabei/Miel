@@ -119,6 +119,28 @@ func (s *SettingsService) SetWorkspace(path string) error {
 	return s.SetSetting(settingCurrentWorkspace, clean)
 }
 
+// agentWorkspacePath validates the workspace supplied with a chat request
+// against the user's persisted workspace list. An empty result means no
+// workspace is active, so file operations remain individually gated.
+func (s *SettingsService) agentWorkspacePath(path string) string {
+	if s == nil || s.db == nil {
+		return ""
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	clean, err := cleanWorkspacePath(path)
+	if err != nil {
+		return ""
+	}
+	var exists int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM workspaces WHERE path = ?", clean).Scan(&exists); err != nil || exists == 0 {
+		return ""
+	}
+	return clean
+}
+
 // RemoveWorkspace 移除工作目录;不会删除磁盘上的文件。
 func (s *SettingsService) RemoveWorkspace(path string) error {
 	clean, err := cleanWorkspacePath(path)

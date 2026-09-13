@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"strings"
 
 	"github.com/AntNoHuabei/blankmind/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -22,6 +23,27 @@ type wailsWorkspaceDirectoryPicker struct {
 	quickController *quickWindowController
 }
 
+type wailsSkillPicker struct {
+	instance        *application.App
+	quickController *quickWindowController
+}
+
+func (p wailsSkillPicker) PickSkillPath() (string, error) {
+	dialog := p.instance.Dialog.OpenFile().
+		SetTitle("导入 Skill").
+		CanChooseFiles(true).
+		CanChooseDirectories(true).
+		AddFilter("Skill 文件", "*.zip;SKILL.md")
+	if window := p.quickController.currentWindow(); window != nil {
+		dialog.AttachToWindow(window)
+	}
+	path, err := dialog.PromptForSingleSelection()
+	if isDialogCancelledError(err) {
+		return "", nil
+	}
+	return path, err
+}
+
 func (p wailsWorkspaceDirectoryPicker) PickWorkspaceDirectory() (string, error) {
 	dialog := p.instance.Dialog.OpenFile().
 		SetTitle("选择工作区").
@@ -30,7 +52,11 @@ func (p wailsWorkspaceDirectoryPicker) PickWorkspaceDirectory() (string, error) 
 	if window := p.quickController.currentWindow(); window != nil {
 		dialog.AttachToWindow(window)
 	}
-	return dialog.PromptForSingleSelection()
+	path, err := dialog.PromptForSingleSelection()
+	if isDialogCancelledError(err) {
+		return "", nil
+	}
+	return path, err
 }
 
 func (p wailsChatAttachmentPicker) PickChatImages() ([]string, error) {
@@ -41,7 +67,19 @@ func (p wailsChatAttachmentPicker) PickChatImages() ([]string, error) {
 	if window := p.quickController.currentWindow(); window != nil {
 		dialog.AttachToWindow(window)
 	}
-	return dialog.PromptForMultipleSelection()
+	paths, err := dialog.PromptForMultipleSelection()
+	if isDialogCancelledError(err) {
+		return []string{}, nil
+	}
+	return paths, err
+}
+
+func isDialogCancelledError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(text, "cancel")
 }
 
 func init() {
@@ -56,6 +94,11 @@ func init() {
 	application.RegisterEvent[map[string]any]("agent.start")
 	application.RegisterEvent[map[string]any]("agent.input.saved")
 	application.RegisterEvent[map[string]any]("agent.agui")
+	application.RegisterEvent[map[string]any]("permission.requested")
+	application.RegisterEvent[map[string]any]("permission.resolved")
+	application.RegisterEvent[map[string]any]("permission.expired")
+	application.RegisterEvent[map[string]any]("permission.cancelled")
+	application.RegisterEvent[map[string]any]("permission.changed")
 	application.RegisterEvent[string]("conversations.changed")
 	application.RegisterEvent[string]("models.changed")
 	application.RegisterEvent[int64]("todo.source.changed")
@@ -97,6 +140,7 @@ func main() {
 	for _, service := range []application.Service{
 		application.NewService(svcs.Directories),
 		application.NewService(svcs.Settings),
+		application.NewService(svcs.Permissions),
 		application.NewService(svcs.Memory),
 		application.NewService(windowTheme),
 		application.NewService(svcs.Todo),
@@ -104,6 +148,7 @@ func main() {
 		application.NewService(svcs.Screenshot),
 		application.NewService(svcs.Clipboard),
 		application.NewService(svcs.ChatAttachments),
+		application.NewService(svcs.Skills),
 	} {
 		instance.RegisterService(service)
 	}
@@ -146,6 +191,7 @@ func main() {
 		instance:        instance,
 		quickController: quickController,
 	})
+	app.BindSkillPicker(svcs.Skills, wailsSkillPicker{instance: instance, quickController: quickController})
 	app.BindWorkspaceDirectoryPicker(svcs.Settings, wailsWorkspaceDirectoryPicker{
 		instance:        instance,
 		quickController: quickController,

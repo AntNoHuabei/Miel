@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"image/color"
 	"image/png"
 	"testing"
 )
@@ -70,6 +71,94 @@ func TestDIBToPNGRejectsMalformedData(t *testing.T) {
 		if _, err := dibToPNG(dib); err == nil {
 			t.Fatalf("dibToPNG(%d bytes) returned no error", len(dib))
 		}
+	}
+}
+
+func TestDIBToPNGDecodesRGB565Bitfields(t *testing.T) {
+	dib := make([]byte, 40+12+4)
+	binary.LittleEndian.PutUint32(dib[0:4], 40)
+	binary.LittleEndian.PutUint32(dib[4:8], 2)
+	binary.LittleEndian.PutUint32(dib[8:12], 1)
+	binary.LittleEndian.PutUint16(dib[12:14], 1)
+	binary.LittleEndian.PutUint16(dib[14:16], 16)
+	binary.LittleEndian.PutUint32(dib[16:20], clipboardCompressionFields)
+	binary.LittleEndian.PutUint32(dib[40:44], 0xf800)
+	binary.LittleEndian.PutUint32(dib[44:48], 0x07e0)
+	binary.LittleEndian.PutUint32(dib[48:52], 0x001f)
+	binary.LittleEndian.PutUint16(dib[52:54], 0xf800)
+	binary.LittleEndian.PutUint16(dib[54:56], 0x07e0)
+
+	encoded, err := dibToPNG(dib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, _ := img.At(0, 0).RGBA()
+	if r <= g || r <= b {
+		t.Fatalf("first pixel = (%d,%d,%d), want red", r, g, b)
+	}
+	r, g, b, _ = img.At(1, 0).RGBA()
+	if g <= r || g <= b {
+		t.Fatalf("second pixel = (%d,%d,%d), want green", r, g, b)
+	}
+}
+
+func TestDIBToPNGDecodesNonStandardV5Bitfields(t *testing.T) {
+	dib := make([]byte, 124+4)
+	binary.LittleEndian.PutUint32(dib[0:4], 124)
+	binary.LittleEndian.PutUint32(dib[4:8], 1)
+	binary.LittleEndian.PutUint32(dib[8:12], 1)
+	binary.LittleEndian.PutUint16(dib[12:14], 1)
+	binary.LittleEndian.PutUint16(dib[14:16], 32)
+	binary.LittleEndian.PutUint32(dib[16:20], clipboardCompressionFields)
+	binary.LittleEndian.PutUint32(dib[40:44], 0x3ff00000)
+	binary.LittleEndian.PutUint32(dib[44:48], 0x000ffc00)
+	binary.LittleEndian.PutUint32(dib[48:52], 0x000003ff)
+	binary.LittleEndian.PutUint32(dib[52:56], 0xc0000000)
+	binary.LittleEndian.PutUint32(dib[124:128], 0xfff00000)
+
+	encoded, err := dibToPNG(dib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, a := img.At(0, 0).RGBA()
+	if r < 0xff00 || g != 0 || b != 0 || a < 0xff00 {
+		t.Fatalf("pixel = (%d,%d,%d,%d), want opaque red", r, g, b, a)
+	}
+}
+
+func TestDIBToPNGDecodesAlphaBitfields(t *testing.T) {
+	dib := make([]byte, 40+16+4)
+	binary.LittleEndian.PutUint32(dib[0:4], 40)
+	binary.LittleEndian.PutUint32(dib[4:8], 1)
+	binary.LittleEndian.PutUint32(dib[8:12], 1)
+	binary.LittleEndian.PutUint16(dib[12:14], 1)
+	binary.LittleEndian.PutUint16(dib[14:16], 32)
+	binary.LittleEndian.PutUint32(dib[16:20], clipboardCompressionAlpha)
+	binary.LittleEndian.PutUint32(dib[40:44], 0x00ff0000)
+	binary.LittleEndian.PutUint32(dib[44:48], 0x0000ff00)
+	binary.LittleEndian.PutUint32(dib[48:52], 0x000000ff)
+	binary.LittleEndian.PutUint32(dib[52:56], 0xff000000)
+	binary.LittleEndian.PutUint32(dib[56:60], 0x80ff0000)
+
+	encoded, err := dibToPNG(dib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pixel := color.NRGBAModel.Convert(img.At(0, 0)).(color.NRGBA)
+	if pixel.R != 0xff || pixel.G != 0 || pixel.B != 0 || pixel.A != 0x80 {
+		t.Fatalf("pixel = %#v, want half-transparent red", pixel)
 	}
 }
 

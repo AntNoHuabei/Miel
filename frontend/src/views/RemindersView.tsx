@@ -1,9 +1,9 @@
 import { Button, Empty, Flex, List, Space, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
-import type { ReminderLite } from './MainLayout'
+import type { ReminderItem } from '../features/shell/shellStore'
 
 interface Props {
-  items: ReminderLite[]
+  items: ReminderItem[]
   onClear: () => void
 }
 

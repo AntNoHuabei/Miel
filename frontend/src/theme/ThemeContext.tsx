@@ -13,7 +13,7 @@ import type { ThemeConfig } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
-import { SettingsService, WindowThemeService } from '../api'
+import { settingsRepository, themeRepository } from '../shared/repositories'
 import { BM_THEMES, DEFAULT_THEME_ID, themeById } from './themes'
 import type { BMTheme } from './themes'
 
@@ -67,19 +67,19 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const cachedId = readCachedThemeId()
     const initialSelectionVersion = selectionVersion.current
-    void WindowThemeService.SetTheme(cachedId).catch(() => undefined)
+    void themeRepository.setTheme(cachedId).catch(() => undefined)
 
-    SettingsService.GetSetting('theme')
+    settingsRepository.getSetting('theme')
       .then((v: string) => {
         if (selectionVersion.current !== initialSelectionVersion) return
         const id = themeById(v || cachedId).id
         setThemeId(id)
         cacheThemeId(id)
-        void WindowThemeService.SetTheme(id).catch(() => undefined)
-        if (!v) void SettingsService.SetSetting('theme', id).catch(() => undefined)
+        void themeRepository.setTheme(id).catch(() => undefined)
+        if (!v) void settingsRepository.setSetting('theme', id).catch(() => undefined)
       })
       .catch(() => {
-        void WindowThemeService.SetTheme(cachedId).catch(() => undefined)
+        void themeRepository.setTheme(cachedId).catch(() => undefined)
       })
   }, [])
 
@@ -98,12 +98,12 @@ export default function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeId(t.id)
     cacheThemeId(t.id)
     try {
-      await SettingsService.SetSetting('theme', t.id)
+      await settingsRepository.setSetting('theme', t.id)
     } catch {
       // 持久化失败不阻塞切换
     }
     try {
-      await WindowThemeService.SetTheme(t.id)
+      await themeRepository.setTheme(t.id)
     } catch {
       // 原生标题栏不可用时不阻塞 WebView 皮肤切换
     }
