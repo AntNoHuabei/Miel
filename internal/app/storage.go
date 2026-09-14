@@ -37,6 +37,26 @@ func openStore() error {
 }
 
 const schema = `
+CREATE TABLE IF NOT EXISTS artifacts (
+	id TEXT PRIMARY KEY, app_name TEXT NOT NULL, user_id TEXT NOT NULL,
+	session_id TEXT NOT NULL, name TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL, UNIQUE(app_name, user_id, session_id, name)
+);
+CREATE TABLE IF NOT EXISTS artifact_versions (
+	artifact_id TEXT NOT NULL, version INTEGER NOT NULL, mime_type TEXT NOT NULL,
+	kind TEXT NOT NULL, size INTEGER NOT NULL, blob_name TEXT NOT NULL,
+	width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL, PRIMARY KEY(artifact_id, version)
+);
+CREATE TABLE IF NOT EXISTS artifact_links (
+	artifact_id TEXT NOT NULL, version INTEGER NOT NULL, conversation_id INTEGER NOT NULL,
+	request_id TEXT NOT NULL, user_message_id INTEGER NOT NULL DEFAULT 0,
+	tool_call_id TEXT NOT NULL DEFAULT '', assistant_message_id TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY(artifact_id, version, conversation_id, request_id, user_message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_artifact_links_conversation ON artifact_links(conversation_id);
+CREATE TABLE IF NOT EXISTS artifact_imports (source_path TEXT PRIMARY KEY, artifact_id TEXT NOT NULL);
+
 CREATE TABLE IF NOT EXISTS providers (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	name        TEXT NOT NULL,

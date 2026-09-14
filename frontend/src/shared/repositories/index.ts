@@ -1,4 +1,5 @@
 export { attachmentRepository, clipboardRepository, screenshotRepository } from './capture'
+export { artifactRepository } from './artifacts'
 export { chatRepository } from './chat'
 export { memoryRepository } from './memory'
 export { directoryRepository, permissionRepository, systemClipboardRepository, themeRepository } from './platform'

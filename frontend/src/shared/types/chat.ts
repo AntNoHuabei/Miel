@@ -4,5 +4,6 @@ export interface ChatMetricsLite { model: string; promptTokens: number; completi
 export interface ChatAttachmentDraftLite { id: string; name: string; mimeType: string; size: number; width: number; height: number; thumbnailDataUri: string }
 export interface MessageAttachmentLite extends ChatAttachmentDraftLite { messageId: number; kind: string; position: number; createdAt: number }
 export interface ChatRunErrorLite { code: string; message: string }
-export interface AGUIMessageLite { id: string; role: string; content?: unknown; name?: string; toolCalls?: AGUIToolCallLite[]; toolCallId?: string; error?: string; runError?: ChatRunErrorLite; activityType?: string; metrics?: ChatMetricsLite; attachments?: Array<ChatAttachmentDraftLite | MessageAttachmentLite> }
+import type { ArtifactRefLite } from './artifacts'
+export interface AGUIMessageLite { id: string; role: string; content?: unknown; name?: string; toolCalls?: AGUIToolCallLite[]; toolCallId?: string; error?: string; runError?: ChatRunErrorLite; activityType?: string; metrics?: ChatMetricsLite; attachments?: Array<ChatAttachmentDraftLite | MessageAttachmentLite>; artifacts?: ArtifactRefLite[] }
 export interface AGUIMessagesSnapshotLite { type: 'MESSAGES_SNAPSHOT' | string; messages: AGUIMessageLite[] }

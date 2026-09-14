@@ -19,6 +19,7 @@ type Services struct {
 	ChatAttachments *ChatAttachmentService
 	Reminder        *ReminderService
 	Skills          *SkillService
+	Artifacts       *ArtifactService
 }
 
 // Bootstrap 初始化存储与内置 skills,构造并装配各业务服务
@@ -44,8 +45,20 @@ func Bootstrap() (*Services, error) {
 	}
 	memoryService := NewMemoryService(memoryRuntime, settings)
 	chatAttachments := NewChatAttachmentService(store)
+	artifacts, err := NewArtifactService(store, appDirectories)
+	if err != nil {
+		_ = memoryRuntime.Close()
+		return nil, err
+	}
 	agent, err := NewAgentService(memoryRuntime, chatAttachments, permissions)
 	if err != nil {
+		_ = memoryRuntime.Close()
+		return nil, err
+	}
+	agent.artifacts = artifacts
+	artifacts.agent = agent
+	if err := artifacts.ImportLegacy(); err != nil {
+		_ = agent.ServiceShutdown()
 		_ = memoryRuntime.Close()
 		return nil, err
 	}
@@ -62,6 +75,7 @@ func Bootstrap() (*Services, error) {
 	permissions.SetNotify(notify)
 	memoryRuntime.setNotify(notify)
 	shot.SetNotify(notify)
+	artifacts.notify = notify
 
 	rem.Start(context.Background())
 	return &Services{
@@ -76,5 +90,6 @@ func Bootstrap() (*Services, error) {
 		ChatAttachments: chatAttachments,
 		Reminder:        rem,
 		Skills:          skills,
+		Artifacts:       artifacts,
 	}, nil
 }

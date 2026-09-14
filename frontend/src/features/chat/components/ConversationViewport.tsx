@@ -7,17 +7,21 @@ import type { ApprovalDecision, ApprovalRequest } from '../../../components/perm
 import { PermissionApprovalModal } from '../../../components/permissions'
 import type { AgentPhase, AgentProcessStep, AgentToolCall } from '../model/agentRun'
 import type { AgentRunError } from '../model/chatError'
+import type { ArtifactRefLite } from '../../../shared/types/artifacts'
 import { AgentProcess, ChatRunErrorMessage, isPersistedTailError, renderMarkdown, SnapshotMessage } from './ConversationMessages'
+import { ArtifactItems } from '../../artifacts/components/ArtifactItems'
 
 const { Text } = Typography
 
 interface ConversationViewportProps {
+  conversationId: number
   messages: AGUIMessageLite[]
   streaming: string
   sending: boolean
   phase: AgentPhase
   process: AgentProcessStep[]
   tools: AgentToolCall[]
+  artifacts: ArtifactRefLite[]
   error: AgentRunError | null
   pendingApproval: ApprovalRequest | null
   resolvingApproval: boolean
@@ -28,12 +32,14 @@ interface ConversationViewportProps {
 }
 
 export function ConversationViewport({
+  conversationId,
   messages,
   streaming,
   sending,
   phase,
   process,
   tools,
+  artifacts,
   error,
   pendingApproval,
   resolvingApproval,
@@ -67,11 +73,12 @@ export function ConversationViewport({
         {messages.map((message, index) => (
           <Fragment key={message.id || index}>
             {index === processBeforeIndex && <AgentProcess phase={phase} process={process} tools={tools} />}
-            <SnapshotMessage message={message} toolName={message.toolCallId ? toolNames.get(message.toolCallId) : undefined} />
+            <SnapshotMessage message={message} conversationId={conversationId} toolName={message.toolCallId ? toolNames.get(message.toolCallId) : undefined} />
           </Fragment>
         ))}
         {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} process={process} tools={tools} />}
         {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
+        <ArtifactItems artifacts={artifacts} />
         {error && !isPersistedTailError(messages, error) && <ChatRunErrorMessage error={error} />}
         {pendingApproval && <PermissionApprovalModal request={pendingApproval} onResolve={onResolveApproval} resolving={resolvingApproval} />}
       </Flex>

@@ -1,5 +1,6 @@
 import { normalizeAgentRunError } from './chatError'
 import type { AgentRunError } from './chatError'
+import type { ArtifactRefLite } from '../../../shared/types/artifacts'
 
 export type AgentPhase = 'idle' | 'waiting' | 'thinking' | 'tool' | 'responding' | 'done' | 'error'
 
@@ -24,6 +25,8 @@ export interface AgentProtocolEvent {
   code?: string
   toolCallId?: string
   toolCallName?: string
+  name?: string
+  value?: { toolCallId?: string; artifacts?: ArtifactRefLite[] }
 }
 
 export interface AgentEnvelope {
@@ -41,6 +44,7 @@ export interface AgentRunState {
   streaming: string
   process: AgentProcessStep[]
   tools: AgentToolCall[]
+  artifacts: ArtifactRefLite[]
   inputSaved: boolean
   inputSavedConversationId: number
   error: AgentRunError | null
@@ -63,6 +67,7 @@ export const initialAgentRunState: AgentRunState = {
   streaming: '',
   process: [],
   tools: [],
+  artifacts: [],
   inputSaved: false,
   inputSavedConversationId: 0,
   error: null,
@@ -143,6 +148,10 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
       const targetConversationId = bindConversation(state, action.payload.conversationId)
       const event = action.payload.event
       if (event.type === 'RUN_STARTED') return { ...state, targetConversationId, phase: 'waiting' }
+      if (event.type === 'CUSTOM' && event.name === 'tool.artifacts') {
+        const next = [...state.artifacts, ...(event.value?.artifacts ?? [])]
+        return { ...state, targetConversationId, artifacts: [...new Map(next.map((item) => [`${item.id}:${item.version}`, item])).values()] }
+      }
       if (['REASONING_START', 'REASONING_MESSAGE_START', 'THINKING_START', 'THINKING_TEXT_MESSAGE_START'].includes(event.type)) {
         return { ...state, targetConversationId, phase: 'thinking', process: updateReasoning(state, event) }
       }

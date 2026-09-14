@@ -8,6 +8,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   FlagOutlined,
+  FileDoneOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
   RightOutlined,
@@ -53,6 +54,7 @@ export function ConversationSidebar({
     { key: 'todos' as const, label: '待办', icon: <CheckSquareOutlined />, count: 0 },
     { key: 'milestones' as const, label: '里程碑', icon: <FlagOutlined />, count: 0 },
     { key: 'reminders' as const, label: '提醒中心', icon: <BellOutlined />, count: reminderCount },
+    { key: 'artifacts' as const, label: '产物', icon: <FileDoneOutlined />, count: 0 },
   ]
 
   return (

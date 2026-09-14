@@ -9,6 +9,15 @@ describe('agentRunReducer', () => {
     type: 'event', payload: { requestId: 'r1', conversationId: 3, event },
   }), started())
 
+  it('collects tool artifact events once by immutable version', () => {
+    const artifact = { id: 'a1', version: 0, name: 'report.md', mimeType: 'text/markdown', kind: 'markdown' as const, size: 12, availability: 'available' as const, width: 0, height: 0 }
+    const state = replay([
+      { type: 'CUSTOM', name: 'tool.artifacts', value: { toolCallId: 't1', artifacts: [artifact] } },
+      { type: 'CUSTOM', name: 'tool.artifacts', value: { toolCallId: 't1', artifacts: [artifact] } },
+    ])
+    expect(state.artifacts).toEqual([artifact])
+  })
+
   it('keeps multiple reasoning messages separate and ordered around tools', () => {
     const state = replay([
       { type: 'REASONING_START', messageId: 'a' },

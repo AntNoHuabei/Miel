@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -65,22 +66,22 @@ func sortTodosBy(s []Todo, less func(a, b Todo) bool) {
 }
 
 // generateWeeklyReport 聚合并渲染周报(markdown),同时落盘 outputs/reports/。
-func generateWeeklyReport(t *TodoService, days int64) (string, string, error) {
+func generateWeeklyReport(ctx context.Context, t *TodoService, days int64) (string, string, []ArtifactRef, error) {
 	agg, err := aggregateWeekly(t, days)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	md := renderWeeklyReport(agg)
 	name := fmt.Sprintf("weekly_report_%s_%s.md", agg.From, agg.To)
-	path, err := writeOutput("reports", name, []byte(md))
+	output, err := publishOfficeOutput(ctx, "reports", name, []byte(md))
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	if _, err := insertEvent(store, EventReportGenerated,
 		fmt.Sprintf("生成周报 %s~%s", agg.From, agg.To), 0); err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
-	return md, path, nil
+	return md, output.Path, output.Artifacts, nil
 }
 
 // renderWeeklyReport 渲染周报 markdown。

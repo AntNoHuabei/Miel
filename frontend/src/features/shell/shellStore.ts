@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ViewKey = 'chat' | 'todos' | 'milestones' | 'reminders' | 'settings'
+export type ViewKey = 'chat' | 'todos' | 'milestones' | 'reminders' | 'artifacts' | 'settings'
 
 export interface ReminderItem {
   type: 'dueSoon' | 'overdue'

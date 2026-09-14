@@ -22,6 +22,8 @@ import { quickConversationStore } from '../features/chat/model/conversationStore
 import { useConversationRuntime } from '../features/chat/controllers/useConversationRuntime'
 import { ClipboardTodoPanel } from '../features/capture/components/ClipboardTodoPanel'
 import { ChatAttachmentStrip, useChatAttachments } from '../components/ChatAttachments'
+import { ArtifactItems } from '../features/artifacts/components/ArtifactItems'
+import { ArtifactPreviewPanel } from '../features/artifacts/components/ArtifactPreviewPanel'
 import '../styles/chat-md.css'
 
 const REASONING_KEY = 'chat.reasoning.v1'
@@ -174,10 +176,11 @@ export default function QuickAssistantWindow({
                 <Typography.Text type="secondary">对话会保存到 Miel 的会话列表。</Typography.Text>
               </div>
             ) : (
-              runtime.messages.map((item, index) => <Fragment key={item.id || index}><SnapshotMessage message={item} /></Fragment>)
+              runtime.messages.map((item, index) => <Fragment key={item.id || index}><SnapshotMessage message={item} conversationId={runtime.conversationId} /></Fragment>)
             )}
             {phase && <div className="bm-quick-phase"><Spin size="small" /><span>{phase}</span></div>}
             {runtime.run.streaming && <div className="bm-chat-assistant-message"><Typography.Text type="secondary">Miel</Typography.Text><div className="bm-md">{runtime.run.streaming}</div></div>}
+            <ArtifactItems artifacts={runtime.run.artifacts} />
             {runtime.run.error && !isPersistedTailError(runtime.messages, runtime.run.error) && <ChatRunErrorMessage error={runtime.run.error} />}
           </div>
           <div className="bm-quick-composer">
@@ -221,6 +224,7 @@ export default function QuickAssistantWindow({
           </div>
         </>
       )}
+      <ArtifactPreviewPanel />
     </div>
   )
 }

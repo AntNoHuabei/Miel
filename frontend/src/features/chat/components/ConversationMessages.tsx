@@ -16,6 +16,8 @@ import { friendlyChatError, normalizeAgentRunError } from '../model/chatError'
 import { ChatAttachmentStrip } from '../../../components/ChatAttachments'
 import { getPermissionToolLabel } from '../../../components/permissions'
 import { systemClipboardRepository } from '../../../shared/repositories'
+import { ArtifactItems } from '../../artifacts/components/ArtifactItems'
+import { SaveArtifactButton } from '../../artifacts/components/SaveArtifactDialog'
 
 const { Text } = Typography
 
@@ -83,7 +85,7 @@ function formatDuration(milliseconds: number) {
   return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)} s`
 }
 
-function AssistantMessageFooter({ message, content }: { message: AGUIMessageLite; content: string }) {
+function AssistantMessageFooter({ message, content, conversationId }: { message: AGUIMessageLite; content: string; conversationId: number }) {
   const { message: messageApi } = AntApp.useApp()
   const metrics = message.metrics
   const totalTokens = metrics ? (metrics.totalTokens || metrics.promptTokens + metrics.completionTokens) : 0
@@ -100,6 +102,7 @@ function AssistantMessageFooter({ message, content }: { message: AGUIMessageLite
       <Tooltip title="复制回复">
         <Button type="text" className="bm-chat-copy-button" aria-label="复制回复" icon={<CopyOutlined />} disabled={!content} onClick={() => void copy()} />
       </Tooltip>
+      {conversationId > 0 && message.id && <SaveArtifactButton conversationId={conversationId} messageId={message.id} suggestedName={`reply-${message.id}.md`} />}
       <div className="bm-chat-response-stats" aria-label="回复统计">
         {totalTokens > 0 && <span>{totalTokens.toLocaleString()} tokens</span>}
         {!!metrics?.durationMs && <span>{formatDuration(metrics.durationMs)}</span>}
@@ -111,7 +114,24 @@ function AssistantMessageFooter({ message, content }: { message: AGUIMessageLite
   )
 }
 
-export function SnapshotMessage({ message, toolName }: { message: AGUIMessageLite; toolName?: string }) {
+const codeExtension: Record<string, string> = { typescript: 'ts', tsx: 'tsx', javascript: 'js', jsx: 'jsx', python: 'py', go: 'go', json: 'json', css: 'css', html: 'html', markup: 'html', shell: 'sh', powershell: 'ps1' }
+
+function AssistantMarkdown({ content, conversationId, messageId }: { content: string; conversationId: number; messageId: string }) {
+  let codeBlock = 0
+  return <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+    a: (props) => <a {...props} target="_blank" rel="noreferrer" />,
+    pre: ({ children }) => {
+      const index = codeBlock++
+      const element = Array.isArray(children) ? children[0] : children
+      const className = element && typeof element === 'object' && 'props' in element ? String((element.props as { className?: string }).className ?? '') : ''
+      const language = className.replace(/^language-/, '')
+      const extension = codeExtension[language] ?? (language || 'txt')
+      return <div className="bm-chat-code-block"><div className="bm-chat-code-actions"><span>{language || '代码'}</span><SaveArtifactButton conversationId={conversationId} messageId={messageId} codeBlock={index} suggestedName={`snippet-${index + 1}.${extension}`} /></div><pre>{children}</pre></div>
+    },
+  }}>{content}</ReactMarkdown>
+}
+
+export function SnapshotMessage({ message, toolName, conversationId = 0 }: { message: AGUIMessageLite; toolName?: string; conversationId?: number }) {
   const content = messageContentText(message.content)
   if (message.role === 'error') {
     return <ChatRunErrorMessage error={normalizeAgentRunError(message.runError ?? message.error ?? content)} />
@@ -130,11 +150,12 @@ export function SnapshotMessage({ message, toolName }: { message: AGUIMessageLit
   if (message.role === 'activity') {
     return <div className="bm-agent-process"><details className="bm-agent-detail"><summary><ToolOutlined /><span>{message.activityType || '活动'}</span></summary>{content && <div className="bm-tool-detail"><pre>{content}</pre></div>}</details></div>
   }
+  if (message.role === 'artifact') return <ArtifactItems artifacts={message.artifacts} />
   if (message.role !== 'assistant') return null
   return (
     <>
       {(message.toolCalls ?? []).map((call) => <div className="bm-agent-process" key={call.id}><details className="bm-agent-detail"><summary><ToolOutlined /><span>{getToolLabel(call.function.name)}</span><Text type="secondary" className="bm-tool-status">已调用</Text></summary><div className="bm-tool-detail"><code>{call.function.name}</code>{call.function.arguments && <pre>{call.function.arguments}</pre>}</div></details></div>)}
-      {content && <div className="bm-chat-assistant-message"><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(content)}</div><AssistantMessageFooter message={message} content={content} /></div>}
+      {content && <div className="bm-chat-assistant-message"><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md"><AssistantMarkdown content={content} conversationId={conversationId} messageId={message.id} /></div><ArtifactItems artifacts={message.artifacts} /><AssistantMessageFooter message={message} content={content} conversationId={conversationId} /></div>}
     </>
   )
 }

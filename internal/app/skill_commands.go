@@ -458,11 +458,11 @@ func newOfficeCommand(t *TodoService) *cobra.Command {
 			if sinceDays <= 0 {
 				return usageErrorf("--since-days 必须大于 0")
 			}
-			markdown, path, err := generateWeeklyReport(t, sinceDays)
+			markdown, path, artifacts, err := generateWeeklyReport(cmd.Context(), t, sinceDays)
 			if err != nil {
 				return err
 			}
-			return writeSkillData(cmd, map[string]any{"path": path, "markdown": markdown})
+			return writeSkillData(cmd, map[string]any{"path": path, "markdown": markdown, "artifacts": artifacts})
 		},
 	}
 	weekly.Flags().Int64Var(&sinceDays, "since-days", 7, "look-back window in days")
@@ -479,11 +479,11 @@ func newOfficeCommand(t *TodoService) *cobra.Command {
 				return usageErrorf("--content 不能为空")
 			}
 			name := fmt.Sprintf("%s_%s.md", stamp(), slugify(documentTitle))
-			path, err := writeOutput("documents", name, []byte(documentContent))
+			output, err := publishOfficeOutput(cmd.Context(), "documents", name, []byte(documentContent))
 			if err != nil {
 				return err
 			}
-			return writeSkillData(cmd, map[string]any{"path": path})
+			return writeSkillData(cmd, output)
 		},
 	}
 	document.Flags().StringVar(&documentTitle, "title", "", "document title")
@@ -502,11 +502,11 @@ func newOfficeCommand(t *TodoService) *cobra.Command {
 				return usageErrorf("--csv 不能为空")
 			}
 			name := fmt.Sprintf("%s_%s.csv", stamp(), slugify(tableTitle))
-			path, err := writeOutput("tables", name, []byte(csvContent+"\n"))
+			output, err := publishOfficeOutput(cmd.Context(), "tables", name, []byte(csvContent+"\n"))
 			if err != nil {
 				return err
 			}
-			return writeSkillData(cmd, map[string]any{"path": path})
+			return writeSkillData(cmd, output)
 		},
 	}
 	table.Flags().StringVar(&tableTitle, "title", "", "table title")
@@ -533,11 +533,11 @@ func newOfficeCommand(t *TodoService) *cobra.Command {
 				content = exportTodosCSV(items)
 			}
 			name := fmt.Sprintf("%s_todos.%s", stamp(), exportFormat)
-			path, err := writeOutput("tables", name, []byte(content))
+			output, err := publishOfficeOutput(cmd.Context(), "tables", name, []byte(content))
 			if err != nil {
 				return err
 			}
-			return writeSkillData(cmd, map[string]any{"path": path, "count": len(items), "format": exportFormat})
+			return writeSkillData(cmd, map[string]any{"path": output.Path, "count": len(items), "format": exportFormat, "artifacts": output.Artifacts})
 		},
 	}
 	export.Flags().StringVar(&exportFormat, "format", "md", "md or csv")

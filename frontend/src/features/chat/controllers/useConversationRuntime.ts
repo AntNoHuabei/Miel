@@ -82,7 +82,11 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     })
-  }, [messages, run.phase, run.process, run.streaming, run.tools])
+  }, [messages, run.artifacts, run.phase, run.process, run.streaming, run.tools])
+
+  useWailsEvent<string>('artifacts.changed', useCallback(() => {
+    if (!sendingRef.current && conversationRef.current > 0) void loadMessages(conversationRef.current)
+  }, [loadMessages]))
 
   const accepts = useCallback((payload: { conversationId: number; requestId?: string }) => {
     if (!sendingRef.current) return false

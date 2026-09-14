@@ -138,6 +138,7 @@
 
 .bm-app-shell,
 .bm-shell-viewport,
+.bm-shell-primary,
 .bm-shell-chat-layer {
   position: relative;
   width: 100%;
@@ -146,6 +147,9 @@
   min-height: 0;
   overflow: hidden;
 }
+
+.bm-shell-viewport { display: flex; }
+.bm-shell-primary { flex: 1; }
 
 .bm-shell-feature-layer {
   position: absolute;

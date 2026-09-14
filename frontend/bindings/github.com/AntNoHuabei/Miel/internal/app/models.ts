@@ -25,6 +25,25 @@ export interface ApprovalRequest {
     "expiresAt": string;
 }
 
+export interface ArtifactPreview {
+    "artifact": ArtifactRef;
+    "url": string;
+    "text": string;
+    "truncated": boolean;
+}
+
+export interface ArtifactRef {
+    "id": string;
+    "version": number;
+    "name": string;
+    "mimeType": string;
+    "kind": string;
+    "size": number;
+    "availability": string;
+    "width": number;
+    "height": number;
+}
+
 /**
  * AskShotReq 截图问答入参。
  */
@@ -166,6 +185,7 @@ export interface DirectoryPaths {
     "documents": string;
     "tables": string;
     "memories": string;
+    "artifacts": string;
     "attachments": string;
     "chatAttachments": string;
     "chatDrafts": string;
@@ -417,6 +437,13 @@ export interface ReasoningSpec {
      * 面向用户的中文说明
      */
     "note"?: string;
+}
+
+export interface SaveMessageArtifactRequest {
+    "conversationId": number;
+    "messageId": string;
+    "name": string;
+    "codeBlock"?: number | null;
 }
 
 /**

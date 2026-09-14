@@ -11,6 +11,7 @@ import { useChatControls } from '../features/chat/controllers/useChatControls'
 import { useConversationRuntime } from '../features/chat/controllers/useConversationRuntime'
 import { mainConversationStore } from '../features/chat/model/conversationStore'
 import { useShellStore } from '../features/shell/shellStore'
+import { useArtifactPreviewStore } from '../features/artifacts/artifactStore'
 import '../styles/chat-md.css'
 
 const QUICK_PROMPTS = [
@@ -29,6 +30,7 @@ export default function ChatView() {
   const reminderCount = useShellStore((state) => state.unread)
   const navigate = useShellStore((state) => state.navigate)
   const [conversations, setConversations] = useState<Array<{ id: number; title: string }>>([])
+  const closeArtifactPreview = useArtifactPreviewStore((state) => state.close)
   const attachments = useChatAttachments()
   const permissions = useAgentPermissions()
 
@@ -55,6 +57,7 @@ export default function ChatView() {
   })
 
   useEffect(() => { void reloadConversations() }, [reloadConversations])
+  useEffect(() => { closeArtifactPreview() }, [closeArtifactPreview, runtime.conversationId])
   useWailsEvent<string>('conversations.changed', useCallback(() => void reloadConversations(), [reloadConversations]))
 
   useEffect(() => {
@@ -107,12 +110,14 @@ export default function ChatView() {
       <Flex vertical className="bm-chat-main-shell" style={{ minWidth: 0, minHeight: 0 }}>
         <Flex vertical className="bm-chat-main" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <ConversationViewport
+            conversationId={runtime.conversationId}
             messages={runtime.messages}
             streaming={runtime.run.streaming}
             sending={runtime.sending}
             phase={runtime.run.phase}
             process={runtime.run.process}
             tools={runtime.run.tools}
+            artifacts={runtime.run.artifacts}
             error={runtime.run.error}
             pendingApproval={permissions.pendingApproval}
             resolvingApproval={permissions.resolving}

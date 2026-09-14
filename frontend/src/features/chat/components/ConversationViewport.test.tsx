@@ -7,6 +7,7 @@ describe('ConversationViewport', () => {
   it('renders separate reasoning blocks in tool execution order and only opens active reasoning', async () => {
     const { container } = render(
       <ConversationViewport
+        conversationId={7}
         messages={[{ id: 'user-1', role: 'user', content: 'request' }]}
         streaming=""
         sending
@@ -17,6 +18,7 @@ describe('ConversationViewport', () => {
           { type: 'reasoning', id: 'b', content: 'second thought', status: 'thinking' },
         ]}
         tools={[{ id: 't1', name: 'list_todos', args: '{}', result: 'ok', status: 'done' }]}
+        artifacts={[]}
         error={null}
         pendingApproval={null}
         resolvingApproval={false}
@@ -41,12 +43,14 @@ describe('ConversationViewport', () => {
     const resolve = vi.fn()
     render(
       <ConversationViewport
+        conversationId={7}
         messages={[{ id: 'message-1', role: 'assistant', content: '已有回复' }]}
         streaming=""
         sending={false}
         phase="idle"
         process={[]}
         tools={[]}
+        artifacts={[]}
         error={null}
         pendingApproval={{ id: 'approval-1', sessionId: 'session-1', tool: 'list_directory', operation: 'list', workspacePath: 'D:/code/BlankMind', target: 'C:/Users/lxl/Desktop', riskLevel: 'low', outsideWorkspace: true, scopeRoot: 'D:/code/BlankMind', expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() }}
         resolvingApproval={false}
@@ -75,12 +79,14 @@ describe('ConversationViewport', () => {
   it('shows a friendly inline error with collapsed technical details', async () => {
     render(
       <ConversationViewport
+        conversationId={0}
         messages={[]}
         streaming=""
         sending={false}
         phase="error"
         process={[]}
         tools={[]}
+        artifacts={[]}
         error={{ code: '429', message: 'raw provider rate limit response' }}
         pendingApproval={null}
         resolvingApproval={false}
@@ -101,6 +107,7 @@ describe('ConversationViewport', () => {
   it('renders a persisted run error from the conversation snapshot', () => {
     render(
       <ConversationViewport
+        conversationId={7}
         messages={[{
           id: 'error-123',
           role: 'error',
@@ -111,6 +118,7 @@ describe('ConversationViewport', () => {
         phase="idle"
         process={[]}
         tools={[]}
+        artifacts={[]}
         error={null}
         pendingApproval={null}
         resolvingApproval={false}

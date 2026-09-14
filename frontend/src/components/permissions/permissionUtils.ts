@@ -20,6 +20,7 @@ const PERMISSION_TOOL_LABELS: Record<string, string> = {
   write_file: '写入文件',
   execute_command: '执行命令',
   fetch_url: '访问网络',
+  publish_artifact: '发布产物',
 }
 
 const OPERATION_LABELS: Record<string, string> = {

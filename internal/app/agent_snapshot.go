@@ -144,6 +144,11 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 	if err := s.attachSnapshotAttachments(result, history); err != nil {
 		return nil, err
 	}
+	if s.artifacts != nil {
+		if err := s.artifacts.attachSnapshot(result, conversationID); err != nil {
+			return nil, err
+		}
+	}
 	redactAGUIBinaryContent(result)
 	return result, nil
 }

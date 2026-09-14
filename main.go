@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"net/http"
 	"strings"
 
 	"github.com/AntNoHuabei/Miel/internal/app"
@@ -26,6 +27,35 @@ type wailsWorkspaceDirectoryPicker struct {
 type wailsSkillPicker struct {
 	instance        *application.App
 	quickController *quickWindowController
+}
+
+type wailsArtifactPicker struct {
+	instance        *application.App
+	quickController *quickWindowController
+}
+
+func (p wailsArtifactPicker) PickArtifact() (string, error) {
+	dialog := p.instance.Dialog.OpenFile().SetTitle("导入产物").CanChooseFiles(true).CanChooseDirectories(false)
+	if window := p.quickController.currentWindow(); window != nil {
+		dialog.AttachToWindow(window)
+	}
+	path, err := dialog.PromptForSingleSelection()
+	if isDialogCancelledError(err) {
+		return "", nil
+	}
+	return path, err
+}
+
+func (p wailsArtifactPicker) PickArtifactExport(name string) (string, error) {
+	dialog := p.instance.Dialog.SaveFile().SetMessage("另存产物").SetFilename(name)
+	if window := p.quickController.currentWindow(); window != nil {
+		dialog.AttachToWindow(window)
+	}
+	path, err := dialog.PromptForSingleSelection()
+	if isDialogCancelledError(err) {
+		return "", nil
+	}
+	return path, err
 }
 
 func (p wailsSkillPicker) PickSkillPath() (string, error) {
@@ -105,6 +135,7 @@ func init() {
 	application.RegisterEvent[string]("quickchat.show")
 	application.RegisterEvent[string]("clipboard.todo.show")
 	application.RegisterEvent[string]("memory.changed")
+	application.RegisterEvent[string]("artifacts.changed")
 	application.RegisterEvent[app.MemoryStatus]("memory.status")
 }
 
@@ -117,6 +148,7 @@ func main() {
 		defer logFile.Close()
 	}
 	activation := &deferredMainActivation{}
+	var artifactHandler http.Handler
 	instance := application.New(application.Options{
 		Name:        "Miel",
 		Description: "A local-first AI office agent",
@@ -129,6 +161,15 @@ func main() {
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
+			Middleware: func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasPrefix(r.URL.Path, "/artifacts/") && artifactHandler != nil {
+						artifactHandler.ServeHTTP(w, r)
+						return
+					}
+					next.ServeHTTP(w, r)
+				})
+			},
 		},
 	})
 
@@ -149,6 +190,7 @@ func main() {
 		application.NewService(svcs.Clipboard),
 		application.NewService(svcs.ChatAttachments),
 		application.NewService(svcs.Skills),
+		application.NewService(svcs.Artifacts),
 	} {
 		instance.RegisterService(service)
 	}
@@ -157,6 +199,7 @@ func main() {
 	app.Emit = func(name string, data any) {
 		instance.Event.Emit(name, data)
 	}
+	artifactHandler = svcs.Artifacts
 
 	mainWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Miel",
@@ -192,6 +235,7 @@ func main() {
 		quickController: quickController,
 	})
 	app.BindSkillPicker(svcs.Skills, wailsSkillPicker{instance: instance, quickController: quickController})
+	svcs.Artifacts.SetPicker(wailsArtifactPicker{instance: instance, quickController: quickController})
 	app.BindWorkspaceDirectoryPicker(svcs.Settings, wailsWorkspaceDirectoryPicker{
 		instance:        instance,
 		quickController: quickController,

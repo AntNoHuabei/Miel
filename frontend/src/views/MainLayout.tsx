@@ -13,8 +13,11 @@ import { parseEventData, useWailsEvent } from '../shared/wails/events'
 import { refreshTodosIfLoaded } from '../features/todos/todoController'
 import { useShellStore } from '../features/shell/shellStore'
 import type { ReminderItem, ViewKey } from '../features/shell/shellStore'
+import { ArtifactsPage } from '../features/artifacts/components/ArtifactsPage'
+import { ArtifactPreviewPanel } from '../features/artifacts/components/ArtifactPreviewPanel'
+import '../styles/artifacts.css'
 
-const viewLabel: Record<ViewKey, string> = { chat: '对话', todos: '待办', milestones: '里程碑', reminders: '提醒中心', settings: '设置' }
+const viewLabel: Record<ViewKey, string> = { chat: '对话', todos: '待办', milestones: '里程碑', reminders: '提醒中心', artifacts: '产物', settings: '设置' }
 export default function AppShell() {
   const view = useShellStore((state) => state.view)
   const sidebarOpen = useShellStore((state) => state.sidebarOpen)
@@ -44,6 +47,8 @@ export default function AppShell() {
       ? <MilestonesView onGoTodos={() => navigate('todos')} />
       : view === 'reminders'
         ? <RemindersView items={reminders} onClear={clearReminders} />
+        : view === 'artifacts'
+          ? <ArtifactsPage />
         : view === 'settings' ? <SettingsView /> : null
 
   return (
@@ -63,8 +68,10 @@ export default function AppShell() {
       </header>
       <div className="bm-window-body bm-app-shell">
         <main className="bm-shell-viewport">
-          <div className="bm-shell-chat-layer"><ChatView /></div>
-          {view !== 'chat' && <section className={`bm-shell-feature-layer ${sidebarOpen ? 'is-sidebar-open' : ''} bm-feature-page`}><header className="bm-feature-header"><span>{viewLabel[view]}</span></header><div className="bm-feature-content">{feature}</div></section>}
+          <div className="bm-shell-primary"><div className="bm-shell-chat-layer"><ChatView /></div>
+            {view !== 'chat' && <section className={`bm-shell-feature-layer ${sidebarOpen ? 'is-sidebar-open' : ''} bm-feature-page`}><header className="bm-feature-header"><span>{viewLabel[view]}</span></header><div className="bm-feature-content">{feature}</div></section>}
+          </div>
+          <ArtifactPreviewPanel />
         </main>
       </div>
       <ScreenshotModal />

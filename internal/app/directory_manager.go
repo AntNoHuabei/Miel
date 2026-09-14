@@ -28,6 +28,10 @@ const (
 	DirectoryOutputDocuments DirectoryKind = "outputs.documents"
 	DirectoryOutputTables    DirectoryKind = "outputs.tables"
 	DirectoryOutputMemories  DirectoryKind = "outputs.memories"
+	DirectoryArtifacts       DirectoryKind = "outputs.artifacts"
+	DirectoryArtifactFiles   DirectoryKind = "outputs.artifacts.files"
+	DirectoryArtifactCache   DirectoryKind = "outputs.artifacts.cache"
+	DirectoryArtifactTrash   DirectoryKind = "outputs.artifacts.trash"
 	DirectoryAttachments     DirectoryKind = "attachments"
 	DirectoryChatAttachments DirectoryKind = "attachments.chat"
 	DirectoryChatDrafts      DirectoryKind = "attachments.chat.drafts"
@@ -53,6 +57,7 @@ type DirectoryPaths struct {
 	Documents        string `json:"documents"`
 	Tables           string `json:"tables"`
 	Memories         string `json:"memories"`
+	Artifacts        string `json:"artifacts"`
 	Attachments      string `json:"attachments"`
 	ChatAttachments  string `json:"chatAttachments"`
 	ChatDrafts       string `json:"chatDrafts"`
@@ -177,6 +182,14 @@ func (d *DirectoryManager) Path(kind DirectoryKind) string {
 		return filepath.Join(d.root, "outputs", "tables")
 	case DirectoryOutputMemories:
 		return filepath.Join(d.root, "outputs", "memories")
+	case DirectoryArtifacts:
+		return filepath.Join(d.root, "outputs", "artifacts")
+	case DirectoryArtifactFiles:
+		return filepath.Join(d.root, "outputs", "artifacts", "files")
+	case DirectoryArtifactCache:
+		return filepath.Join(d.root, "outputs", "artifacts", "cache")
+	case DirectoryArtifactTrash:
+		return filepath.Join(d.root, "outputs", "artifacts", "trash")
 	case DirectoryAttachments:
 		return filepath.Join(d.root, "attachments")
 	case DirectoryChatAttachments:
@@ -209,6 +222,7 @@ func (d *DirectoryManager) EnsureAll() error {
 		DirectoryOutputReports, DirectoryOutputDocuments, DirectoryOutputTables,
 		DirectoryOutputMemories, DirectoryAttachments, DirectoryChatAttachments,
 		DirectoryChatDrafts, DirectoryChatFiles, DirectoryChatThumbnails,
+		DirectoryArtifacts, DirectoryArtifactFiles, DirectoryArtifactCache, DirectoryArtifactTrash,
 	} {
 		if _, err := d.Ensure(kind); err != nil {
 			return err
@@ -223,6 +237,7 @@ func (d *DirectoryManager) Paths() DirectoryPaths {
 		Root: d.Root(), Database: d.DatabasePath("blankmind.db"), AGUIDatabase: d.DatabasePath("agui.db"), MemoryDatabase: d.DatabasePath("memory.db"),
 		Logs: d.Path(DirectoryLogs), LogFile: d.LogFilePath(), Screenshots: d.Path(DirectoryScreenshots), Sources: d.Path(DirectorySources), ClipboardSources: d.Path(DirectoryClipboardSource), Skills: d.Path(DirectorySkills),
 		Outputs: d.Path(DirectoryOutputs), Reports: d.Path(DirectoryOutputReports), Documents: d.Path(DirectoryOutputDocuments), Tables: d.Path(DirectoryOutputTables), Memories: d.Path(DirectoryOutputMemories),
+		Artifacts:   d.Path(DirectoryArtifacts),
 		Attachments: d.Path(DirectoryAttachments), ChatAttachments: d.Path(DirectoryChatAttachments), ChatDrafts: d.Path(DirectoryChatDrafts), ChatFiles: d.Path(DirectoryChatFiles), ChatThumbnails: d.Path(DirectoryChatThumbnails),
 	}
 }

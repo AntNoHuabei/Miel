@@ -17,6 +17,7 @@ func TestDirectoryManagerKeepsStableLayout(t *testing.T) {
 	for _, path := range []string{
 		paths.Root, paths.Logs, paths.Screenshots, paths.ClipboardSources, paths.Skills,
 		paths.Reports, paths.Documents, paths.Tables, paths.Memories,
+		paths.Artifacts,
 		paths.ChatDrafts, paths.ChatFiles, paths.ChatThumbnails,
 	} {
 		info, err := os.Stat(path)

@@ -50,6 +50,7 @@ type AgentService struct {
 	memory      *memoryRuntime
 	attachments *ChatAttachmentService
 	permissions *PermissionService
+	artifacts   *ArtifactService
 	historyMu   sync.Mutex
 	closeOnce   sync.Once
 	closeErr    error
@@ -80,7 +81,8 @@ const systemInstruction = `你是 Miel,运行在本地的办公 Agent,通过工�
    不保存凭据、密钥、密码、隐私秘密、模型推测或工具输出。
 8. 需要查看或修改工作区文件时使用 list_directory、read_file、write_file;
    需要运行本地命令时使用 execute_command;需要获取网页时使用 fetch_url。
-   这些工具由应用执行权限控制，不要把命令拼接到 skill_run。`
+   这些工具由应用执行权限控制，不要把命令拼接到 skill_run。
+9. 当工作区中的文件是用户要求的最终交付物时，使用 publish_artifact 发布；不要发布临时文件、日志或普通编辑。`
 
 const plainChatInstruction = `你是 Miel。当前模型不支持工具调用，本轮只能进行普通对话。规则:
 1. 使用与用户相同的语言回复。
@@ -298,10 +300,22 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		Kind: "conversation", TextContent: msg, ConversationID: convID, MessageID: userMessageID,
 	}}
 	var agentTools []tool.Tool
+	publisher := &runArtifactService{ArtifactService: s.artifacts, scope: artifactScope{ConversationID: convID, RequestID: req.RequestID, UserMessageID: userMessageID}}
 	if toolsEnabled {
 		agentTools = chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID)
 		if memoryEnabled {
 			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
+		}
+	}
+	if toolsEnabled && s.artifacts != nil {
+		for index, candidate := range agentTools {
+			if callable, ok := candidate.(tool.CallableTool); ok && candidate.Declaration().Name == "skill_run" {
+				agentTools[index] = &artifactTool{CallableTool: callable, publication: publisher}
+			}
+		}
+		if s.permissions != nil && strings.TrimSpace(req.PermissionSessionID) != "" {
+			env := permissionToolEnv{service: s.permissions, workspace: workspacePath, sessionID: req.PermissionSessionID}
+			agentTools = append(agentTools, newPublishArtifactTool(env, publisher))
 		}
 	}
 	instruction := instructionWithContext(workspacePath)
@@ -326,6 +340,9 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	opts = append(opts, chatCapabilityOptions(toolsEnabled, agentTools, skillRepo, memoryEnabled)...)
 	agent := llmagent.New("blankmind", opts...)
 	runnerOpts := []runner.Option{runner.WithSessionService(s.sessions)}
+	if s.artifacts != nil {
+		runnerOpts = append(runnerOpts, runner.WithArtifactService(publisher))
+	}
 	if memoryEnabled {
 		runnerOpts = append(runnerOpts, runner.WithMemoryService(s.memory))
 	}
@@ -409,6 +426,14 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		if b, mErr := ev.ToJSON(); mErr == nil {
 			var event map[string]any
 			if json.Unmarshal(b, &event) == nil {
+				if event["type"] == "CUSTOM" && event["name"] == "tool.artifacts" && s.artifacts != nil {
+					if value, ok := event["value"].(map[string]any); ok {
+						toolCallID, _ := value["toolCallId"].(string)
+						if refs, err := s.artifacts.linkRefs(convID, req.RequestID, toolCallID); err == nil {
+							value["artifacts"] = refs
+						}
+					}
+				}
 				redactAGUIBinaryContent(event)
 				s.emit("agent.agui", map[string]any{
 					"conversationId": convID,
@@ -440,6 +465,9 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 	}
 	if runErr != nil {
+		if s.artifacts != nil {
+			_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
+		}
 		if _, err := s.saveChatRunError(convID, userMessageID, req.RequestID, *runErr); err != nil {
 			log.Println("save chat run error:", err)
 		} else {
@@ -449,7 +477,13 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		return ChatResult{}, errors.New(runErr.Message)
 	}
 	if err := finalChatError(out, nil); err != nil {
+		if s.artifacts != nil {
+			_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
+		}
 		return ChatResult{}, err
+	}
+	if s.artifacts != nil {
+		_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
 	}
 	s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
 	s.emit("conversations.changed", "updated")
@@ -856,6 +890,9 @@ func (s *AgentService) DeleteConversation(conversationID int64) error {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	if _, err := tx.Exec("DELETE FROM chat_run_errors WHERE conversation_id = ?", conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM artifact_links WHERE conversation_id = ?", conversationID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
