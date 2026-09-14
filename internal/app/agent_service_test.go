@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,6 +56,49 @@ func TestBuildChatMetricsWithoutProviderUsageOnlyKeepsTiming(t *testing.T) {
 	}
 	if got.TotalTokens != 0 || got.TokensPerSecond != 0 || got.FirstTokenMs != 0 {
 		t.Fatalf("unreported usage must remain empty: %#v", got)
+	}
+}
+
+func TestInstructionWithContextDescribesWorkspacePathRules(t *testing.T) {
+	current := time.Date(2026, 9, 14, 12, 30, 0, 0, time.FixedZone("CST", 8*60*60))
+	workspace := filepath.Clean(t.TempDir())
+	instruction := instructionWithContext(current, workspace)
+	for _, expected := range []string{
+		"当前本地时间:2026-09-14 12:30:00 +08:00",
+		"当前工作区的完整绝对路径:" + workspace,
+		"相对路径",
+		"相对 workdir",
+	} {
+		if !strings.Contains(instruction, expected) {
+			t.Errorf("instruction does not contain %q: %s", expected, instruction)
+		}
+	}
+
+	withoutWorkspace := instructionWithContext(current, "")
+	if !strings.Contains(withoutWorkspace, "当前未选择工作区") || !strings.Contains(withoutWorkspace, "相对文件路径") {
+		t.Fatalf("no-workspace instruction = %q", withoutWorkspace)
+	}
+}
+
+func TestInstructionDoesNotExposeUnregisteredWorkspaceRequest(t *testing.T) {
+	settings := NewSettingsService(newSettingsTestDB(t))
+	registered := t.TempDir()
+	if _, err := settings.AddWorkspace(registered); err != nil {
+		t.Fatal(err)
+	}
+	unregistered := t.TempDir()
+	validated := settings.agentWorkspacePath(unregistered)
+	if validated != "" {
+		t.Fatalf("unregistered workspace validated as %q", validated)
+	}
+	instruction := instructionWithContext(time.Now(), validated)
+	if strings.Contains(instruction, unregistered) {
+		t.Fatalf("instruction exposed unregistered request path: %q", instruction)
+	}
+
+	validated = settings.agentWorkspacePath(registered)
+	if validated == "" || !strings.Contains(instructionWithContext(time.Now(), validated), validated) {
+		t.Fatalf("registered workspace was not included: %q", validated)
 	}
 }
 
@@ -142,7 +187,7 @@ func TestChatAgentRequestUsesCompactSkillSurface(t *testing.T) {
 	capture := &requestCaptureModel{}
 	opts := []llmagent.Option{
 		llmagent.WithModel(capture),
-		llmagent.WithInstruction(instructionWithCurrentTime(time.Now())),
+		llmagent.WithInstruction(instructionWithContext(time.Now(), "")),
 		llmagent.WithTools(chatAgentTools(nil, nil)),
 		llmagent.WithMaxToolIterations(8),
 	}
@@ -291,7 +336,7 @@ func TestHerdsmanCompactSkillRequestLive(t *testing.T) {
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(client),
-		llmagent.WithInstruction(instructionWithCurrentTime(time.Now())),
+		llmagent.WithInstruction(instructionWithContext(time.Now(), "")),
 		llmagent.WithTools(chatAgentTools(&todoToolSource{input: todoSourceInput{
 			Kind: "conversation", TextContent: "创建 skill-live-test 待办",
 		}}, nil)),

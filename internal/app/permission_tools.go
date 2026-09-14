@@ -24,6 +24,8 @@ const (
 	maxPermissionResponse  = 2 << 20
 )
 
+var errWorkspaceRequired = errors.New("未选择工作区，不能使用相对路径")
+
 type permissionToolEnv struct {
 	service   *PermissionService
 	workspace string
@@ -62,16 +64,16 @@ func controlledWorkspaceTools(service *PermissionService, workspace, sessionID s
 	return []tool.Tool{
 		function.NewFunctionTool(func(ctx context.Context, in filePathInput) (permissionToolResult, error) {
 			return env.listDirectory(ctx, in)
-		}, function.WithName("list_directory"), function.WithDescription("列出目录内容。需要用户权限批准。")),
+		}, function.WithName("list_directory"), function.WithDescription("列出目录内容；相对路径以当前工作区为基准。需要用户权限批准。")),
 		function.NewFunctionTool(func(ctx context.Context, in filePathInput) (permissionToolResult, error) {
 			return env.readFile(ctx, in)
-		}, function.WithName("read_file"), function.WithDescription("读取文本文件。需要用户权限批准。")),
+		}, function.WithName("read_file"), function.WithDescription("读取文本文件；相对路径以当前工作区为基准。需要用户权限批准。")),
 		function.NewFunctionTool(func(ctx context.Context, in writeFileInput) (permissionToolResult, error) {
 			return env.writeFile(ctx, in)
-		}, function.WithName("write_file"), function.WithDescription("写入文本文件。需要用户权限批准。")),
+		}, function.WithName("write_file"), function.WithDescription("写入文本文件；相对路径以当前工作区为基准。需要用户权限批准。")),
 		function.NewFunctionTool(func(ctx context.Context, in commandInput) (permissionToolResult, error) {
 			return env.executeCommand(ctx, in)
-		}, function.WithName("execute_command"), function.WithDescription("在受控 cmd.exe 中执行命令；PowerShell 必须显式指定。")),
+		}, function.WithName("execute_command"), function.WithDescription("在受控 cmd.exe 中执行命令；相对 workdir 以当前工作区为基准，PowerShell 必须显式指定。")),
 		function.NewFunctionTool(func(ctx context.Context, in fetchURLInput) (permissionToolResult, error) {
 			return env.fetchURL(ctx, in)
 		}, function.WithName("fetch_url"), function.WithDescription("获取 HTTP 或 HTTPS URL。需要用户权限批准。")),
@@ -100,6 +102,15 @@ func (e permissionToolEnv) resolvePath(path string) (string, bool, error) {
 	if path == "" {
 		return "", false, errors.New("path 不能为空")
 	}
+	if filepath.VolumeName(path) != "" && !filepath.IsAbs(path) {
+		return "", false, errors.New("不支持驱动器相对路径，请使用完整绝对路径")
+	}
+	if !filepath.IsAbs(path) {
+		if strings.TrimSpace(e.workspace) == "" {
+			return "", false, errWorkspaceRequired
+		}
+		path = filepath.Join(e.workspace, path)
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", false, err
@@ -114,6 +125,13 @@ func (e permissionToolEnv) resolvePath(path string) (string, bool, error) {
 	}
 	workspace = canonicalPath(workspace)
 	return abs, !withinPath(abs, workspace), nil
+}
+
+func pathErrorCode(err error, fallback string) string {
+	if errors.Is(err, errWorkspaceRequired) {
+		return "workspace_required"
+	}
+	return fallback
 }
 
 // canonicalPath resolves existing symlinks and the nearest existing parent for
@@ -141,7 +159,7 @@ func canonicalPath(path string) string {
 func (e permissionToolEnv) listDirectory(ctx context.Context, in filePathInput) (permissionToolResult, error) {
 	path, outside, err := e.resolvePath(in.Path)
 	if err != nil {
-		return permissionToolResult{OK: false, Code: "invalid_path", Message: err.Error()}, nil
+		return permissionToolResult{OK: false, Code: pathErrorCode(err, "invalid_path"), Message: err.Error()}, nil
 	}
 	if result, ok := e.authorize(ctx, "list_directory", "list", path, path, outside); !ok {
 		return result, nil
@@ -165,7 +183,7 @@ func (e permissionToolEnv) listDirectory(ctx context.Context, in filePathInput) 
 func (e permissionToolEnv) readFile(ctx context.Context, in filePathInput) (permissionToolResult, error) {
 	path, outside, err := e.resolvePath(in.Path)
 	if err != nil {
-		return permissionToolResult{OK: false, Code: "invalid_path", Message: err.Error()}, nil
+		return permissionToolResult{OK: false, Code: pathErrorCode(err, "invalid_path"), Message: err.Error()}, nil
 	}
 	if result, ok := e.authorize(ctx, "read_file", "read", path, filepath.Dir(path), outside); !ok {
 		return result, nil
@@ -187,7 +205,7 @@ func (e permissionToolEnv) readFile(ctx context.Context, in filePathInput) (perm
 func (e permissionToolEnv) writeFile(ctx context.Context, in writeFileInput) (permissionToolResult, error) {
 	path, outside, err := e.resolvePath(in.Path)
 	if err != nil {
-		return permissionToolResult{OK: false, Code: "invalid_path", Message: err.Error()}, nil
+		return permissionToolResult{OK: false, Code: pathErrorCode(err, "invalid_path"), Message: err.Error()}, nil
 	}
 	if len(in.Content) > maxPermissionFileBytes {
 		return permissionToolResult{OK: false, Code: "file_too_large", Message: "写入内容超过 2 MiB 限制"}, nil
@@ -237,7 +255,7 @@ func (e permissionToolEnv) executeCommand(ctx context.Context, in commandInput) 
 	}
 	workdir, outside, err := e.resolvePath(workdir)
 	if err != nil {
-		return permissionToolResult{OK: false, Code: "invalid_workdir", Message: err.Error()}, nil
+		return permissionToolResult{OK: false, Code: pathErrorCode(err, "invalid_workdir"), Message: err.Error()}, nil
 	}
 	if result, ok := e.authorize(ctx, "execute_command", "execute", command, workdir, outside); !ok {
 		return result, nil

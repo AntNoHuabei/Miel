@@ -303,7 +303,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
 		}
 	}
-	instruction := instructionWithCurrentTime(time.Now())
+	instruction := instructionWithContext(time.Now(), workspacePath)
 	if !toolsEnabled {
 		instruction = plainChatInstruction + "\n当前本地时间:" + time.Now().Format("2006-01-02 15:04:05 -07:00")
 	}
@@ -520,8 +520,14 @@ func finalChatError(answer string, runErr error) error {
 	return errors.New("模型未返回有效内容")
 }
 
-func instructionWithCurrentTime(current time.Time) string {
-	return systemInstruction + "\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")
+func instructionWithContext(current time.Time, workspace string) string {
+	instruction := systemInstruction + "\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return instruction + "\n当前未选择工作区；相对文件路径和相对命令 workdir 不可用。"
+	}
+	return instruction + "\n当前工作区的完整绝对路径:" + workspace +
+		"\n文件工具的相对路径和命令的相对 workdir 均以该工作区为基准；操作工作区内容时优先使用相对路径。"
 }
 
 func chatAgentTools(sourceContext *todoToolSource, memoryTools []tool.Tool, args ...any) []tool.Tool {
