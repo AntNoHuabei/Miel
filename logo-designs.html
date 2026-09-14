@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>BlankMind Logo 设计草稿</title>
+<style>
+.container {
+  display: grid;
+  grid-template-columns: 220px 220px;
+  gap: 20px;
+  padding: 20px;
+  font-family: system-ui, sans-serif;
+  background: #f5f5f5;
+}
+.logo-card {
+  text-align: center;
+  border: 1px solid #e0e0e0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #fff;
+}
+canvas {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+}
+h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo-card">
+    <h3>方向1: 空白便签+灵感大脑</h3>
+    <canvas id="logo1" width="200" height="200"></canvas>
+  </div>
+  <div class="logo-card">
+    <h3>方向2: 本地Skill函数调用</h3>
+    <canvas id="logo2" width="200" height="200"></canvas>
+  </div>
+  <div class="logo-card">
+    <h3>方向3: BM负形字母设计</h3>
+    <canvas id="logo3" width="200" height="200"></canvas>
+  </div>
+  <div class="logo-card">
+    <h3>方向4: 托盘常驻设计</h3>
+    <canvas id="logo4" width="200" height="200"></canvas>
+  </div>
+</div>
+
+<script>
+// 方向1: 空白便签+灵感大脑
+const c1 = document.getElementById('logo1').getContext('2d');
+// 便签纸
+c1.fillStyle = '#f8f8f8';
+c1.fillRect(30, 30, 140, 120);
+c1.strokeStyle = '#666';
+c1.lineWidth = 2;
+c1.strokeRect(30, 30, 140, 120);
+// 右上角缺口
+c1.beginPath();
+c1.moveTo(150, 30);
+c1.lineTo(170, 50);
+c1.lineTo(170, 30);
+c1.closePath();
+c1.fillStyle = '#fff';
+c1.fill();
+c1.stroke();
+// 灯泡大脑（灵感）
+c1.beginPath();
+c1.arc(160, 45, 12, 0, Math.PI * 2);
+c1.fillStyle = '#58d68d';
+c1.fill();
+// 灯泡灯丝
+c1.beginPath();
+c1.moveTo(160, 40);
+c1.lineTo(155, 50);
+c1.moveTo(160, 40);
+c1.lineTo(165, 50);
+c1.strokeStyle = '#2c3e50';
+c1.lineWidth = 2;
+c1.stroke();
+
+// 方向2: 函数调用Skill模块
+const c2 = document.getElementById('logo2').getContext('2d');
+// 大脑轮廓 + 锁边框（本地安全）
+c2.beginPath();
+c2.rect(60, 40, 80, 100);
+c2.arc(100, 40, 20, Math.PI, 0);
+c2.strokeStyle = '#3498db';
+c2.lineWidth = 3;
+c2.stroke();
+// 大脑轮廓
+c2.beginPath();
+c2.arc(100, 90, 50, 0.6 * Math.PI, 2.4 * Math.PI);
+c2.lineTo(100, 135);
+c2.closePath();
+c2.strokeStyle = '#3498db';
+c2.lineWidth = 4;
+c2.stroke();
+// skill方块 + 连线
+let skills = [
+  {x:75,y:70}, {x:125,y:70}, {x:75,y:110}, {x:125,y:110}
+];
+c2.fillStyle = '#3498db';
+skills.forEach(s => {
+  c2.fillRect(s.x-8, s.y-8, 16, 16);
+  // 连线到中心大脑
+  c2.beginPath();
+  c2.moveTo(s.x, s.y);
+  c2.lineTo(100, 90);
+  c2.lineWidth = 2;
+  c2.stroke();
+});
+
+// 方向3: BM负形字母设计
+const c3 = document.getElementById('logo3').getContext('2d');
+// 蓝色背景圆角方形
+c3.beginPath();
+c3.roundRect(30, 30, 140, 140, 15);
+c3.fillStyle = '#3498db';
+c3.fill();
+// B 负形
+c3.beginPath();
+c3.moveTo(60, 60);
+c3.lineTo(60, 130);
+c3.quadraticCurveTo(90, 130, 90, 95);
+c3.quadraticCurveTo(90, 60, 60, 60);
+c3.closePath();
+c3.fillStyle = '#fff';
+c3.fill();
+// M 负形
+c3.beginPath();
+c3.moveTo(95, 60);
+c3.lineTo(110, 130);
+c3.lineTo(125, 85);
+c3.lineTo(140, 130);
+c3.lineTo(155, 60);
+c3.lineTo(140, 60);
+c3.lineTo(125, 100);
+c3.lineTo(110, 60);
+c3.closePath();
+c3.fillStyle = '#fff';
+c3.fill();
+
+// 方向4: 托盘常驻设计
+const c4 = document.getElementById('logo4').getContext('2d');
+// 托盘底座
+c4.fillStyle = '#e0e0e0';
+c4.fillRect(20, 150, 160, 30);
+c4.strokeStyle = '#ccc';
+c4.lineWidth = 1;
+c4.strokeRect(20, 150, 160, 30);
+// 大脑在托盘
+c4.beginPath();
+c4.arc(100, 90, 55, 0.6 * Math.PI, 2.4 * Math.PI);
+c4.lineTo(100, 145);
+c4.closePath();
+c4.fillStyle = '#5dade2';
+c4.fill();
+c4.strokeStyle = '#2e86c1';
+c4.lineWidth = 3;
+c4.stroke();
+</script>
+</body>
+</html>
