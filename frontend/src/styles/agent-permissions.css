@@ -46,20 +46,249 @@
 .bm-permission-option-title { font-size: 13px; font-weight: 600; }
 .bm-permission-option-note { color: var(--bm-text-secondary); font-size: 11px; line-height: 1.45; }
 
-.bm-permission-card {
-  margin: 8px 0;
-  padding: 12px;
-  border: 1px solid var(--bm-chat-border);
-  border-left: 3px solid #1677ff;
-  border-radius: 7px;
-  background: var(--bm-chat-surface);
+.bm-permission-modal {
+  --bm-approval-surface: #0b0c0a;
+  --bm-approval-surface-raised: #12130f;
+  --bm-approval-border: #34362f;
+  --bm-approval-border-strong: #55584d;
+  --bm-approval-text: #f0eee7;
+  --bm-approval-muted: #999c91;
+  --bm-approval-signal: #ffb800;
+  --bm-approval-font: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
-.bm-permission-card.risk-high { border-left-color: #d4380d; }
-.bm-permission-card.risk-medium { border-left-color: #d46b08; }
-.bm-permission-card-icon { color: #1677ff; font-size: 16px; margin-top: 2px; }
-.risk-high .bm-permission-card-icon { color: #d4380d; }
-.bm-permission-card-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-.bm-permission-card-operation { font-size: 12px; }
-.bm-permission-card-target { max-width: 100%; overflow: hidden; color: var(--bm-text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.bm-permission-card-actions { margin-top: 10px; }
+.bm-permission-modal .ant-modal-content,
+.bm-permission-modal .ant-modal-container {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--bm-approval-border-strong);
+  border-radius: 0;
+  color: var(--bm-approval-text);
+  background: var(--bm-approval-surface);
+  box-shadow: none;
+  font-family: var(--bm-approval-font);
+}
+
+.bm-permission-modal .ant-modal-header {
+  margin: 0;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--bm-approval-border);
+  border-radius: 0;
+  color: var(--bm-approval-text);
+  background: transparent;
+  font-family: var(--bm-approval-font);
+}
+
+.bm-permission-modal .ant-modal-title {
+  color: inherit;
+  font-family: inherit;
+}
+
+.bm-permission-dialog-heading {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.bm-permission-dialog-heading-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.25;
+}
+
+.bm-permission-dialog-heading-copy strong {
+  overflow-wrap: anywhere;
+  color: var(--bm-approval-text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.bm-permission-dialog-eyebrow {
+  color: var(--bm-approval-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.bm-permission-dialog-icon {
+  color: var(--bm-approval-signal);
+  font-size: 20px;
+}
+
+.bm-permission-dialog-risk {
+  padding: 3px 6px;
+  border: 1px solid var(--bm-approval-signal);
+  border-radius: 0;
+  color: var(--bm-approval-signal);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bm-permission-modal .ant-modal-body {
+  padding: 18px 20px 16px;
+}
+
+.bm-permission-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--bm-approval-text);
+  font-family: var(--bm-approval-font);
+}
+
+.bm-permission-dialog-details {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--bm-approval-border);
+}
+
+.bm-permission-dialog-details > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  min-width: 0;
+  border-bottom: 1px solid var(--bm-approval-border);
+}
+
+.bm-permission-dialog-details dt,
+.bm-permission-dialog-details dd {
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bm-permission-dialog-details dt {
+  border-right: 1px solid var(--bm-approval-border);
+  color: var(--bm-approval-muted);
+}
+
+.bm-permission-dialog-details dd {
+  color: var(--bm-approval-text);
+  font-weight: 600;
+}
+
+.bm-permission-dialog-details dd.is-outside-workspace {
+  color: var(--bm-approval-signal);
+  background: color-mix(in srgb, var(--bm-approval-signal) 8%, transparent);
+}
+
+.bm-permission-dialog-target {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.bm-permission-dialog-expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bm-approval-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-permission-modal .ant-modal-footer {
+  margin: 0;
+  padding: 0 20px 20px;
+}
+
+.bm-permission-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bm-permission-dialog-actions .ant-btn {
+  min-width: 76px;
+  height: 34px;
+  padding-inline: 13px;
+  border: 1px solid var(--bm-approval-border-strong);
+  border-radius: 0;
+  color: var(--bm-approval-text);
+  background: var(--bm-approval-surface-raised);
+  box-shadow: none;
+  font-family: var(--bm-approval-font);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bm-permission-dialog-actions .ant-btn:hover:not(:disabled),
+.bm-permission-dialog-actions .ant-btn:focus-visible:not(:disabled) {
+  border-color: var(--bm-approval-signal);
+  color: var(--bm-approval-signal);
+  background: var(--bm-approval-surface-raised);
+}
+
+.bm-permission-dialog-actions .ant-btn-primary,
+.bm-permission-dialog-actions .ant-btn-primary:hover:not(:disabled),
+.bm-permission-dialog-actions .ant-btn-primary:focus-visible:not(:disabled) {
+  border-color: var(--bm-approval-signal);
+  color: #0b0c0a;
+  background: var(--bm-approval-signal);
+}
+
+.bm-permission-dialog-actions .ant-btn:focus-visible {
+  outline: 1px solid var(--bm-approval-signal);
+  outline-offset: 2px;
+}
+
+.bm-permission-dialog-actions .ant-btn:disabled {
+  border-color: var(--bm-approval-border);
+  color: #6f7169;
+  background: var(--bm-approval-surface);
+}
+
+@media (max-width: 560px) {
+  .bm-permission-modal .ant-modal {
+    width: calc(100vw - 20px) !important;
+    max-width: 468px;
+  }
+
+  .bm-permission-dialog-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bm-permission-dialog-actions .ant-btn {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 380px) {
+  .bm-permission-dialog-heading {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .bm-permission-dialog-risk {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .bm-permission-modal .ant-modal-header,
+  .bm-permission-modal .ant-modal-body {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .bm-permission-modal .ant-modal-footer {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .bm-permission-dialog-actions {
+    grid-template-columns: 1fr;
+  }
+}

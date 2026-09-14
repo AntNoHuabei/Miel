@@ -4,18 +4,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { ConversationViewport } from './ConversationViewport'
 
 describe('ConversationViewport', () => {
-  it('keeps permission approval actionable in the message stream', async () => {
+  it('opens permission approval in a modal above existing messages', async () => {
     const resolve = vi.fn()
     render(
       <ConversationViewport
-        messages={[]}
+        messages={[{ id: 'message-1', role: 'assistant', content: '已有回复' }]}
         streaming=""
         sending={false}
         phase="idle"
         reasoning=""
         tools={[]}
         error={null}
-        pendingApproval={{ id: 'approval-1', sessionId: 'session-1', tool: 'create_document', operation: 'write', workspacePath: 'D:/code/BlankMind', target: 'report.md', riskLevel: 'medium', outsideWorkspace: false, scopeRoot: 'D:/code/BlankMind', expiresAt: '' }}
+        pendingApproval={{ id: 'approval-1', sessionId: 'session-1', tool: 'list_directory', operation: 'list', workspacePath: 'D:/code/BlankMind', target: 'C:/Users/lxl/Desktop', riskLevel: 'low', outsideWorkspace: true, scopeRoot: 'D:/code/BlankMind', expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() }}
         resolvingApproval={false}
         scrollRef={{ current: null }}
         quickPrompts={[]}
@@ -23,7 +23,19 @@ describe('ConversationViewport', () => {
         onResolveApproval={resolve}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: '仅这一次' }))
+    const approval = screen.getByLabelText('等待权限批准')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('已有回复')).toBeVisible()
+    expect(approval).toBeInTheDocument()
+    expect(screen.getByText('操作')).toBeInTheDocument()
+    expect(screen.getByText('范围')).toBeInTheDocument()
+    expect(screen.getByText('目标')).toBeInTheDocument()
+    expect(screen.getByText('工作区外')).toBeInTheDocument()
+    expect(screen.getByText('C:/Users/lxl/Desktop')).toBeInTheDocument()
+    expect(screen.getByText(/\d{2}:\d{2} 后自动拒绝/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /拒\s*绝/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '本会话允许' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '允许一次' }))
     expect(resolve).toHaveBeenCalledWith('once')
   })
 

@@ -1,6 +1,6 @@
 import '../../styles/agent-permissions.css'
 
-export { PermissionApprovalCard } from './PermissionApprovalCard'
+export { PermissionApprovalModal } from './PermissionApprovalModal'
 export { PermissionModeSelector } from './PermissionModeSelector'
 export { getPermissionToolLabel } from './permissionUtils'
 export type {

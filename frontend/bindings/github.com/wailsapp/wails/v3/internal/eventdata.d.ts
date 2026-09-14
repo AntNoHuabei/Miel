@@ -22,10 +22,10 @@ declare module "@wailsio/runtime" {
             "memory.changed": string;
             "memory.status": app$0.MemoryStatus;
             "models.changed": string;
-            "permission.cancelled": { [_ in string]?: any } | null;
-            "permission.changed": { [_ in string]?: any } | null;
-            "permission.expired": { [_ in string]?: any } | null;
-            "permission.requested": { [_ in string]?: any } | null;
+            "permission.cancelled": app$0.ApprovalRequest;
+            "permission.changed": app$0.PermissionState;
+            "permission.expired": app$0.ApprovalRequest;
+            "permission.requested": app$0.ApprovalRequest;
             "permission.resolved": { [_ in string]?: any } | null;
             "quickchat.show": string;
             "reminders.changed": string;

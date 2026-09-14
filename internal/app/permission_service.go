@@ -170,7 +170,7 @@ func (s *PermissionService) authorize(ctx context.Context, request ApprovalReque
 	request.ExpiresAt = time.Now().Add(5 * time.Minute)
 
 	mode := s.mode()
-	if mode == PermissionFull || (mode == PermissionAuto && !request.OutsideWorkspace) || (mode == PermissionAuto && request.Tool != "read_file" && request.Tool != "write_file" && request.Tool != "list_directory") {
+	if approvesAutomatically(mode, request) {
 		s.audit("permission.approved", request, "automatic")
 		return ApprovalOnce, nil
 	}

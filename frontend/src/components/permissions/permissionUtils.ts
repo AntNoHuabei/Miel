@@ -10,7 +10,7 @@ export const PERMISSION_LABELS: Record<PermissionMode, string> = {
 
 export const PERMISSION_NOTES: Record<PermissionMode, string> = {
   ask: '每次使用文件、命令或网络工具前询问',
-  auto: '工作区内和低风险工具自动执行，工作区外文件仍询问',
+  auto: '工作区内的文件和命令自动执行，工作区外及网络访问仍询问',
   full: '文件、命令和网络工具自动执行，保留审计记录',
 }
 
@@ -41,8 +41,11 @@ export function getPermissionToolLabel(tool: string) {
 }
 
 export function formatApprovalOperation(request: ApprovalRequest) {
-  const operation = OPERATION_LABELS[request.operation] ?? request.operation
-  return request.outsideWorkspace ? `${operation} · 工作区外` : operation
+  return OPERATION_LABELS[request.operation] ?? request.operation
+}
+
+export function formatApprovalScope(request: ApprovalRequest) {
+  return request.outsideWorkspace ? '工作区外' : '工作区内'
 }
 
 export function formatApprovalRisk(riskLevel: string) {

@@ -4,7 +4,7 @@ import { Button, Flex, Typography } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import type { AGUIMessageLite } from '../../../api'
 import type { ApprovalDecision, ApprovalRequest } from '../../../components/permissions'
-import { PermissionApprovalCard } from '../../../components/permissions'
+import { PermissionApprovalModal } from '../../../components/permissions'
 import type { AgentPhase, AgentToolCall } from '../model/agentRun'
 import type { AgentRunError } from '../model/chatError'
 import { AgentProcess, ChatRunErrorMessage, isPersistedTailError, renderMarkdown, SnapshotMessage } from './ConversationMessages'
@@ -64,7 +64,6 @@ export function ConversationViewport({
             </div>
           </section>
         )}
-        {pendingApproval && <PermissionApprovalCard request={pendingApproval} onResolve={onResolveApproval} resolving={resolvingApproval} />}
         {messages.map((message, index) => (
           <Fragment key={message.id || index}>
             {index === processBeforeIndex && <AgentProcess phase={phase} reasoning={reasoning} tools={tools} />}
@@ -74,6 +73,7 @@ export function ConversationViewport({
         {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} reasoning={reasoning} tools={tools} />}
         {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>BlankMind</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
         {error && !isPersistedTailError(messages, error) && <ChatRunErrorMessage error={error} />}
+        {pendingApproval && <PermissionApprovalModal request={pendingApproval} onResolve={onResolveApproval} resolving={resolvingApproval} />}
       </Flex>
     </div>
   )
