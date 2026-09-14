@@ -173,8 +173,8 @@ func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 		if spec.Type == ReasoningEffort && inLevels {
 			gc.ReasoningEffort = &eff
 		}
-	case "openai":
-		// 目录仅对 o 系列标记 effort;非 o 系不发(避免 400)
+	case "openai", "volcengine-plan":
+		// 仅对目录明确声明的档位透传，避免向不支持的模型发送参数。
 		if spec.Type == ReasoningEffort && inLevels {
 			gc.ReasoningEffort = &eff
 		}

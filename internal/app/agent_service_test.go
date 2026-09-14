@@ -503,7 +503,7 @@ func TestApplyReasoningOff(t *testing.T) {
 		{name: "glm", kind: "glm", modelName: "glm-4.7", want: boolPtr(false)},
 		{name: "minimax case insensitive", kind: "minimax", modelName: "MiniMax-M2", want: boolPtr(false)},
 		{name: "always cannot disable", kind: "kimi", modelName: "kimi-k2-thinking"},
-		{name: "volcengine always cannot disable", kind: "volcengine-plan", modelName: "glm-5.3", level: "off"},
+		{name: "volcengine effort uses default when disabled", kind: "volcengine-plan", modelName: "glm-5.3", level: "off"},
 		{name: "unsupported has no toggle", kind: "openai", modelName: "gpt-4o"},
 		{name: "openai effort has no toggle", kind: "openai", modelName: "o3-mini"},
 		{name: "custom uses provider default", kind: "custom", modelName: "unknown"},
@@ -545,7 +545,8 @@ func TestApplyReasoningOn(t *testing.T) {
 		{name: "openai effort", kind: "openai", modelName: "o3-mini", level: "medium", wantEffort: "medium"},
 		{name: "openrouter compatible effort", kind: "openrouter", modelName: "openai/gpt-5", level: "xhigh", wantEffort: "xhigh"},
 		{name: "herdsman compatible effort", kind: "herdsman", modelName: "local-model", level: "xhigh", wantToggle: boolPtr(true), wantEffort: "xhigh"},
-		{name: "volcengine always ignores effort", kind: "volcengine-plan", modelName: "glm-5.3", level: "high"},
+		{name: "volcengine effort", kind: "volcengine-plan", modelName: "glm-5.3", level: "high", wantEffort: "high"},
+		{name: "volcengine rejects unsupported local level", kind: "volcengine-plan", modelName: "glm-5.3", level: "xhigh"},
 	}
 
 	for _, tt := range tests {
@@ -684,6 +685,47 @@ func TestHerdsmanReasoningPayload(t *testing.T) {
 	}
 	if effort := body["reasoning_effort"]; effort != "xhigh" {
 		t.Fatalf("reasoning_effort = %#v, want xhigh", effort)
+	}
+}
+
+func TestVolcenginePlanReasoningPayload(t *testing.T) {
+	bodyCh := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		bodyCh <- payload
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"test","object":"chat.completion","created":1,"model":"glm-5.3","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := buildModel(Provider{
+		Name: "火山方舟 Agent Plan", Kind: "volcengine-plan", BaseURL: server.URL, Model: "glm-5.3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := model.NewRequest([]model.Message{model.NewUserMessage("test")})
+	applyReasoning(&request.GenerationConfig, "volcengine-plan", "glm-5.3", "high")
+	responses, err := client.GenerateContent(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for response := range responses {
+		if response.Error != nil {
+			t.Fatal(response.Error)
+		}
+	}
+
+	body := <-bodyCh
+	if effort := body["reasoning_effort"]; effort != "high" {
+		t.Fatalf("reasoning_effort = %#v, want high", effort)
 	}
 }
 

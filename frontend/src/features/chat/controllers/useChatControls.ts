@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App as AntApp } from 'antd'
-import type { CatalogProviderLite, DiscoveredModelLite, ModelOptionLite, ProviderLite, WorkspaceLite } from '../../../api'
+import type { CatalogProviderLite, DiscoveredModelLite, ModelOptionLite, ProviderLite, ReasoningSpecLite, WorkspaceLite } from '../../../api'
 import { settingsRepository } from '../../../shared/repositories'
 import { useWailsEvent } from '../../../shared/wails/events'
 
@@ -12,6 +12,27 @@ export function chatModelLabel(option: ModelOptionLite, discovered?: DiscoveredM
   return option.kind.toLowerCase() === 'openrouter' && discovered?.supportsTools === false
     ? `${label} (纯聊天)`
     : label
+}
+
+export function reasoningStepsFor(
+  spec: ReasoningSpecLite | undefined,
+  providerKind: string | undefined,
+) {
+  const kind = providerKind?.toLowerCase()
+  const specType = spec?.type ?? 'none'
+  const customGateway = kind === 'custom'
+  const herdsman = kind === 'herdsman'
+  const usesProviderDefault = kind === 'openrouter' || kind === 'volcengine-plan'
+  const canDisable = specType === 'toggle' || (specType === 'effort' && kind === 'deepseek')
+  if (specType === 'effort') {
+    const levels = (spec?.levels ?? []).filter((level) => LEVEL_LABEL[level])
+    if (herdsman) return ['', 'off', ...levels]
+    if (usesProviderDefault) return ['', ...levels]
+    return canDisable ? ['', ...levels] : levels
+  }
+  if (specType === 'toggle') return herdsman ? ['', 'off', 'on'] : ['', 'on']
+  if (customGateway) return ['', 'low', 'medium', 'high']
+  return []
 }
 
 export function useChatControls() {
@@ -50,19 +71,11 @@ export function useChatControls() {
   const customGateway = defaultProvider?.kind === 'custom'
   const herdsman = defaultProvider?.kind === 'herdsman'
   const openRouter = defaultProvider?.kind === 'openrouter'
-  const compatibleGateway = customGateway || herdsman || openRouter
-  const canDisableReasoning = specType === 'toggle' || (specType === 'effort' && defaultProvider?.kind === 'deepseek')
+  const volcenginePlan = defaultProvider?.kind === 'volcengine-plan'
+  const compatibleGateway = customGateway || herdsman || openRouter || volcenginePlan
   const reasoningSteps = useMemo(() => {
-    if (specType === 'effort') {
-      const levels = (reasoningSpec?.levels ?? []).filter((level) => LEVEL_LABEL[level])
-      if (herdsman) return ['', 'off', ...levels]
-      if (openRouter) return ['', ...levels]
-      return canDisableReasoning ? ['', ...levels] : levels
-    }
-    if (specType === 'toggle') return herdsman ? ['', 'off', 'on'] : ['', 'on']
-    if (customGateway) return ['', 'low', 'medium', 'high']
-    return []
-  }, [reasoningSpec, specType, customGateway, herdsman, openRouter, canDisableReasoning])
+    return reasoningStepsFor(reasoningSpec, defaultProvider?.kind)
+  }, [reasoningSpec, defaultProvider?.kind])
   const reasoningLocked = reasoningSteps.length <= 1
   const effectiveReasoning = reasoningSteps.includes(reasoning) ? reasoning : (reasoningSteps[0] ?? '')
   const reasoningIndex = Math.max(reasoningSteps.indexOf(effectiveReasoning), 0)

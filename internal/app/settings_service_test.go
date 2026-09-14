@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -191,15 +193,23 @@ func TestVolcenginePlanCatalogAndTemplate(t *testing.T) {
 	if provider.Models[0].ID != "ark-code-latest" {
 		t.Fatalf("default catalog model = %q, want ark-code-latest", provider.Models[0].ID)
 	}
+	wantLevels := []string{"low", "medium", "high"}
 	for _, model := range provider.Models {
+		if model.Reasoning.Type != ReasoningEffort || !reflect.DeepEqual(model.Reasoning.Levels, wantLevels) {
+			t.Fatalf("%s reasoning = %#v, want effort %#v", model.ID, model.Reasoning, wantLevels)
+		}
 		switch model.ID {
 		case "glm-5.3", "glm-latest":
-			if model.Reasoning.Type != ReasoningAlways || model.Multimodal {
+			if model.Multimodal || !strings.Contains(model.Reasoning.Note, "不可关闭") {
 				t.Fatalf("GLM-5.3 capabilities = %#v", model)
 			}
 		case "glm-5.3-flash":
-			if !model.Multimodal || model.Reasoning.Type != ReasoningNone {
+			if !model.Multimodal {
 				t.Fatalf("glm-5.3-flash capabilities = %#v", model)
+			}
+		case "kimi-k2.7-code":
+			if !strings.Contains(model.Reasoning.Note, "不支持推理摘要") {
+				t.Fatalf("kimi-k2.7-code capabilities = %#v", model)
 			}
 		}
 	}
