@@ -88,6 +88,9 @@ func TestArtifactServiceRangeAndTokenProtection(t *testing.T) {
 	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" {
 		t.Fatalf("range = %d %q", response.Code, response.Body.String())
 	}
+	if response.Header().Get("Content-Security-Policy") != "" || response.Header().Get("Referrer-Policy") != "" {
+		t.Fatalf("artifact resource unexpectedly restricted: %#v", response.Header())
+	}
 }
 
 func TestArtifactDeleteRestoreAndConversationUnlink(t *testing.T) {

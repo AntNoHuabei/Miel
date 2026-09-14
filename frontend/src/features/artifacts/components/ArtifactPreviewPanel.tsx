@@ -20,9 +20,8 @@ function languageFor(name: string) {
   return ({ ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx', go: 'go', py: 'python', html: 'markup', htm: 'markup', css: 'css', json: 'javascript' } as Record<string, string>)[ext] ?? 'plain'
 }
 
-function SafeHTML({ html }: { html: string }) {
-  const source = useMemo(() => `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; form-action 'none'; base-uri 'none'">${html}`, [html])
-  return <iframe title="HTML 产物预览" className="bm-artifact-html" sandbox="" srcDoc={source} referrerPolicy="no-referrer" />
+function HTMLPreview({ url }: { url: string }) {
+  return <iframe title="HTML 产物预览" className="bm-artifact-html" src={url} />
 }
 
 function PDFPreview({ url }: { url: string }) {
@@ -84,7 +83,7 @@ export function ArtifactPreviewPanel() {
     if (artifact.kind === 'video') return <video className="bm-artifact-video" controls preload="metadata" src={preview.url} />
     if (artifact.kind === 'pdf') return <PDFPreview url={preview.url} />
     if (artifact.kind === 'csv') return <CSVPreview text={preview.text} truncated={preview.truncated} />
-    if (artifact.kind === 'html' && mode === '预览') return <SafeHTML html={preview.text} />
+    if (artifact.kind === 'html' && mode === '预览') return <HTMLPreview url={preview.url} />
     if (artifact.kind === 'markdown' && mode === '预览') return <div className="bm-md bm-artifact-markdown">{renderMarkdown(preview.text)}</div>
     if (['code', 'html'].includes(artifact.kind)) return <CodePreview preview={preview} />
     if (artifact.kind === 'text' || artifact.kind === 'markdown') return <pre className="bm-artifact-text">{preview.text}</pre>

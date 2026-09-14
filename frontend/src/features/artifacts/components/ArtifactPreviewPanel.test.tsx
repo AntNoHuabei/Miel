@@ -13,14 +13,16 @@ const artifact = { id: 'a1', version: 0, name: 'page.html', mimeType: 'text/html
 describe('ArtifactPreviewPanel', () => {
   beforeEach(() => { preview.mockReset(); useArtifactPreviewStore.getState().close() })
 
-  it('renders HTML in an unscripted sandbox with an offline CSP', async () => {
+  it('loads the complete HTML resource without script or network restrictions', async () => {
     preview.mockResolvedValue({ artifact, url: '/artifact', text: '<script>window.bad=true</script><p>result</p>', truncated: false })
     useArtifactPreviewStore.getState().open(artifact)
     const { container } = render(<ArtifactPreviewPanel />)
     await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument())
     const frame = container.querySelector('iframe')!
-    expect(frame).toHaveAttribute('sandbox', '')
-    expect(frame.getAttribute('srcdoc')).toContain("default-src 'none'")
+    expect(frame).toHaveAttribute('src', '/artifact')
+    expect(frame).not.toHaveAttribute('sandbox')
+    expect(frame).not.toHaveAttribute('referrerpolicy')
+    expect(frame).not.toHaveAttribute('srcdoc')
   })
 
   it('reports the one megabyte text truncation', async () => {
