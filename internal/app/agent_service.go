@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -303,9 +304,9 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
 		}
 	}
-	instruction := instructionWithContext(time.Now(), workspacePath)
+	instruction := instructionWithContext(workspacePath)
 	if !toolsEnabled {
-		instruction = plainChatInstruction + "\n当前本地时间:" + time.Now().Format("2006-01-02 15:04:05 -07:00")
+		instruction = plainChatInstruction
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(m),
@@ -354,7 +355,14 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		aguirunner.WithToolCallDeltaStreamingEnabled(true),
 		aguirunner.WithTranslateCallbacks(callbacks),
 		aguirunner.WithRunOptionResolver(func(context.Context, *adapter.RunAgentInput) ([]agentcore.RunOption, error) {
-			return []agentcore.RunOption{agentcore.WithExecutionTraceEnabled(true)}, nil
+			runOpts := []agentcore.RunOption{
+				agentcore.WithExecutionTraceEnabled(true),
+				agentcore.WithLateContextMessages(lateContextMessages(time.Now())),
+			}
+			if fields := modelRequestCacheFields(p, convID); len(fields) > 0 {
+				runOpts = append(runOpts, agentcore.WithModelRequestExtraFields(fields))
+			}
+			return runOpts, nil
 		}),
 	)
 
@@ -520,14 +528,51 @@ func finalChatError(answer string, runErr error) error {
 	return errors.New("模型未返回有效内容")
 }
 
-func instructionWithContext(current time.Time, workspace string) string {
-	instruction := systemInstruction + "\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")
+func instructionWithContext(workspace string) string {
+	instruction := systemInstruction
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
 		return instruction + "\n当前未选择工作区；相对文件路径和相对命令 workdir 不可用。"
 	}
 	return instruction + "\n当前工作区的完整绝对路径:" + workspace +
 		"\n文件工具的相对路径和命令的相对 workdir 均以该工作区为基准；操作工作区内容时优先使用相对路径。"
+}
+
+func lateContextMessages(current time.Time) []model.Message {
+	return []model.Message{
+		model.NewUserMessage("[运行上下文]\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")),
+	}
+}
+
+func modelRequestCacheFields(provider Provider, conversationID int64) map[string]any {
+	kind := strings.ToLower(strings.TrimSpace(provider.Kind))
+	switch kind {
+	case "herdsman":
+		return map[string]any{
+			"cache_prompt": true,
+			"id_slot":      stableConversationSlot(provider.ID, conversationID),
+		}
+	case "openai":
+		return map[string]any{
+			"prompt_cache_key": stableConversationCacheKey(provider.ID, conversationID),
+		}
+	default:
+		return nil
+	}
+}
+
+func stableConversationCacheKey(providerID, conversationID int64) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("blankmind-chat-cache-v1:%d:%d", providerID, conversationID)))
+	return fmt.Sprintf("blankmind:v1:%x", digest[:16])
+}
+
+func stableConversationSlot(providerID, conversationID int64) int64 {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("blankmind-chat-slot-v1:%d:%d", providerID, conversationID)))
+	slot := int64(uint32(digest[0])<<24|uint32(digest[1])<<16|uint32(digest[2])<<8|uint32(digest[3])) & 0x7fffffff
+	if slot == 0 {
+		return 1
+	}
+	return slot
 }
 
 func chatAgentTools(sourceContext *todoToolSource, memoryTools []tool.Tool, args ...any) []tool.Tool {

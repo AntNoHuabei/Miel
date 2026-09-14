@@ -15,6 +15,7 @@ import (
 
 	agentcore "trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	agentevent "trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -60,11 +61,9 @@ func TestBuildChatMetricsWithoutProviderUsageOnlyKeepsTiming(t *testing.T) {
 }
 
 func TestInstructionWithContextDescribesWorkspacePathRules(t *testing.T) {
-	current := time.Date(2026, 9, 14, 12, 30, 0, 0, time.FixedZone("CST", 8*60*60))
 	workspace := filepath.Clean(t.TempDir())
-	instruction := instructionWithContext(current, workspace)
+	instruction := instructionWithContext(workspace)
 	for _, expected := range []string{
-		"当前本地时间:2026-09-14 12:30:00 +08:00",
 		"当前工作区的完整绝对路径:" + workspace,
 		"相对路径",
 		"相对 workdir",
@@ -73,10 +72,27 @@ func TestInstructionWithContextDescribesWorkspacePathRules(t *testing.T) {
 			t.Errorf("instruction does not contain %q: %s", expected, instruction)
 		}
 	}
+	if strings.Contains(instruction, "当前本地时间") {
+		t.Fatalf("stable instruction contains dynamic time: %q", instruction)
+	}
+	if instruction != instructionWithContext(workspace) {
+		t.Fatal("instruction changed for the same workspace")
+	}
 
-	withoutWorkspace := instructionWithContext(current, "")
+	withoutWorkspace := instructionWithContext("")
 	if !strings.Contains(withoutWorkspace, "当前未选择工作区") || !strings.Contains(withoutWorkspace, "相对文件路径") {
 		t.Fatalf("no-workspace instruction = %q", withoutWorkspace)
+	}
+}
+
+func TestLateContextMessagesContainCurrentLocalTime(t *testing.T) {
+	current := time.Date(2026, 9, 14, 12, 30, 0, 0, time.FixedZone("CST", 8*60*60))
+	messages := lateContextMessages(current)
+	if len(messages) != 1 {
+		t.Fatalf("late context messages = %d, want 1", len(messages))
+	}
+	if messages[0].Role != model.RoleUser || messages[0].Content != "[运行上下文]\n当前本地时间:2026-09-14 12:30:00 +08:00" {
+		t.Fatalf("late context message = %#v", messages[0])
 	}
 }
 
@@ -91,13 +107,13 @@ func TestInstructionDoesNotExposeUnregisteredWorkspaceRequest(t *testing.T) {
 	if validated != "" {
 		t.Fatalf("unregistered workspace validated as %q", validated)
 	}
-	instruction := instructionWithContext(time.Now(), validated)
+	instruction := instructionWithContext(validated)
 	if strings.Contains(instruction, unregistered) {
 		t.Fatalf("instruction exposed unregistered request path: %q", instruction)
 	}
 
 	validated = settings.agentWorkspacePath(registered)
-	if validated == "" || !strings.Contains(instructionWithContext(time.Now(), validated), validated) {
+	if validated == "" || !strings.Contains(instructionWithContext(validated), validated) {
 		t.Fatalf("registered workspace was not included: %q", validated)
 	}
 }
@@ -187,7 +203,7 @@ func TestChatAgentRequestUsesCompactSkillSurface(t *testing.T) {
 	capture := &requestCaptureModel{}
 	opts := []llmagent.Option{
 		llmagent.WithModel(capture),
-		llmagent.WithInstruction(instructionWithContext(time.Now(), "")),
+		llmagent.WithInstruction(instructionWithContext("")),
 		llmagent.WithTools(chatAgentTools(nil, nil)),
 		llmagent.WithMaxToolIterations(8),
 	}
@@ -225,6 +241,109 @@ func TestChatAgentRequestUsesCompactSkillSurface(t *testing.T) {
 	}
 	if len(encoded) >= 20000 {
 		t.Fatalf("compact agent request metadata is unexpectedly large: %d bytes", len(encoded))
+	}
+}
+
+func TestModelRequestCacheFields(t *testing.T) {
+	herdsman := Provider{ID: 11, Kind: " Herdsman "}
+	first := modelRequestCacheFields(herdsman, 42)
+	second := modelRequestCacheFields(herdsman, 42)
+	otherConversation := modelRequestCacheFields(herdsman, 43)
+	if first["cache_prompt"] != true {
+		t.Fatalf("Herdsman cache_prompt = %#v", first["cache_prompt"])
+	}
+	firstSlot, ok := first["id_slot"].(int64)
+	if !ok || firstSlot <= 0 || firstSlot > 0x7fffffff {
+		t.Fatalf("Herdsman id_slot = %#v", first["id_slot"])
+	}
+	if second["id_slot"] != first["id_slot"] {
+		t.Fatalf("same conversation slots differ: %#v / %#v", first, second)
+	}
+	if otherConversation["id_slot"] == first["id_slot"] {
+		t.Fatalf("different conversation slots match: %#v / %#v", first, otherConversation)
+	}
+
+	openAI := modelRequestCacheFields(Provider{ID: 9, Kind: "openai"}, 42)
+	openAIKey, ok := openAI["prompt_cache_key"].(string)
+	if !ok || !strings.HasPrefix(openAIKey, "blankmind:v1:") {
+		t.Fatalf("OpenAI prompt_cache_key = %#v", openAI["prompt_cache_key"])
+	}
+	if strings.Contains(openAIKey, ":9:42") {
+		t.Fatalf("OpenAI prompt_cache_key exposes raw IDs: %q", openAIKey)
+	}
+	if modelRequestCacheFields(Provider{ID: 9, Kind: "openai"}, 43)["prompt_cache_key"] == openAIKey {
+		t.Fatal("different OpenAI conversations use the same cache key")
+	}
+
+	for _, kind := range []string{"custom", "openrouter", "deepseek", ""} {
+		if fields := modelRequestCacheFields(Provider{Kind: kind}, 42); len(fields) != 0 {
+			t.Errorf("provider %q received cache fields: %#v", kind, fields)
+		}
+	}
+}
+
+func TestRunContextPreservesStablePrefixAndAddsCacheFields(t *testing.T) {
+	capture := &requestCaptureModel{}
+	agent := llmagent.New("test",
+		llmagent.WithModel(capture),
+		llmagent.WithInstruction(instructionWithContext("C:\\workspace")),
+	)
+	sess := &session.Session{Events: []agentevent.Event{
+		requestHistoryEvent("user", model.NewUserMessage("previous question")),
+		requestHistoryEvent("test", model.NewAssistantMessage("previous answer")),
+	}}
+	current := time.Date(2026, 9, 14, 12, 30, 0, 0, time.FixedZone("CST", 8*60*60))
+	fields := modelRequestCacheFields(Provider{ID: 11, Kind: "herdsman"}, 42)
+	runOptions := agentcore.RunOptions{}
+	agentcore.WithLateContextMessages(lateContextMessages(current))(&runOptions)
+	agentcore.WithModelRequestExtraFields(fields)(&runOptions)
+	invocation := agentcore.NewInvocation(
+		agentcore.WithInvocationMessage(model.NewUserMessage("current question")),
+		agentcore.WithInvocationSession(sess),
+		agentcore.WithInvocationRunOptions(runOptions),
+	)
+	events, err := agent.Run(context.Background(), invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event != nil && event.RequiresCompletion {
+			key := agentcore.GetAppendEventNoticeKey(event.ID)
+			_ = invocation.AddNoticeChannel(context.Background(), key)
+			_ = invocation.NotifyCompletion(context.Background(), key)
+		}
+	}
+	if capture.request == nil {
+		t.Fatal("model request was not captured")
+	}
+	messages := capture.request.Messages
+	want := []model.Message{
+		model.NewSystemMessage(instructionWithContext("C:\\workspace")),
+		model.NewUserMessage("previous question"),
+		model.NewAssistantMessage("previous answer"),
+		lateContextMessages(current)[0],
+		model.NewUserMessage("current question"),
+	}
+	if len(messages) != len(want) {
+		t.Fatalf("request messages = %d, want %d: %#v", len(messages), len(want), messages)
+	}
+	for i := range want {
+		if messages[i].Role != want[i].Role || messages[i].Content != want[i].Content {
+			t.Errorf("message[%d] = %#v, want %#v", i, messages[i], want[i])
+		}
+	}
+	if capture.request.ExtraFields["cache_prompt"] != true || capture.request.ExtraFields["id_slot"] != fields["id_slot"] {
+		t.Fatalf("request cache fields = %#v, want %#v", capture.request.ExtraFields, fields)
+	}
+}
+
+func requestHistoryEvent(author string, message model.Message) agentevent.Event {
+	return agentevent.Event{
+		Author: author,
+		Response: &model.Response{
+			Done:    true,
+			Choices: []model.Choice{{Index: 0, Message: message}},
+		},
 	}
 }
 
@@ -336,7 +455,7 @@ func TestHerdsmanCompactSkillRequestLive(t *testing.T) {
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(client),
-		llmagent.WithInstruction(instructionWithContext(time.Now(), "")),
+		llmagent.WithInstruction(instructionWithContext("")),
 		llmagent.WithTools(chatAgentTools(&todoToolSource{input: todoSourceInput{
 			Kind: "conversation", TextContent: "创建 skill-live-test 待办",
 		}}, nil)),
