@@ -111,7 +111,7 @@ export default function ChatView() {
             streaming={runtime.run.streaming}
             sending={runtime.sending}
             phase={runtime.run.phase}
-            reasoning={runtime.run.reasoning}
+            process={runtime.run.process}
             tools={runtime.run.tools}
             error={runtime.run.error}
             pendingApproval={permissions.pendingApproval}

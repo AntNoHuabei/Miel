@@ -82,7 +82,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     })
-  }, [messages, run.phase, run.reasoning, run.streaming, run.tools])
+  }, [messages, run.phase, run.process, run.streaming, run.tools])
 
   const accepts = useCallback((payload: { conversationId: number; requestId?: string }) => {
     if (!sendingRef.current) return false

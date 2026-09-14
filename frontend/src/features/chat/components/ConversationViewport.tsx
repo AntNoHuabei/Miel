@@ -5,7 +5,7 @@ import { ArrowRightOutlined } from '@ant-design/icons'
 import type { AGUIMessageLite } from '../../../api'
 import type { ApprovalDecision, ApprovalRequest } from '../../../components/permissions'
 import { PermissionApprovalModal } from '../../../components/permissions'
-import type { AgentPhase, AgentToolCall } from '../model/agentRun'
+import type { AgentPhase, AgentProcessStep, AgentToolCall } from '../model/agentRun'
 import type { AgentRunError } from '../model/chatError'
 import { AgentProcess, ChatRunErrorMessage, isPersistedTailError, renderMarkdown, SnapshotMessage } from './ConversationMessages'
 
@@ -16,7 +16,7 @@ interface ConversationViewportProps {
   streaming: string
   sending: boolean
   phase: AgentPhase
-  reasoning: string
+  process: AgentProcessStep[]
   tools: AgentToolCall[]
   error: AgentRunError | null
   pendingApproval: ApprovalRequest | null
@@ -32,7 +32,7 @@ export function ConversationViewport({
   streaming,
   sending,
   phase,
-  reasoning,
+  process,
   tools,
   error,
   pendingApproval,
@@ -42,7 +42,7 @@ export function ConversationViewport({
   onQuickPrompt,
   onResolveApproval,
 }: ConversationViewportProps) {
-  const showProcess = sending || reasoning.length > 0 || tools.length > 0
+  const showProcess = sending || process.length > 0 || tools.length > 0
   const processBeforeIndex = showProcess && messages[messages.length - 1]?.role === 'assistant' ? messages.length - 1 : -1
   const toolNames = useMemo(() => {
     const names = new Map<string, string>()
@@ -66,11 +66,11 @@ export function ConversationViewport({
         )}
         {messages.map((message, index) => (
           <Fragment key={message.id || index}>
-            {index === processBeforeIndex && <AgentProcess phase={phase} reasoning={reasoning} tools={tools} />}
+            {index === processBeforeIndex && <AgentProcess phase={phase} process={process} tools={tools} />}
             <SnapshotMessage message={message} toolName={message.toolCallId ? toolNames.get(message.toolCallId) : undefined} />
           </Fragment>
         ))}
-        {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} reasoning={reasoning} tools={tools} />}
+        {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} process={process} tools={tools} />}
         {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
         {error && !isPersistedTailError(messages, error) && <ChatRunErrorMessage error={error} />}
         {pendingApproval && <PermissionApprovalModal request={pendingApproval} onResolve={onResolveApproval} resolving={resolvingApproval} />}

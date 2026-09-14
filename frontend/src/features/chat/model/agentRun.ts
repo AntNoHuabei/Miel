@@ -11,8 +11,13 @@ export interface AgentToolCall {
   status: 'preparing' | 'running' | 'done'
 }
 
+export type AgentProcessStep =
+  | { type: 'reasoning'; id: string; content: string; status: 'thinking' | 'done' }
+  | { type: 'tool'; id: string }
+
 export interface AgentProtocolEvent {
   type: string
+  messageId?: string
   delta?: string
   content?: string
   message?: string
@@ -34,7 +39,7 @@ export interface AgentRunState {
   targetConversationId: number
   phase: AgentPhase
   streaming: string
-  reasoning: string
+  process: AgentProcessStep[]
   tools: AgentToolCall[]
   inputSaved: boolean
   inputSavedConversationId: number
@@ -56,7 +61,7 @@ export const initialAgentRunState: AgentRunState = {
   targetConversationId: 0,
   phase: 'idle',
   streaming: '',
-  reasoning: '',
+  process: [],
   tools: [],
   inputSaved: false,
   inputSavedConversationId: 0,
@@ -71,6 +76,24 @@ function accepts(state: AgentRunState, payload: AgentEnvelope) {
 
 function bindConversation(state: AgentRunState, id: number) {
   return state.targetConversationId === 0 && id > 0 ? id : state.targetConversationId
+}
+
+function closeReasoning(process: AgentProcessStep[], messageId?: string): AgentProcessStep[] {
+  return process.map((step) => step.type === 'reasoning' && (!messageId || step.id === messageId)
+    ? { ...step, status: 'done' }
+    : step)
+}
+
+function updateReasoning(state: AgentRunState, event: AgentProtocolEvent): AgentProcessStep[] {
+  const active = state.phase === 'thinking'
+    ? [...state.process].reverse().find((step) => step.type === 'reasoning' && step.status === 'thinking')
+    : undefined
+  const id = event.messageId ?? active?.id ?? `reasoning-${state.process.length + 1}`
+  const existing = state.process.some((step) => step.type === 'reasoning' && step.id === id)
+  if (!existing) return [...state.process, { type: 'reasoning', id, content: event.delta ?? '', status: 'thinking' }]
+  return state.process.map((step) => step.type === 'reasoning' && step.id === id
+    ? { ...step, content: step.content + (event.delta ?? '') }
+    : step)
 }
 
 export function agentRunReducer(state: AgentRunState, action: AgentRunAction): AgentRunState {
@@ -91,6 +114,7 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
         ...state,
         targetConversationId: bindConversation(state, action.payload.conversationId),
         phase: 'responding',
+        process: closeReasoning(state.process),
         streaming: state.streaming + (action.payload.delta ?? ''),
       }
     }
@@ -109,20 +133,26 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
         conversationId: action.conversationId || state.conversationId,
         targetConversationId: action.conversationId || state.targetConversationId,
         phase: 'done',
+        process: closeReasoning(state.process),
         tools: state.tools.map((tool) => ({ ...tool, status: 'done' })),
       }
     case 'fail':
-      return { ...state, phase: 'error', error: state.error ?? normalizeAgentRunError(action.error) }
+      return { ...state, phase: 'error', process: closeReasoning(state.process), error: state.error ?? normalizeAgentRunError(action.error) }
     case 'event': {
       if (!action.payload.event || !accepts(state, action.payload)) return state
       const targetConversationId = bindConversation(state, action.payload.conversationId)
       const event = action.payload.event
       if (event.type === 'RUN_STARTED') return { ...state, targetConversationId, phase: 'waiting' }
       if (['REASONING_START', 'REASONING_MESSAGE_START', 'THINKING_START', 'THINKING_TEXT_MESSAGE_START'].includes(event.type)) {
-        return { ...state, targetConversationId, phase: 'thinking' }
+        return { ...state, targetConversationId, phase: 'thinking', process: updateReasoning(state, event) }
       }
       if (['REASONING_MESSAGE_CONTENT', 'REASONING_MESSAGE_CHUNK', 'THINKING_TEXT_MESSAGE_CONTENT'].includes(event.type)) {
-        return { ...state, targetConversationId, phase: 'thinking', reasoning: state.reasoning + (event.delta ?? '') }
+        return { ...state, targetConversationId, phase: 'thinking', process: updateReasoning(state, event) }
+      }
+      if (['REASONING_END', 'REASONING_MESSAGE_END', 'THINKING_END', 'THINKING_TEXT_MESSAGE_END'].includes(event.type)) {
+        const process = closeReasoning(state.process, event.messageId)
+        const thinking = process.some((step) => step.type === 'reasoning' && step.status === 'thinking')
+        return { ...state, targetConversationId, process, phase: state.phase === 'thinking' && !thinking ? 'waiting' : state.phase }
       }
       if (event.type === 'TOOL_CALL_START') {
         const id = event.toolCallId ?? `tool-${state.tools.length + 1}`
@@ -131,6 +161,7 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
           ...state,
           targetConversationId,
           phase: 'tool',
+          process: [...closeReasoning(state.process), { type: 'tool', id }],
           tools: [...state.tools, { id, name: event.toolCallName ?? 'unknown_tool', args: '', result: '', status: 'preparing' }],
         }
       }
@@ -158,15 +189,16 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
         }
       }
       if (event.type === 'TEXT_MESSAGE_START' || event.type === 'TEXT_MESSAGE_CONTENT') {
-        return { ...state, targetConversationId, phase: 'responding' }
+        return { ...state, targetConversationId, phase: 'responding', process: closeReasoning(state.process) }
       }
       if (event.type === 'RUN_FINISHED') {
-        return { ...state, targetConversationId, phase: 'done', tools: state.tools.map((tool) => ({ ...tool, status: 'done' })) }
+        return { ...state, targetConversationId, phase: 'done', process: closeReasoning(state.process), tools: state.tools.map((tool) => ({ ...tool, status: 'done' })) }
       }
       if (event.type === 'RUN_ERROR') return {
         ...state,
         targetConversationId,
         phase: 'error',
+        process: closeReasoning(state.process),
         error: normalizeAgentRunError({ code: event.code, message: event.message }),
       }
       return state

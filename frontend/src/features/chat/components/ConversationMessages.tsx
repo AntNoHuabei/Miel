@@ -10,7 +10,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { AGUIMessageLite } from '../../../api'
-import type { AgentPhase, AgentToolCall } from '../model/agentRun'
+import type { AgentPhase, AgentProcessStep, AgentToolCall } from '../model/agentRun'
 import type { AgentRunError } from '../model/chatError'
 import { friendlyChatError, normalizeAgentRunError } from '../model/chatError'
 import { ChatAttachmentStrip } from '../../../components/ChatAttachments'
@@ -139,7 +139,7 @@ export function SnapshotMessage({ message, toolName }: { message: AGUIMessageLit
   )
 }
 
-export function AgentProcess({ phase, reasoning, tools }: { phase: AgentPhase; reasoning: string; tools: AgentToolCall[] }) {
+export function AgentProcess({ phase, process, tools }: { phase: AgentPhase; process: AgentProcessStep[]; tools: AgentToolCall[] }) {
   const active = !['done', 'error', 'idle'].includes(phase)
   const label = phase === 'thinking' ? '正在思考' : phase === 'tool' ? '正在使用工具' : phase === 'responding' ? '正在组织回复' : phase === 'done' ? '处理完成' : phase === 'error' ? '处理失败' : '正在等待模型响应'
   return (
@@ -148,8 +148,12 @@ export function AgentProcess({ phase, reasoning, tools }: { phase: AgentPhase; r
         {active ? <LoadingOutlined spin /> : phase === 'error' ? <WarningOutlined /> : <CheckCircleOutlined />}
         <Text type="secondary">{label}</Text>
       </Flex>
-      {reasoning && <details className="bm-agent-detail" open={phase === 'thinking'}><summary><BulbOutlined /><span>思考过程</span></summary><div className="bm-agent-reasoning">{reasoning}</div></details>}
-      {tools.map((tool) => <details className="bm-agent-detail" key={tool.id}><summary>{tool.status === 'done' ? <CheckCircleOutlined /> : <ToolOutlined />}<span>{getToolLabel(tool.name)}</span><Text type="secondary" className="bm-tool-status">{tool.status === 'preparing' ? '准备中' : tool.status === 'running' ? '执行中' : '已完成'}</Text></summary><div className="bm-tool-detail"><code>{tool.name}</code>{tool.args && <pre>{tool.args}</pre>}{tool.result && <pre>{tool.result}</pre>}</div></details>)}
+      {process.map((step) => {
+        if (step.type === 'reasoning') return step.content && <details className="bm-agent-detail" key={`reasoning-${step.id}`} open={step.status === 'thinking' && phase === 'thinking'}><summary><BulbOutlined /><span>思考过程</span></summary><div className="bm-agent-reasoning">{step.content}</div></details>
+        const tool = tools.find((item) => item.id === step.id)
+        if (!tool) return null
+        return <details className="bm-agent-detail" key={`tool-${tool.id}`}><summary>{tool.status === 'done' ? <CheckCircleOutlined /> : <ToolOutlined />}<span>{getToolLabel(tool.name)}</span><Text type="secondary" className="bm-tool-status">{tool.status === 'preparing' ? '准备中' : tool.status === 'running' ? '执行中' : '已完成'}</Text></summary><div className="bm-tool-detail"><code>{tool.name}</code>{tool.args && <pre>{tool.args}</pre>}{tool.result && <pre>{tool.result}</pre>}</div></details>
+      })}
     </div>
   )
 }

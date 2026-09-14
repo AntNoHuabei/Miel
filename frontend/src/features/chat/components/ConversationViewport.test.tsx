@@ -4,6 +4,39 @@ import { describe, expect, it, vi } from 'vitest'
 import { ConversationViewport } from './ConversationViewport'
 
 describe('ConversationViewport', () => {
+  it('renders separate reasoning blocks in tool execution order and only opens active reasoning', async () => {
+    const { container } = render(
+      <ConversationViewport
+        messages={[{ id: 'user-1', role: 'user', content: 'request' }]}
+        streaming=""
+        sending
+        phase="thinking"
+        process={[
+          { type: 'reasoning', id: 'a', content: 'first thought', status: 'done' },
+          { type: 'tool', id: 't1' },
+          { type: 'reasoning', id: 'b', content: 'second thought', status: 'thinking' },
+        ]}
+        tools={[{ id: 't1', name: 'list_todos', args: '{}', result: 'ok', status: 'done' }]}
+        error={null}
+        pendingApproval={null}
+        resolvingApproval={false}
+        scrollRef={{ current: null }}
+        quickPrompts={[]}
+        onQuickPrompt={vi.fn()}
+        onResolveApproval={vi.fn()}
+      />,
+    )
+    const details = container.querySelectorAll<HTMLDetailsElement>('.bm-agent-detail')
+    expect(details).toHaveLength(3)
+    expect(details[0]).toHaveTextContent('first thought')
+    expect(details[1]).toHaveTextContent('读取待办')
+    expect(details[2]).toHaveTextContent('second thought')
+    expect(details[0].open).toBe(false)
+    expect(details[2].open).toBe(true)
+    await userEvent.click(details[0].querySelector('summary')!)
+    expect(details[0].open).toBe(true)
+  })
+
   it('opens permission approval in a modal above existing messages', async () => {
     const resolve = vi.fn()
     render(
@@ -12,7 +45,7 @@ describe('ConversationViewport', () => {
         streaming=""
         sending={false}
         phase="idle"
-        reasoning=""
+        process={[]}
         tools={[]}
         error={null}
         pendingApproval={{ id: 'approval-1', sessionId: 'session-1', tool: 'list_directory', operation: 'list', workspacePath: 'D:/code/BlankMind', target: 'C:/Users/lxl/Desktop', riskLevel: 'low', outsideWorkspace: true, scopeRoot: 'D:/code/BlankMind', expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() }}
@@ -46,7 +79,7 @@ describe('ConversationViewport', () => {
         streaming=""
         sending={false}
         phase="error"
-        reasoning=""
+        process={[]}
         tools={[]}
         error={{ code: '429', message: 'raw provider rate limit response' }}
         pendingApproval={null}
@@ -76,7 +109,7 @@ describe('ConversationViewport', () => {
         streaming=""
         sending={false}
         phase="idle"
-        reasoning=""
+        process={[]}
         tools={[]}
         error={null}
         pendingApproval={null}
