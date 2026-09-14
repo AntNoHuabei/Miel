@@ -29,6 +29,23 @@ describe('agentRunReducer', () => {
     state = agentRunReducer(state, { type: 'complete', conversationId: 9 })
     expect(state.phase).toBe('done')
     state = agentRunReducer(state, { type: 'fail', error: 'network' })
-    expect(state).toMatchObject({ phase: 'error', error: 'network' })
+    expect(state).toMatchObject({ phase: 'error', error: { code: 'unknown_error', message: 'network' } })
+  })
+
+  it('preserves an upstream RUN_ERROR when the request promise also rejects', () => {
+    let state = started()
+    state = agentRunReducer(state, {
+      type: 'event',
+      payload: {
+        requestId: 'r1',
+        conversationId: 9,
+        event: { type: 'RUN_ERROR', message: '403 model is only available on agentic harnesses' },
+      },
+    })
+    state = agentRunReducer(state, { type: 'fail', error: '模型未返回有效内容' })
+    expect(state).toMatchObject({
+      phase: 'error',
+      error: { code: '403', message: '403 model is only available on agentic harnesses' },
+    })
   })
 })

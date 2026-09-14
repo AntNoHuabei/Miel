@@ -107,6 +107,16 @@ CREATE TABLE IF NOT EXISTS messages (
 	created_at      INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS chat_run_errors (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	conversation_id INTEGER NOT NULL,
+	user_message_id INTEGER NOT NULL DEFAULT 0,
+	request_id      TEXT NOT NULL DEFAULT '',
+	code            TEXT NOT NULL DEFAULT '',
+	message         TEXT NOT NULL DEFAULT '',
+	created_at      INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS message_attachments (
 	id             TEXT PRIMARY KEY,
 	message_id     INTEGER NOT NULL,
@@ -173,11 +183,36 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_message_attachments_message_id ON message_attachments(message_id)"); err != nil {
 		return fmt.Errorf("index message attachments: %w", err)
 	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_chat_run_errors_conversation_id ON chat_run_errors(conversation_id)"); err != nil {
+		return fmt.Errorf("index chat run errors conversation: %w", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_chat_run_errors_user_message_id ON chat_run_errors(user_message_id)"); err != nil {
+		return fmt.Errorf("index chat run errors message: %w", err)
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin provider migration: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	// Agent Plan 早期开发版本使用了 volcengine-coding 和 /api/coding/v3。
+	// 将已有配置升级到正式目录键，保留用户名称、密钥、当前模型及模型集合。
+	if _, err := tx.Exec(`
+		UPDATE providers
+		SET kind = 'volcengine-plan'
+		WHERE lower(trim(kind)) = 'volcengine-coding'`); err != nil {
+		return fmt.Errorf("normalize volcengine plan kind: %w", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE providers
+		SET base_url = 'https://ark.cn-beijing.volces.com/api/plan/v3'
+		WHERE lower(trim(kind)) = 'volcengine-plan'
+		  AND lower(trim(base_url)) IN (
+			'https://ark.cn-beijing.volces.com/api/coding/v3',
+			'https://ark.cn-beijing.volces.com/api/coding/v3/'
+		  )`); err != nil {
+		return fmt.Errorf("normalize volcengine plan base url: %w", err)
+	}
 
 	// 旧数据回填:为已有服务商补齐启用模型行(以其当前 model 为准)
 	if _, err := tx.Exec(`

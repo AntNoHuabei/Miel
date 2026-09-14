@@ -6,7 +6,8 @@ import type { AGUIMessageLite } from '../../../api'
 import type { ApprovalDecision, ApprovalRequest } from '../../../components/permissions'
 import { PermissionApprovalCard } from '../../../components/permissions'
 import type { AgentPhase, AgentToolCall } from '../model/agentRun'
-import { AgentProcess, renderMarkdown, SnapshotMessage } from './ConversationMessages'
+import type { AgentRunError } from '../model/chatError'
+import { AgentProcess, ChatRunErrorMessage, isPersistedTailError, renderMarkdown, SnapshotMessage } from './ConversationMessages'
 
 const { Text } = Typography
 
@@ -17,6 +18,7 @@ interface ConversationViewportProps {
   phase: AgentPhase
   reasoning: string
   tools: AgentToolCall[]
+  error: AgentRunError | null
   pendingApproval: ApprovalRequest | null
   resolvingApproval: boolean
   scrollRef: RefObject<HTMLDivElement>
@@ -32,6 +34,7 @@ export function ConversationViewport({
   phase,
   reasoning,
   tools,
+  error,
   pendingApproval,
   resolvingApproval,
   scrollRef,
@@ -48,9 +51,9 @@ export function ConversationViewport({
   }, [messages])
 
   return (
-    <div className={`bm-chat-messages ${messages.length === 0 && !streaming ? 'is-empty' : ''}`} ref={scrollRef} style={{ flex: 1, overflowY: 'auto', minWidth: 0, minHeight: 0 }}>
+    <div className={`bm-chat-messages ${messages.length === 0 && !streaming && !error ? 'is-empty' : ''}`} ref={scrollRef} style={{ flex: 1, overflowY: 'auto', minWidth: 0, minHeight: 0 }}>
       <Flex vertical className="bm-chat-message-track" style={{ padding: '8px 24px 24px' }}>
-        {messages.length === 0 && !streaming && (
+        {messages.length === 0 && !streaming && !error && (
           <section className="bm-chat-empty-state" aria-labelledby="bm-chat-empty-title">
             <div className="bm-chat-empty-intro">
               <Typography.Title level={1} id="bm-chat-empty-title" className="bm-chat-empty-title">你好，我是 BlankMind</Typography.Title>
@@ -70,6 +73,7 @@ export function ConversationViewport({
         ))}
         {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} reasoning={reasoning} tools={tools} />}
         {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>BlankMind</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
+        {error && !isPersistedTailError(messages, error) && <ChatRunErrorMessage error={error} />}
       </Flex>
     </div>
   )

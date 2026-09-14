@@ -148,6 +148,81 @@ func TestHerdsmanCatalogAndTemplate(t *testing.T) {
 	}
 }
 
+func TestOpenRouterCatalogAndTemplate(t *testing.T) {
+	const wantBaseURL = "https://openrouter.ai/api/v1"
+
+	provider, found := catalogLookup("openrouter")
+	if !found {
+		t.Fatal("OpenRouter catalog entry is missing")
+	}
+	if provider.Name != "OpenRouter" || provider.BaseURL != wantBaseURL || len(provider.Models) != 0 {
+		t.Fatalf("OpenRouter catalog entry = %#v", provider)
+	}
+
+	var template *ProviderTemplate
+	for _, candidate := range (&SettingsService{}).ProviderTemplates() {
+		if candidate.Kind == "openrouter" {
+			current := candidate
+			template = &current
+			break
+		}
+	}
+	if template == nil {
+		t.Fatal("OpenRouter provider template is missing")
+	}
+	if template.Name != "OpenRouter" || template.BaseURL != wantBaseURL || template.Model != "" || template.Multimodal || template.DocsURL != "https://openrouter.ai/models" {
+		t.Fatalf("OpenRouter provider template = %#v", *template)
+	}
+}
+
+func TestVolcenginePlanCatalogAndTemplate(t *testing.T) {
+	const (
+		wantBaseURL = "https://ark.cn-beijing.volces.com/api/plan/v3"
+		wantDocsURL = "https://docs.volcengine.com/docs/82379/2366394?lang=zh"
+	)
+
+	provider, found := catalogLookup("volcengine-plan")
+	if !found {
+		t.Fatal("Volcengine Agent Plan catalog entry is missing")
+	}
+	if provider.Name != "火山方舟 Agent Plan" || provider.BaseURL != wantBaseURL || len(provider.Models) != 13 {
+		t.Fatalf("Volcengine Agent Plan catalog entry = %#v", provider)
+	}
+	if provider.Models[0].ID != "ark-code-latest" {
+		t.Fatalf("default catalog model = %q, want ark-code-latest", provider.Models[0].ID)
+	}
+	for _, model := range provider.Models {
+		switch model.ID {
+		case "glm-5.3", "glm-latest":
+			if model.Reasoning.Type != ReasoningAlways || model.Multimodal {
+				t.Fatalf("GLM-5.3 capabilities = %#v", model)
+			}
+		case "glm-5.3-flash":
+			if !model.Multimodal || model.Reasoning.Type != ReasoningNone {
+				t.Fatalf("glm-5.3-flash capabilities = %#v", model)
+			}
+		}
+	}
+	if _, found := modelMultimodal("volcengine-plan", "doubao-seed-2.0-mini"); !found {
+		t.Fatal("doubao-seed-2.0-mini is missing from Agent Plan catalog")
+	}
+
+	var template *ProviderTemplate
+	for _, candidate := range (&SettingsService{}).ProviderTemplates() {
+		if candidate.Kind == "volcengine-plan" {
+			current := candidate
+			template = &current
+			break
+		}
+	}
+	if template == nil {
+		t.Fatal("Volcengine Agent Plan provider template is missing")
+	}
+	if template.Name != "火山方舟 Agent Plan" || template.BaseURL != wantBaseURL || template.Model != "ark-code-latest" || template.Multimodal || template.DocsURL != wantDocsURL {
+		t.Fatalf("Volcengine Agent Plan provider template = %#v", *template)
+	}
+}
+
 func TestProviderModelsReturns(t *testing.T) {
 	db := newSettingsTestDB(t)
 	if _, err := db.Exec(`

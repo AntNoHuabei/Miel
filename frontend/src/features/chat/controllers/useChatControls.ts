@@ -7,6 +7,13 @@ import { useWailsEvent } from '../../../shared/wails/events'
 const REASONING_STORAGE_KEY = 'chat.reasoning.v1'
 const LEVEL_LABEL: Record<string, string> = { low: '低', medium: '中', high: '高', xhigh: '极高', max: '最高' }
 
+export function chatModelLabel(option: ModelOptionLite, discovered?: DiscoveredModelLite) {
+  const label = option.custom ? `${option.model} (自定义)` : option.label || option.model
+  return option.kind.toLowerCase() === 'openrouter' && discovered?.supportsTools === false
+    ? `${label} (纯聊天)`
+    : label
+}
+
 export function useChatControls() {
   const { message } = AntApp.useApp()
   const [providers, setProviders] = useState<ProviderLite[]>([])
@@ -23,13 +30,14 @@ export function useChatControls() {
     const groups = new Map<string, Array<{ value: string; label: string }>>()
     for (const option of modelOptions) {
       if (!groups.has(option.providerName)) groups.set(option.providerName, [])
+      const discovered = discoveredModels[option.providerId]?.find((model) => model.id.toLowerCase() === option.model.toLowerCase())
       groups.get(option.providerName)?.push({
         value: `${option.providerId}::${option.model}`,
-        label: option.custom ? `${option.model} (自定义)` : option.label || option.model,
+        label: chatModelLabel(option, discovered),
       })
     }
     return Array.from(groups, ([label, options]) => ({ label, options }))
-  }, [modelOptions])
+  }, [discoveredModels, modelOptions])
 
   const catalogProvider = catalog.find((provider) => provider.kind.toLowerCase() === defaultProvider?.kind.toLowerCase())
   const catalogModel = catalogProvider?.models.find((model) => model.id.toLowerCase() === defaultProvider?.model.toLowerCase())
@@ -41,18 +49,20 @@ export function useChatControls() {
   const specType = reasoningSpec?.type ?? 'none'
   const customGateway = defaultProvider?.kind === 'custom'
   const herdsman = defaultProvider?.kind === 'herdsman'
-  const compatibleGateway = customGateway || herdsman
+  const openRouter = defaultProvider?.kind === 'openrouter'
+  const compatibleGateway = customGateway || herdsman || openRouter
   const canDisableReasoning = specType === 'toggle' || (specType === 'effort' && defaultProvider?.kind === 'deepseek')
   const reasoningSteps = useMemo(() => {
     if (specType === 'effort') {
       const levels = (reasoningSpec?.levels ?? []).filter((level) => LEVEL_LABEL[level])
       if (herdsman) return ['', 'off', ...levels]
+      if (openRouter) return ['', ...levels]
       return canDisableReasoning ? ['', ...levels] : levels
     }
     if (specType === 'toggle') return herdsman ? ['', 'off', 'on'] : ['', 'on']
     if (customGateway) return ['', 'low', 'medium', 'high']
     return []
-  }, [reasoningSpec, specType, customGateway, herdsman, canDisableReasoning])
+  }, [reasoningSpec, specType, customGateway, herdsman, openRouter, canDisableReasoning])
   const reasoningLocked = reasoningSteps.length <= 1
   const effectiveReasoning = reasoningSteps.includes(reasoning) ? reasoning : (reasoningSteps[0] ?? '')
   const reasoningIndex = Math.max(reasoningSteps.indexOf(effectiveReasoning), 0)
@@ -67,7 +77,7 @@ export function useChatControls() {
     return marks
   }, [reasoningSteps, compatibleGateway])
   const activeModel = modelOptions.find((option) => option.providerId === defaultProvider?.id && option.model === defaultProvider?.model)
-  const activeModelLabel = activeModel ? (activeModel.custom ? `${activeModel.model} (自定义)` : activeModel.label || activeModel.model) : defaultProvider?.model || '未配置模型'
+  const activeModelLabel = activeModel ? chatModelLabel(activeModel, discoveredModel) : defaultProvider?.model || '未配置模型'
   const reasoningStatus = reasoningLocked ? (specType === 'always' ? '思考常开' : specType === 'none' ? '不支持思考' : '不可调节') : reasoningMarks[reasoningIndex] ?? '关闭'
   const reasoningPillLabel = reasoningLocked ? (specType === 'always' ? '常开' : '') : reasoningMarks[reasoningIndex] ?? '关闭'
   const reasoningPreferenceKey = defaultProvider ? `${defaultProvider.id}::${defaultProvider.model}` : ''
@@ -77,7 +87,7 @@ export function useChatControls() {
     try {
       const nextProviders = await settingsRepository.listProviders()
       setProviders(nextProviders)
-      const entries = await Promise.all(nextProviders.filter((provider) => provider.kind.toLowerCase() === 'herdsman').map(async (provider) => {
+      const entries = await Promise.all(nextProviders.filter((provider) => ['herdsman', 'openrouter'].includes(provider.kind.toLowerCase())).map(async (provider) => {
         try { return [provider.id, await settingsRepository.discoverProviderModels({ ...provider, models: [] })] as const }
         catch { return [provider.id, []] as const }
       }))
@@ -158,7 +168,6 @@ export function useChatControls() {
     reasoningIndex,
     reasoningLocked,
     reasoningMarks,
-    reasoningNote: reasoningSpec?.note,
     reasoningPillLabel,
     reasoningStatus,
     reasoningSteps,

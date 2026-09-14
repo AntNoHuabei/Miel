@@ -11,6 +11,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { AGUIMessageLite } from '../../../api'
 import type { AgentPhase, AgentToolCall } from '../model/agentRun'
+import type { AgentRunError } from '../model/chatError'
+import { friendlyChatError, normalizeAgentRunError } from '../model/chatError'
 import { ChatAttachmentStrip } from '../../../components/ChatAttachments'
 import { getPermissionToolLabel } from '../../../components/permissions'
 import { systemClipboardRepository } from '../../../shared/repositories'
@@ -57,6 +59,25 @@ export function renderMarkdown(content: string) {
   return <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: (props) => <a {...props} target="_blank" rel="noreferrer" /> }}>{content}</ReactMarkdown>
 }
 
+export function ChatRunErrorMessage({ error }: { error: AgentRunError }) {
+  const friendly = friendlyChatError(error)
+  return (
+    <section className="bm-chat-run-error" role="alert">
+      <div className="bm-chat-run-error-heading"><WarningOutlined /><strong>{friendly.title}</strong></div>
+      <div className="bm-chat-run-error-description">{friendly.description}</div>
+      <details className="bm-chat-run-error-detail">
+        <summary>查看技术详情</summary>
+        <pre>{error.message}</pre>
+      </details>
+    </section>
+  )
+}
+
+export function isPersistedTailError(messages: AGUIMessageLite[], error: AgentRunError) {
+  const tail = messages[messages.length - 1]
+  return tail?.role === 'error' && tail.runError?.code === error.code && tail.runError.message === error.message
+}
+
 function formatDuration(milliseconds: number) {
   if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`
   return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)} s`
@@ -92,6 +113,9 @@ function AssistantMessageFooter({ message, content }: { message: AGUIMessageLite
 
 export function SnapshotMessage({ message, toolName }: { message: AGUIMessageLite; toolName?: string }) {
   const content = messageContentText(message.content)
+  if (message.role === 'error') {
+    return <ChatRunErrorMessage error={normalizeAgentRunError(message.runError ?? message.error ?? content)} />
+  }
   if (message.role === 'user') {
     return <Flex justify="flex-end" style={{ margin: '4px 0' }}><div className="bm-chat-user-message"><ChatAttachmentStrip attachments={message.attachments ?? []} />{content && <div className="bm-chat-user-message-text">{content}</div>}</div></Flex>
   }

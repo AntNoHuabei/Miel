@@ -61,7 +61,8 @@ export function DisableModel(providerID: number, model: string): $CancellablePro
 
 /**
  * DiscoverProviderModels 从 OpenAI 兼容 /models 读取模型，并为 Herdsman 合并
- * 本地模型元数据中的动态推理与多模态能力。
+ * 本地模型元数据中的动态推理与多模态能力。Agent Plan 没有模型发现
+ * 接口，直接返回随应用维护的官方文本模型目录。
  */
 export function DiscoverProviderModels($in: $models.ProviderInput): $CancellablePromise<$models.DiscoveredModel[] | null> {
     return $Call.ByID(4134076443, $in);

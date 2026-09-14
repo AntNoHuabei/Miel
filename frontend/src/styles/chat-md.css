@@ -278,6 +278,57 @@
   overflow: visible;
 }
 
+.bm-chat-run-error {
+  width: min(680px, 100%);
+  margin: 8px 0 14px;
+  padding: 9px 0 9px 13px;
+  border-left: 3px solid var(--ant-color-error, #d4380d);
+  color: var(--bm-chat-text);
+}
+
+.bm-chat-run-error-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ant-color-error, #d4380d);
+  font-size: 14px;
+}
+
+.bm-chat-run-error-description {
+  margin-top: 4px;
+  color: var(--bm-chat-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.bm-chat-run-error-detail {
+  margin-top: 5px;
+  color: var(--bm-chat-muted);
+  font-size: 12px;
+}
+
+.bm-chat-run-error-detail summary {
+  width: fit-content;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bm-chat-run-error-detail pre {
+  max-width: 100%;
+  margin: 7px 0 0;
+  padding: 9px 11px;
+  overflow-x: auto;
+  border: 1px solid var(--bm-border);
+  border-radius: 4px;
+  background: var(--bm-chat-code-bg, var(--bm-chat-hover));
+  color: var(--bm-chat-text);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .bm-chat-history-list .ant-btn {
   background: transparent !important;
 }

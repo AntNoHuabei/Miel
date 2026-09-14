@@ -1,3 +1,6 @@
+import { normalizeAgentRunError } from './chatError'
+import type { AgentRunError } from './chatError'
+
 export type AgentPhase = 'idle' | 'waiting' | 'thinking' | 'tool' | 'responding' | 'done' | 'error'
 
 export interface AgentToolCall {
@@ -13,6 +16,7 @@ export interface AgentProtocolEvent {
   delta?: string
   content?: string
   message?: string
+  code?: string
   toolCallId?: string
   toolCallName?: string
 }
@@ -34,7 +38,7 @@ export interface AgentRunState {
   tools: AgentToolCall[]
   inputSaved: boolean
   inputSavedConversationId: number
-  error: string
+  error: AgentRunError | null
 }
 
 export type AgentRunAction =
@@ -56,7 +60,7 @@ export const initialAgentRunState: AgentRunState = {
   tools: [],
   inputSaved: false,
   inputSavedConversationId: 0,
-  error: '',
+  error: null,
 }
 
 function accepts(state: AgentRunState, payload: AgentEnvelope) {
@@ -108,7 +112,7 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
         tools: state.tools.map((tool) => ({ ...tool, status: 'done' })),
       }
     case 'fail':
-      return { ...state, phase: 'error', error: action.error }
+      return { ...state, phase: 'error', error: state.error ?? normalizeAgentRunError(action.error) }
     case 'event': {
       if (!action.payload.event || !accepts(state, action.payload)) return state
       const targetConversationId = bindConversation(state, action.payload.conversationId)
@@ -159,7 +163,12 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
       if (event.type === 'RUN_FINISHED') {
         return { ...state, targetConversationId, phase: 'done', tools: state.tools.map((tool) => ({ ...tool, status: 'done' })) }
       }
-      if (event.type === 'RUN_ERROR') return { ...state, targetConversationId, phase: 'error', error: event.message ?? '' }
+      if (event.type === 'RUN_ERROR') return {
+        ...state,
+        targetConversationId,
+        phase: 'error',
+        error: normalizeAgentRunError({ code: event.code, message: event.message }),
+      }
       return state
     }
   }

@@ -207,6 +207,88 @@ func TestMessagesSnapshotKeepsImageMessageOrderAndRedactsOriginal(t *testing.T) 
 	}
 }
 
+func TestMessagesSnapshotRestoresPersistedRunErrorInTurnOrder(t *testing.T) {
+	db := newSettingsTestDB(t)
+	oldStore := store
+	store = db
+	t.Cleanup(func() { store = oldStore })
+	if _, err := db.Exec(`
+		INSERT INTO conversations (id, title, created_at, updated_at)
+		VALUES (45, 'errors', 1, 5);
+		INSERT INTO messages (id, conversation_id, role, content, created_at)
+		VALUES
+			(101, 45, 'user', 'first', 1),
+			(102, 45, 'assistant', 'partial', 2),
+			(103, 45, 'user', 'second', 4),
+			(104, 45, 'assistant', 'answer', 5)`); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := inmemory.NewSessionService()
+	t.Cleanup(func() { _ = sessions.Close() })
+	service, err := newAgentService(sessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runErr := normalizeChatRunError("429", "original rate limit detail")
+	if _, err := service.saveChatRunError(45, 101, "request-1", runErr); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := service.MessagesSnapshot(45)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, ok := snapshot["messages"].([]any)
+	if !ok || len(messages) != 5 {
+		t.Fatalf("snapshot messages = %#v", snapshot["messages"])
+	}
+	first, _ := messages[0].(map[string]any)
+	partial, _ := messages[1].(map[string]any)
+	errorMessage, _ := messages[2].(map[string]any)
+	second, _ := messages[3].(map[string]any)
+	if first["id"] != "m101" || partial["id"] != "m102" || errorMessage["role"] != "error" || second["id"] != "m103" {
+		t.Fatalf("snapshot order = %#v", messages)
+	}
+	errorInfo, _ := errorMessage["runError"].(map[string]any)
+	if errorInfo["code"] != "429" || errorInfo["message"] != "original rate limit detail" {
+		t.Fatalf("snapshot run error = %#v", errorInfo)
+	}
+	history, err := service.loadMessages(45)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 4 {
+		t.Fatalf("model history contains persisted run errors: %#v", history)
+	}
+
+	secondSessions := inmemory.NewSessionService()
+	t.Cleanup(func() { _ = secondSessions.Close() })
+	secondService, err := newAgentService(secondSessions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := secondService.MessagesSnapshot(45)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredMessages, _ := restored["messages"].([]any)
+	if len(restoredMessages) != 5 {
+		t.Fatalf("restored snapshot lost run error: %#v", restoredMessages)
+	}
+
+	if err := secondService.DeleteConversation(45); err != nil {
+		t.Fatal(err)
+	}
+	var errorCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM chat_run_errors WHERE conversation_id = 45").Scan(&errorCount); err != nil {
+		t.Fatal(err)
+	}
+	if errorCount != 0 {
+		t.Fatalf("deleted conversation retains %d run errors", errorCount)
+	}
+}
+
 func TestAgentServiceShutdownIsIdempotent(t *testing.T) {
 	sessions := inmemory.NewSessionService()
 	service, err := newAgentService(sessions)

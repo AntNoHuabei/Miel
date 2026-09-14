@@ -113,6 +113,7 @@ export default function ChatView() {
             phase={runtime.run.phase}
             reasoning={runtime.run.reasoning}
             tools={runtime.run.tools}
+            error={runtime.run.error}
             pendingApproval={permissions.pendingApproval}
             resolvingApproval={permissions.resolving}
             scrollRef={runtime.scrollRef}
@@ -141,7 +142,6 @@ export default function ChatView() {
             reasoningIndex={controls.reasoningIndex}
             reasoningMarks={controls.reasoningMarks}
             reasoningLocked={controls.reasoningLocked}
-            reasoningNote={controls.reasoningNote}
             showCompatibleModelNote={controls.showCompatibleModelNote}
             onAddWorkspace={controls.addWorkspace}
             onChangeInput={runtime.setInput}

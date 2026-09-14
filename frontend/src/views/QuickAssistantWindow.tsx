@@ -17,7 +17,7 @@ import {
 import { Window as WailsWindow } from '@wailsio/runtime'
 import { clipboardRepository, settingsRepository } from '../shared/repositories'
 import { useWailsEvent } from '../shared/wails/events'
-import { SnapshotMessage } from '../features/chat/components/ConversationMessages'
+import { ChatRunErrorMessage, isPersistedTailError, SnapshotMessage } from '../features/chat/components/ConversationMessages'
 import { quickConversationStore } from '../features/chat/model/conversationStore'
 import { useConversationRuntime } from '../features/chat/controllers/useConversationRuntime'
 import { ClipboardTodoPanel } from '../features/capture/components/ClipboardTodoPanel'
@@ -168,7 +168,7 @@ export default function QuickAssistantWindow({
       ) : (
         <>
           <div className="bm-quick-messages" ref={runtime.scrollRef}>
-            {runtime.messages.length === 0 && !runtime.run.streaming ? (
+            {runtime.messages.length === 0 && !runtime.run.streaming && !runtime.run.error ? (
               <div className="bm-quick-empty">
                 <Typography.Title level={2}>有什么需要处理？</Typography.Title>
                 <Typography.Text type="secondary">对话会保存到 BlankMind 的会话列表。</Typography.Text>
@@ -178,6 +178,7 @@ export default function QuickAssistantWindow({
             )}
             {phase && <div className="bm-quick-phase"><Spin size="small" /><span>{phase}</span></div>}
             {runtime.run.streaming && <div className="bm-chat-assistant-message"><Typography.Text type="secondary">BlankMind</Typography.Text><div className="bm-md">{runtime.run.streaming}</div></div>}
+            {runtime.run.error && !isPersistedTailError(runtime.messages, runtime.run.error) && <ChatRunErrorMessage error={runtime.run.error} />}
           </div>
           <div className="bm-quick-composer">
             <ChatAttachmentStrip attachments={attachments} onRemove={removeAttachment} />

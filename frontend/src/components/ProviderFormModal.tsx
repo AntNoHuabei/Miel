@@ -12,9 +12,10 @@ import {
   Space,
   Switch,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd'
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { providerEditorController } from '../features/settings/providerEditorController'
 import type {
   CatalogModelLite,
@@ -50,6 +51,20 @@ const reasoningTag: Record<string, { text: string; color: string }> = {
   none: { text: '无思考开关', color: 'default' },
 }
 
+const normalizeProviderKind = (kind: string) =>
+  kind.trim().toLowerCase() === 'volcengine-coding' ? 'volcengine-plan' : kind.trim().toLowerCase()
+
+const normalizeProviderBaseURL = (kind: string, baseURL: string) => {
+  const value = baseURL.trim()
+  if (
+    kind.trim().toLowerCase() === 'volcengine-coding' &&
+    /^https:\/\/ark\.cn-beijing\.volces\.com\/api\/coding\/v3\/?$/i.test(value)
+  ) {
+    return 'https://ark.cn-beijing.volces.com/api/plan/v3'
+  }
+  return value
+}
+
 // 模型启用编辑:内置目录模型用开关启用/停用,自定义模型手输加入(可删除);
 // 启用的模型中以 Radio 指定“当前使用模型”。
 export default function ProviderFormModal({
@@ -66,14 +81,20 @@ export default function ProviderFormModal({
   const [fetchingModels, setFetchingModels] = useState(false)
   const [catalog, setCatalog] = useState<CatalogProviderLite[]>([])
   const [remoteModels, setRemoteModels] = useState<DiscoveredModelLite[]>([])
-  const autoFetchedHerdsmanRef = useRef('')
+  const autoFetchedProviderRef = useRef('')
 
   // 启用模型集合(含内置与自定义)
   const [enabled, setEnabled] = useState<ProviderModelInputLite[]>([])
   const [customName, setCustomName] = useState('')
 
-  const kind = Form.useWatch('kind', form) ?? template?.kind ?? existing?.kind ?? 'custom'
+  const kind = normalizeProviderKind(
+    Form.useWatch('kind', form) ?? template?.kind ?? existing?.kind ?? 'custom',
+  )
   const currentModel = Form.useWatch('model', form) ?? ''
+  const normalizedKind = kind
+  const usesDiscoveredCapabilities = normalizedKind === 'herdsman' || normalizedKind === 'openrouter'
+  const canDiscoverModels = usesDiscoveredCapabilities || normalizedKind === 'custom'
+  const requiresAPIKey = normalizedKind === 'openrouter' || normalizedKind === 'volcengine-plan'
 
   useEffect(() => {
     if (!open) return
@@ -82,7 +103,7 @@ export default function ProviderFormModal({
       .catch((err) => message.warning(`模型目录加载失败:${String(err)}`))
   }, [open, message])
 
-  const catProvider = catalog.find((c) => c.kind === kind)
+  const catProvider = catalog.find((c) => normalizeProviderKind(c.kind) === normalizedKind)
   const builtinModels = catProvider?.models ?? []
 
   const enabledMap = useMemo(() => {
@@ -91,40 +112,28 @@ export default function ProviderFormModal({
     return m
   }, [enabled])
 
-  // 添加模型下拉的候选:本服务商内置(未启用)优先,再补其它目录模型
+  // 远程发现只补充当前服务商返回且尚未启用的模型，不混入其它服务商目录。
   const extraModelOptions = useMemo(() => {
     const seen = new Set(enabled.map((e) => e.model))
     const builtin = new Set(builtinModels.map((m) => m.id))
-    const list: { value: string; label: string; modelLabel: string; multimodal: boolean }[] = []
+    const list: { value: string; label: string; modelLabel: string; multimodal: boolean; supportsTools: boolean }[] = []
     for (const model of remoteModels) {
       if (!seen.has(model.id) && !builtin.has(model.id)) {
+        const labels = [model.id]
+        if (model.multimodal) labels.push('支持图片')
+        if (normalizedKind === 'openrouter' && !model.supportsTools) labels.push('纯聊天')
         list.push({
           value: model.id,
-          label: model.multimodal ? `${model.id} · 支持图片` : model.id,
+          label: labels.join(' · '),
           modelLabel: model.id,
           multimodal: model.multimodal,
+          supportsTools: model.supportsTools,
         })
         seen.add(model.id)
       }
     }
-    if (builtinModels.length === 0) {
-      for (const c of catalog) {
-        if (c.kind === kind) continue
-        for (const m of c.models) {
-          if (!seen.has(m.id)) {
-            list.push({
-              value: m.id,
-              label: `${c.name} · ${m.label}`,
-              modelLabel: m.label,
-              multimodal: m.multimodal,
-            })
-            seen.add(m.id)
-          }
-        }
-      }
-    }
     return list
-  }, [builtinModels, catalog, enabled, kind, remoteModels])
+  }, [builtinModels, enabled, normalizedKind, remoteModels])
 
   // 打开时初始化:编辑回填启用集;模板默认启用首个内置模型
   useEffect(() => {
@@ -135,8 +144,8 @@ export default function ProviderFormModal({
     if (existing) {
       form.setFieldsValue({
         name: existing.name,
-        kind: existing.kind,
-        baseUrl: existing.baseUrl,
+        kind: normalizeProviderKind(existing.kind),
+        baseUrl: normalizeProviderBaseURL(existing.kind, existing.baseUrl),
         apiKey: existing.apiKey,
         model: existing.model,
         multimodal: existing.multimodal,
@@ -160,7 +169,9 @@ export default function ProviderFormModal({
           setEnabled([{ model: existing.model, custom: false, multimodal: existing.multimodal }]),
         )
     } else if (template) {
-      const models = catalog.find((c) => c.kind === template.kind)?.models ?? []
+      const models = catalog.find(
+        (c) => normalizeProviderKind(c.kind) === normalizeProviderKind(template.kind),
+      )?.models ?? []
       const first = template.model || models[0]?.id || ''
       form.setFieldsValue({
         name: template.name,
@@ -196,18 +207,19 @@ export default function ProviderFormModal({
     const cat = catalog.find((c) => c.kind === k)
     const models = cat?.models ?? []
     const first = models[0]?.id ?? ''
+    const selected = models.find((model) => model.id === first)
     form.setFieldsValue(
       cat
-        ? { kind: k, name: cat.name, baseUrl: cat.baseUrl, model: first }
-        : { kind: k, name: '自定义服务商', baseUrl: '', model: '' },
+        ? { kind: k, name: cat.name, baseUrl: cat.baseUrl, apiKey: '', model: first, multimodal: selected?.multimodal ?? false }
+        : { kind: k, name: '自定义服务商', baseUrl: '', apiKey: '', model: '', multimodal: false },
     )
-    const selected = models.find((model) => model.id === first)
     setEnabled(
       first
         ? [{ model: first, label: selected?.label ?? first, custom: false, multimodal: selected?.multimodal }]
         : [],
     )
     setRemoteModels([])
+    setCustomName('')
   }
 
   // 内置模型开关
@@ -237,15 +249,21 @@ export default function ProviderFormModal({
       message.warning('请选择或输入模型名')
       return
     }
-    if (enabled.some((e) => e.model === n)) {
+    if (enabled.some((e) => e.model.toLowerCase() === n.toLowerCase())) {
       message.warning('该模型已启用')
       return
     }
+    const builtin = builtinModels.find((model) => model.id.toLowerCase() === n.toLowerCase())
     setEnabled((prev) => [
       ...prev,
-      { model: n, label: label ?? n, custom: isCustom, multimodal },
+      {
+        model: builtin?.id ?? n,
+        label: builtin?.label ?? label ?? n,
+        custom: builtin ? false : isCustom,
+        multimodal: builtin?.multimodal ?? multimodal,
+      },
     ])
-    if (!currentModel) form.setFieldsValue({ model: n })
+    if (!currentModel) form.setFieldsValue({ model: builtin?.id ?? n })
     setCustomName('')
   }
 
@@ -266,7 +284,7 @@ export default function ProviderFormModal({
   }
 
   const toInput = (v: FormValues) => {
-    const providerKind = (v.kind ?? '').trim().toLowerCase()
+    const providerKind = normalizeProviderKind(v.kind ?? '')
     const selectedModel = (v.model ?? '').trim()
     const discovered = remoteModels.find(
       (model) => model.id.toLowerCase() === selectedModel.toLowerCase(),
@@ -275,19 +293,21 @@ export default function ProviderFormModal({
       (model) => model.model.toLowerCase() === selectedModel.toLowerCase(),
     )
     const existingCapability =
-      existing?.kind.toLowerCase() === 'herdsman' &&
+      usesDiscoveredCapabilities &&
+      !!existing &&
+      normalizeProviderKind(existing?.kind ?? '') === normalizedKind &&
       existing.model.toLowerCase() === selectedModel.toLowerCase()
         ? existing.multimodal
         : false
     return {
       id: existing?.id ?? 0,
       name: (v.name ?? '').trim(),
-      kind: (v.kind ?? '').trim(),
-      baseUrl: (v.baseUrl ?? '').trim(),
+      kind: providerKind,
+      baseUrl: normalizeProviderBaseURL(existing?.kind ?? providerKind, v.baseUrl ?? ''),
       apiKey: (v.apiKey ?? '').trim(),
       model: selectedModel,
       multimodal:
-        providerKind === 'herdsman'
+        providerKind === 'herdsman' || providerKind === 'openrouter'
           ? (discovered?.multimodal ?? selected?.multimodal ?? existingCapability)
           : (selected?.multimodal ?? !!v.multimodal),
       // 默认服务商由“当前模型切换”产生;后端在无默认时自动为第一个服务商设默认
@@ -309,7 +329,7 @@ export default function ProviderFormModal({
       const values = form.getFieldsValue(true) as FormValues
       const list = await providerEditorController.discoverModels(toInput(values))
       setRemoteModels(list)
-      if ((values.kind ?? '').trim().toLowerCase() === 'herdsman') {
+      if (['herdsman', 'openrouter'].includes((values.kind ?? '').trim().toLowerCase())) {
         setEnabled((prev) =>
           prev.map((item) => {
             const capability = list.find(
@@ -331,22 +351,22 @@ export default function ProviderFormModal({
   }
 
   useEffect(() => {
-    if (!open || kind.toLowerCase() !== 'herdsman') {
-      autoFetchedHerdsmanRef.current = ''
+    if (!open || !usesDiscoveredCapabilities) {
+      autoFetchedProviderRef.current = ''
       return
     }
-    if (!catalog.some((provider) => provider.kind.toLowerCase() === 'herdsman')) return
+    if (!catalog.some((provider) => provider.kind.toLowerCase() === normalizedKind)) return
 
     const baseUrl = String(form.getFieldValue('baseUrl') ?? '').trim()
     if (!baseUrl) return
-    const requestKey = `${existing?.id ?? 0}:${baseUrl}`
-    if (autoFetchedHerdsmanRef.current === requestKey) return
+    const requestKey = `${normalizedKind}:${existing?.id ?? 0}:${baseUrl}`
+    if (autoFetchedProviderRef.current === requestKey) return
 
-    autoFetchedHerdsmanRef.current = requestKey
+    autoFetchedProviderRef.current = requestKey
     void handleFetchModels()
     // 修改 Base URL 后保留手动获取语义,不把输入过程加入自动请求依赖。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, existing?.id, form, kind, open])
+  }, [catalog, existing?.id, form, normalizedKind, open, usesDiscoveredCapabilities])
 
   const handleTest = async () => {
     try {
@@ -394,10 +414,10 @@ export default function ProviderFormModal({
     }
   }
 
-  const kindOptions = [
-    ...catalog.map((c) => ({ value: c.kind, label: c.name })),
-    { value: 'custom', label: '自定义(OpenAI 兼容)' },
-  ]
+  const kindOptions = catalog.map((c) => ({ value: c.kind, label: c.name }))
+  if (!kindOptions.some((option) => option.value === 'custom')) {
+    kindOptions.push({ value: 'custom', label: '自定义(OpenAI 兼容)' })
+  }
 
   return (
     <Modal
@@ -442,7 +462,21 @@ export default function ProviderFormModal({
           />
         </Form.Item>
 
-        <Form.Item label="API Key" name="apiKey">
+        <Form.Item
+          label="API Key"
+          name="apiKey"
+          dependencies={['kind']}
+          rules={[
+            {
+              validator: (_, value) =>
+                !requiresAPIKey ||
+                (existing?.id && normalizeProviderKind(existing.kind) === normalizedKind) ||
+                String(value ?? '').trim()
+                  ? Promise.resolve()
+                  : Promise.reject(new Error('请输入 API Key')),
+            },
+          ]}
+        >
           <Input.Password placeholder="sk-…(留空则沿用已有配置)" autoComplete="off" />
         </Form.Item>
 
@@ -450,15 +484,21 @@ export default function ProviderFormModal({
           label={
             <Space size={8}>
               <span>启用的模型</span>
-              <Button
-                type="link"
-                size="small"
-                icon={<ReloadOutlined />}
-                loading={fetchingModels}
-                onClick={() => void handleFetchModels()}
-              >
-                获取模型列表
-              </Button>
+              {!canDiscoverModels && catProvider ? (
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                  预设 {builtinModels.length} 个
+                </Tag>
+              ) : (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  loading={fetchingModels}
+                  onClick={() => void handleFetchModels()}
+                >
+                  获取模型列表
+                </Button>
+              )}
             </Space>
           }
           name="model"
@@ -500,13 +540,18 @@ export default function ProviderFormModal({
 
               {/* 其它/自定义模型 */}
               {enabled
-                .filter((e) => e.custom)
+                .filter(
+                  (e) =>
+                    e.custom ||
+                    !builtinModels.some((model) => model.id.toLowerCase() === e.model.toLowerCase()),
+                )
                 .map((e) => {
                   const discovered = remoteModels.find(
                     (model) => model.id.toLowerCase() === e.model.toLowerCase(),
                   )
                   const modelMultimodal = discovered?.multimodal ?? !!e.multimodal
-                  const isHerdsmanModel = kind.toLowerCase() === 'herdsman'
+                  const usesAutomaticCapability = usesDiscoveredCapabilities && !!discovered
+                  const pureChat = normalizedKind === 'openrouter' && discovered?.supportsTools === false
                   return (
                     <Flex key={e.model} align="center" justify="space-between" gap={8}>
                       <Space size={6} wrap>
@@ -516,12 +561,17 @@ export default function ProviderFormModal({
                         <Typography.Text style={{ fontSize: 13 }}>
                           {e.label && e.label !== e.model ? `${e.label}` : e.model}
                         </Typography.Text>
-                        {isHerdsmanModel && modelMultimodal && (
+                        {usesAutomaticCapability && modelMultimodal && (
                           <Tag color="blue" style={{ fontSize: 11, marginInlineEnd: 0 }}>
                             支持图片
                           </Tag>
                         )}
-                        {!isHerdsmanModel && (
+                        {pureChat && (
+                          <Tag color="default" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                            纯聊天
+                          </Tag>
+                        )}
+                        {!usesAutomaticCapability && (
                           <Checkbox
                             checked={modelMultimodal}
                             onChange={(event) => setModelMultimodal(e.model, event.target.checked)}
@@ -547,42 +597,37 @@ export default function ProviderFormModal({
                   )
                 })}
 
-              {/* 无内置列表的服务商(自定义等):用下拉添加模型 */}
-              {(builtinModels.length === 0 || remoteModels.length > 0) && (
-                <>
-                  <Select
-                    value={customName || undefined}
-                    onChange={(v) => {
-                      if (!v) {
-                        setCustomName('')
-                        return
-                      }
-                      const opt = extraModelOptions.find((o) => o.value === v)
-                      addCustom(String(v), opt?.modelLabel, true, opt?.multimodal)
-                    }}
-                    options={extraModelOptions}
-                    placeholder={remoteModels.length > 0 ? '选择服务商返回的模型…' : '选择要启用的模型…'}
-                    showSearch
-                    allowClear
-                    popupMatchSelectWidth={false}
-                    style={{ width: '100%' }}
-                    notFoundContent={
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {fetchingModels
-                          ? '正在获取模型列表…'
-                          : catalog.length === 0
-                          ? '模型目录加载中或加载失败,请稍候重试'
-                          : '没有更多可启用的模型'}
-                      </Typography.Text>
-                    }
-                  />
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {remoteModels.length > 0
-                      ? '选择一个服务商返回的模型并启用'
-                      : '该服务商无内置模型;可从上方选择其它目录模型'}
-                  </Typography.Text>
-                </>
+              {remoteModels.length > 0 && (
+                <Select
+                  value={undefined}
+                  onChange={(v) => {
+                    const opt = extraModelOptions.find((o) => o.value === v)
+                    addCustom(String(v), opt?.modelLabel, true, opt?.multimodal)
+                  }}
+                  options={extraModelOptions}
+                  placeholder="选择服务商返回的模型…"
+                  showSearch
+                  popupMatchSelectWidth={false}
+                  style={{ width: '100%' }}
+                  notFoundContent="没有更多可启用的模型"
+                />
               )}
+
+              <Space.Compact block>
+                <Input
+                  value={customName}
+                  placeholder="输入自定义模型 ID"
+                  onChange={(event) => setCustomName(event.target.value)}
+                  onPressEnter={() => addCustom(customName)}
+                />
+                <Tooltip title="添加自定义模型">
+                  <Button
+                    icon={<PlusOutlined />}
+                    aria-label="添加自定义模型"
+                    onClick={() => addCustom(customName)}
+                  />
+                </Tooltip>
+              </Space.Compact>
             </Flex>
           </Radio.Group>
         </Form.Item>

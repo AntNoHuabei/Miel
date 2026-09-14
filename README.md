@@ -7,7 +7,7 @@
 ## ✨ 功能
 
 - **对话 Agent 中枢**:基于 trpc-agent-go,function calling 驱动;流式输出、多轮会话、历史可回溯。
-- **模型服务商灵活接入**:内置 DeepSeek / OpenAI / 通义千问 / Moonshot / Herdsman / Ollama 模板,支持任意 OpenAI 兼容的自定义服务商;默认未配置时用全屏向导引导(首次启动必经)。
+- **模型服务商灵活接入**:内置 DeepSeek / OpenAI / OpenRouter / 火山方舟 Agent Plan / 通义千问 / Moonshot / Herdsman / Ollama 模板,支持任意 OpenAI 兼容的自定义服务商;默认未配置时用全屏向导引导(首次启动必经)。
 - **待办与里程碑**:手动/对话/截图/粘贴板来源;自动生成的待办保留原文或原图,可从待办页追溯。
 - **浮动助手**:`Alt+S` 在任意应用上方打开持久化快捷对话;失焦仅隐藏,显式关闭后下次新建会话。
 - **粘贴板转待办**:`Alt+T` 读取粘贴板文本或图片,经 AI 提取、编辑确认后写入待办。
@@ -95,3 +95,4 @@ npm run build     # tsc + vite 生产打包
 
 - BlankMind 当前仅支持 Windows；构建、凭据、窗口主题、托盘和截图实现均按 Windows 维护。
 - 视觉能力(截图转待办/问答)依赖配置**多模态**模型(设置中勾选"多模态")。
+- 火山方舟 Agent Plan（Token Plan）必须使用套餐专属地址 `https://ark.cn-beijing.volces.com/api/plan/v3`。

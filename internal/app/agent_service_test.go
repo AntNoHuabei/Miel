@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -182,6 +183,95 @@ func TestChatAgentRequestUsesCompactSkillSurface(t *testing.T) {
 	}
 }
 
+func TestChatCapabilityOptionsDisableAllToolsForPlainChat(t *testing.T) {
+	skillsRoot := t.TempDir()
+	ensureBuiltinSkills(skillsRoot)
+	repo, err := skill.NewFSRepository(skillsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &requestCaptureModel{}
+	opts := []llmagent.Option{
+		llmagent.WithModel(capture),
+		llmagent.WithInstruction(plainChatInstruction),
+		llmagent.WithGenerationConfig(model.GenerationConfig{Stream: true}),
+		llmagent.WithMaxToolIterations(8),
+	}
+	opts = append(opts, chatCapabilityOptions(false, chatAgentTools(nil, nil), repo, true)...)
+	agent := llmagent.New("test", opts...)
+	invocation := agentcore.NewInvocation(
+		agentcore.WithInvocationMessage(model.NewUserMessage("hello")),
+		agentcore.WithInvocationSession(&session.Session{}),
+	)
+	events, err := agent.Run(context.Background(), invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event != nil && event.RequiresCompletion {
+			key := agentcore.GetAppendEventNoticeKey(event.ID)
+			_ = invocation.AddNoticeChannel(context.Background(), key)
+			_ = invocation.NotifyCompletion(context.Background(), key)
+		}
+	}
+	if capture.request == nil {
+		t.Fatal("model request was not captured")
+	}
+	if len(capture.request.Tools) != 0 {
+		t.Fatalf("plain-chat request exposes %d tools, want 0: %#v", len(capture.request.Tools), capture.request.Tools)
+	}
+}
+
+func TestChatCapabilityOptionsKeepFullSkillSurface(t *testing.T) {
+	skillsRoot := t.TempDir()
+	ensureBuiltinSkills(skillsRoot)
+	repo, err := skill.NewFSRepository(skillsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &requestCaptureModel{}
+	opts := []llmagent.Option{
+		llmagent.WithModel(capture),
+		llmagent.WithInstruction(systemInstruction),
+	}
+	opts = append(opts, chatCapabilityOptions(true, chatAgentTools(nil, nil), repo, false)...)
+	agent := llmagent.New("test", opts...)
+	invocation := agentcore.NewInvocation(
+		agentcore.WithInvocationMessage(model.NewUserMessage("hello")),
+		agentcore.WithInvocationSession(&session.Session{}),
+	)
+	events, err := agent.Run(context.Background(), invocation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event != nil && event.RequiresCompletion {
+			key := agentcore.GetAppendEventNoticeKey(event.ID)
+			_ = invocation.AddNoticeChannel(context.Background(), key)
+			_ = invocation.NotifyCompletion(context.Background(), key)
+		}
+	}
+	if capture.request == nil {
+		t.Fatal("model request was not captured")
+	}
+	if len(capture.request.Tools) != 4 {
+		t.Fatalf("full Agent request exposes %d tools, want 4: %#v", len(capture.request.Tools), capture.request.Tools)
+	}
+}
+
+func TestFinalChatErrorPrefersUpstreamErrorWhenContentIsEmpty(t *testing.T) {
+	upstream := errors.New("403 model is only available on agentic harnesses")
+	if got := finalChatError("", upstream); !errors.Is(got, upstream) {
+		t.Fatalf("empty response error = %v, want upstream error", got)
+	}
+	if got := finalChatError("partial response", upstream); !errors.Is(got, upstream) {
+		t.Fatalf("partial response error = %v, want upstream error", got)
+	}
+	if got := finalChatError("", nil); got == nil || got.Error() != "模型未返回有效内容" {
+		t.Fatalf("generic empty response error = %v", got)
+	}
+}
+
 func TestHerdsmanCompactSkillRequestLive(t *testing.T) {
 	if os.Getenv("BLANKMIND_TEST_HERDSMAN") != "1" {
 		t.Skip("set BLANKMIND_TEST_HERDSMAN=1 to run against local Herdsman")
@@ -249,6 +339,7 @@ func TestApplyReasoningOff(t *testing.T) {
 		{name: "glm", kind: "glm", modelName: "glm-4.7", want: boolPtr(false)},
 		{name: "minimax case insensitive", kind: "minimax", modelName: "MiniMax-M2", want: boolPtr(false)},
 		{name: "always cannot disable", kind: "kimi", modelName: "kimi-k2-thinking"},
+		{name: "volcengine always cannot disable", kind: "volcengine-plan", modelName: "glm-5.3", level: "off"},
 		{name: "unsupported has no toggle", kind: "openai", modelName: "gpt-4o"},
 		{name: "openai effort has no toggle", kind: "openai", modelName: "o3-mini"},
 		{name: "custom uses provider default", kind: "custom", modelName: "unknown"},
@@ -288,7 +379,9 @@ func TestApplyReasoningOn(t *testing.T) {
 		{name: "minimax toggle", kind: "minimax", modelName: "MiniMax-M2", level: "on", wantToggle: boolPtr(true)},
 		{name: "deepseek effort", kind: "deepseek", modelName: "deepseek-flash", level: "max", wantToggle: boolPtr(true), wantEffort: "max"},
 		{name: "openai effort", kind: "openai", modelName: "o3-mini", level: "medium", wantEffort: "medium"},
+		{name: "openrouter compatible effort", kind: "openrouter", modelName: "openai/gpt-5", level: "xhigh", wantEffort: "xhigh"},
 		{name: "herdsman compatible effort", kind: "herdsman", modelName: "local-model", level: "xhigh", wantToggle: boolPtr(true), wantEffort: "xhigh"},
+		{name: "volcengine always ignores effort", kind: "volcengine-plan", modelName: "glm-5.3", level: "high"},
 	}
 
 	for _, tt := range tests {

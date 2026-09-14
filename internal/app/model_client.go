@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	openaiopt "github.com/openai/openai-go/option"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/model/openai"
 )
@@ -25,6 +26,15 @@ type PingResult struct {
 }
 
 const providerRequestTimeout = 15 * time.Second
+
+const providerCapabilityCacheTTL = 10 * time.Minute
+
+const chatModelMaxRetries = 3
+
+type providerCapabilityCacheEntry struct {
+	expiresAt time.Time
+	models    map[string]DiscoveredModel
+}
 
 // convProvider 把表单入参转为完整 Provider 结构(补齐空字段)。
 func convProvider(in ProviderInput) Provider {
@@ -41,7 +51,8 @@ func convProvider(in ProviderInput) Provider {
 }
 
 // openaiVariant 把 Kind 映射为 trpc-agent-go openai 变体。
-// openai / herdsman / custom(任意 OpenAI 兼容服务商)与 ollama(v1 兼容端点)
+// openai / openrouter / herdsman / volcengine-plan / custom(任意 OpenAI 兼容服务商)
+// 与 ollama(v1 兼容端点)
 // 走标准 OpenAI 协议。
 func openaiVariant(kind string) openai.Variant {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
@@ -57,7 +68,7 @@ func openaiVariant(kind string) openai.Variant {
 		return openai.VariantMiniMax
 	case "kimi", "moonshot":
 		return openai.VariantKimi
-	case "openai", "herdsman", "custom", "ollama":
+	case "openai", "openrouter", "herdsman", "volcengine-plan", "custom", "ollama":
 		return openai.VariantOpenAI
 	default:
 		return openai.VariantOpenAI
@@ -68,6 +79,15 @@ func openaiVariant(kind string) openai.Variant {
 // 所有内置模板与自定义服务商均走 OpenAI 兼容协议(deepseek/qwen/kimi/ollama 等
 // 通过 Variant 或自定义 baseURL 适配),符合框架统一抽象。
 func buildModel(p Provider) (model.Model, error) {
+	return buildModelWithOptions(p)
+}
+
+// buildChatModel keeps retry policy local to conversational model requests.
+func buildChatModel(p Provider) (model.Model, error) {
+	return buildModelWithOptions(p, openai.WithOpenAIOptions(openaiopt.WithMaxRetries(chatModelMaxRetries)))
+}
+
+func buildModelWithOptions(p Provider, extraOptions ...openai.Option) (model.Model, error) {
 	name := strings.TrimSpace(p.Name)
 	kind := strings.TrimSpace(p.Kind)
 	modelName := strings.TrimSpace(p.Model)
@@ -85,6 +105,7 @@ func buildModel(p Provider) (model.Model, error) {
 	if base := strings.TrimSpace(p.BaseURL); base != "" {
 		opts = append(opts, openai.WithBaseURL(base))
 	}
+	opts = append(opts, extraOptions...)
 	return openai.New(modelName, opts...), nil
 }
 
@@ -144,7 +165,11 @@ type providerModelAPIItem struct {
 	Type             string         `json:"type"`
 	Multimodal       bool           `json:"multimodal"`
 	ReasoningControl map[string]any `json:"reasoning_control"`
-	Parameters       struct {
+	SupportedParams  []string       `json:"supported_parameters"`
+	Architecture     struct {
+		InputModalities []string `json:"input_modalities"`
+	} `json:"architecture"`
+	Parameters struct {
 		ReasoningControl map[string]any `json:"reasoning_control"`
 	} `json:"parameters"`
 }
@@ -249,18 +274,57 @@ func discoveredModelFromAPIItem(item providerModelAPIItem) DiscoveredModel {
 	if control == nil {
 		control = item.Parameters.ReasoningControl
 	}
+	reasoning := providerReasoningSpec(control)
+	if reasoning.Type == ReasoningNone && stringSliceContainsFold(item.SupportedParams, "reasoning_effort") {
+		reasoning = ReasoningSpec{Type: ReasoningEffort, Levels: []string{"low", "medium", "high", "xhigh"}}
+	}
 	return DiscoveredModel{
-		ID:         providerModelID(item),
-		Status:     strings.TrimSpace(item.Status),
-		Reasoning:  providerReasoningSpec(control),
-		Multimodal: item.Multimodal || strings.EqualFold(strings.TrimSpace(item.Type), "multimodal"),
+		ID:            providerModelID(item),
+		Status:        strings.TrimSpace(item.Status),
+		Reasoning:     reasoning,
+		Multimodal:    item.Multimodal || strings.EqualFold(strings.TrimSpace(item.Type), "multimodal") || stringSliceContainsFold(item.Architecture.InputModalities, "image"),
+		SupportsTools: stringSliceContainsFold(item.SupportedParams, "tools"),
 	}
 }
 
+func stringSliceContainsFold(values []string, target string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func catalogDiscoveredModels(kind string) ([]DiscoveredModel, bool) {
+	provider, ok := catalogLookup(kind)
+	if !ok || len(provider.Models) == 0 {
+		return nil, false
+	}
+	models := make([]DiscoveredModel, 0, len(provider.Models))
+	for _, item := range provider.Models {
+		models = append(models, DiscoveredModel{
+			ID:            item.ID,
+			Status:        "available",
+			Reasoning:     item.Reasoning,
+			Multimodal:    item.Multimodal,
+			SupportsTools: true,
+		})
+	}
+	return models, true
+}
+
 // DiscoverProviderModels 从 OpenAI 兼容 /models 读取模型，并为 Herdsman 合并
-// 本地模型元数据中的动态推理与多模态能力。
+// 本地模型元数据中的动态推理与多模态能力。Agent Plan 没有模型发现
+// 接口，直接返回随应用维护的官方文本模型目录。
 func (s *SettingsService) DiscoverProviderModels(in ProviderInput) ([]DiscoveredModel, error) {
 	p := s.providerFromInput(in)
+	if strings.EqualFold(strings.TrimSpace(p.Kind), "volcengine-plan") {
+		if models, ok := catalogDiscoveredModels(p.Kind); ok {
+			return models, nil
+		}
+		return nil, errors.New("Agent Plan 内置模型目录不可用")
+	}
 	endpoint, err := modelsEndpoint(p.BaseURL)
 	if err != nil {
 		return nil, err
@@ -336,7 +400,89 @@ func (s *SettingsService) DiscoverProviderModels(in ProviderInput) ([]Discovered
 		return nil, errors.New("服务商未返回可用聊天模型")
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	s.cacheProviderCapabilities(p, models)
 	return models, nil
+}
+
+func providerCapabilityCacheKey(p Provider) string {
+	return fmt.Sprintf("%d|%s|%s", p.ID, strings.ToLower(strings.TrimSpace(p.Kind)), strings.TrimRight(strings.TrimSpace(p.BaseURL), "/"))
+}
+
+func (s *SettingsService) cacheProviderCapabilities(p Provider, models []DiscoveredModel) {
+	if s == nil || !strings.EqualFold(strings.TrimSpace(p.Kind), "openrouter") {
+		return
+	}
+	byID := make(map[string]DiscoveredModel, len(models))
+	for _, item := range models {
+		byID[strings.ToLower(strings.TrimSpace(item.ID))] = item
+	}
+	s.capabilityMu.Lock()
+	defer s.capabilityMu.Unlock()
+	if s.capabilityCache == nil {
+		s.capabilityCache = make(map[string]providerCapabilityCacheEntry)
+	}
+	s.capabilityCache[providerCapabilityCacheKey(p)] = providerCapabilityCacheEntry{
+		expiresAt: time.Now().Add(providerCapabilityCacheTTL),
+		models:    byID,
+	}
+}
+
+func (s *SettingsService) cachedProviderCapability(p Provider, modelName string) (DiscoveredModel, bool) {
+	if s == nil {
+		return DiscoveredModel{}, false
+	}
+	key := providerCapabilityCacheKey(p)
+	s.capabilityMu.RLock()
+	entry, ok := s.capabilityCache[key]
+	s.capabilityMu.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
+		if ok {
+			s.capabilityMu.Lock()
+			delete(s.capabilityCache, key)
+			s.capabilityMu.Unlock()
+		}
+		return DiscoveredModel{}, false
+	}
+	item, ok := entry.models[strings.ToLower(strings.TrimSpace(modelName))]
+	return item, ok
+}
+
+func (s *SettingsService) invalidateProviderCapabilities(providerID int64) {
+	if s == nil {
+		return
+	}
+	prefix := fmt.Sprintf("%d|", providerID)
+	s.capabilityMu.Lock()
+	defer s.capabilityMu.Unlock()
+	for key := range s.capabilityCache {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.capabilityCache, key)
+		}
+	}
+}
+
+// providerSupportsTools returns known=false when OpenRouter capability discovery
+// is unavailable. Callers fail open in that case to preserve the full Agent.
+func (s *SettingsService) providerSupportsTools(p Provider) (supported, known bool) {
+	if !strings.EqualFold(strings.TrimSpace(p.Kind), "openrouter") {
+		return true, true
+	}
+	if item, ok := s.cachedProviderCapability(p, p.Model); ok {
+		return item.SupportsTools, true
+	}
+	models, err := s.DiscoverProviderModels(ProviderInput{
+		ID: p.ID, Name: p.Name, Kind: p.Kind, BaseURL: p.BaseURL,
+		APIKey: p.APIKey, Model: p.Model,
+	})
+	if err != nil {
+		return true, false
+	}
+	for _, item := range models {
+		if strings.EqualFold(strings.TrimSpace(item.ID), strings.TrimSpace(p.Model)) {
+			return item.SupportsTools, true
+		}
+	}
+	return true, false
 }
 
 // FetchProviderModels 保留原有字符串列表接口，供旧调用方兼容使用。

@@ -181,6 +181,7 @@ export interface DiscoveredModel {
     "status": string;
     "reasoning": ReasoningSpec;
     "multimodal": boolean;
+    "supportsTools": boolean;
 }
 
 /**
@@ -323,9 +324,9 @@ export interface PingResult {
  * Provider 模型服务商配置。
  * Kind 对应 trpc-agent-go 的 provider 体系:
  * 
- * 	openai / anthropic / ollama / deepseek / qwen / hunyuan / herdsman / custom
+ * 	openai / openrouter / anthropic / ollama / deepseek / qwen / hunyuan / herdsman / volcengine-plan / custom
  * 
- * 其中 herdsman 与 custom 均使用 OpenAI 兼容协议。
+ * 其中 openrouter、herdsman、volcengine-plan 与 custom 均使用 OpenAI 兼容协议。
  */
 export interface Provider {
     "id": number;

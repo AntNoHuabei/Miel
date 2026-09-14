@@ -242,11 +242,132 @@
       ]
     },
     {
+      "kind": "volcengine-plan",
+      "name": "火山方舟 Agent Plan",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "models": [
+        {
+          "id": "ark-code-latest",
+          "label": "Ark Code Latest",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "doubao-seed-evolving",
+          "label": "Doubao Seed Evolving",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "doubao-seed-2.0-mini",
+          "label": "Doubao Seed 2.0 Mini",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "doubao-seed-2.1-turbo",
+          "label": "Doubao Seed 2.1 Turbo",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "doubao-seed-2.0-lite",
+          "label": "Doubao Seed 2.0 Lite",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "minimax-m3",
+          "label": "MiniMax M3",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "glm-5.3",
+          "label": "GLM-5.3",
+          "reasoning": {
+            "type": "always",
+            "note": "默认开启思考且不可关闭"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "glm-latest",
+          "label": "GLM Latest",
+          "reasoning": {
+            "type": "always",
+            "note": "GLM-5.3 别名;默认开启思考且不可关闭"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "glm-5.3-flash",
+          "label": "GLM-5.3 Flash",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": true
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "label": "DeepSeek V4 Flash",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "label": "DeepSeek V4 Pro",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "kimi-k2.7-code",
+          "label": "Kimi K2.7 Code",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        },
+        {
+          "id": "kimi-k3",
+          "label": "Kimi K3",
+          "reasoning": {
+            "type": "none"
+          },
+          "multimodal": false
+        }
+      ],
+      "_hint": "火山方舟 Agent Plan 使用套餐专属 OpenAI 兼容入口 /api/plan/v3"
+    },
+    {
       "kind": "herdsman",
       "name": "Herdsman",
       "baseUrl": "http://localhost:8080/v1",
       "models": [],
       "_hint": "Herdsman 使用 OpenAI 兼容协议,模型列表从本地服务动态获取"
+    },
+    {
+      "kind": "openrouter",
+      "name": "OpenRouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "models": [],
+      "_hint": "OpenRouter 使用 OpenAI 兼容协议,模型列表与图片输入能力从服务动态获取"
     },
     {
       "kind": "custom",

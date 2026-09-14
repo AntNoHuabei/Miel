@@ -144,3 +144,69 @@ func TestMigrateAddsAndBackfillsProviderModelMultimodal(t *testing.T) {
 		t.Fatalf("backfilled capabilities = vision %v text %v", vision, text)
 	}
 }
+
+func TestMigrateUpgradesLegacyVolcengineCodingProvider(t *testing.T) {
+	dsn := fmt.Sprintf("file:volcengine-plan-migration-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO providers
+			(id, name, kind, base_url, api_key, model, multimodal, is_default, created_at)
+		VALUES
+			(1, '我的火山套餐', 'volcengine-coding', 'https://ark.cn-beijing.volces.com/api/coding/v3',
+			 'secret-key', 'ark-code-latest', 0, 1, 10),
+			(2, '自定义地址', 'volcengine-coding', 'http://127.0.0.1:8080/v1',
+			 'other-key', 'custom-model', 1, 0, 20);
+		INSERT INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
+		VALUES (1, 'ark-code-latest', 'Ark Code Latest', 0, 0, 10);`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Repeated startup must not alter the migrated data further.
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	var name, kind, baseURL, apiKey, model string
+	if err := db.QueryRow(`
+		SELECT name, kind, base_url, api_key, model FROM providers WHERE id = 1`).Scan(
+		&name, &kind, &baseURL, &apiKey, &model,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if name != "我的火山套餐" || kind != "volcengine-plan" ||
+		baseURL != "https://ark.cn-beijing.volces.com/api/plan/v3" ||
+		apiKey != "secret-key" || model != "ark-code-latest" {
+		t.Fatalf("migrated provider = name %q kind %q url %q key %q model %q",
+			name, kind, baseURL, apiKey, model)
+	}
+
+	var customKind, customURL string
+	if err := db.QueryRow("SELECT kind, base_url FROM providers WHERE id = 2").Scan(&customKind, &customURL); err != nil {
+		t.Fatal(err)
+	}
+	if customKind != "volcengine-plan" || customURL != "http://127.0.0.1:8080/v1" {
+		t.Fatalf("custom endpoint = kind %q url %q", customKind, customURL)
+	}
+
+	var modelCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM provider_models
+		WHERE provider_id = 1 AND model = 'ark-code-latest'`).Scan(&modelCount); err != nil {
+		t.Fatal(err)
+	}
+	if modelCount != 1 {
+		t.Fatalf("preserved model rows = %d, want 1", modelCount)
+	}
+}

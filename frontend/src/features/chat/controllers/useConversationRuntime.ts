@@ -168,6 +168,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     sendingRef.current = true
     setSending(true)
     dispatchRun({ type: 'start', requestId: id, conversationId: requestConversationId })
+    let failed = false
     try {
       const context = await options.getRequestContext()
       if (sessionVersionRef.current !== version) return
@@ -191,8 +192,8 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       await options.onConversationCompleted?.(result.conversationId)
     } catch (error) {
       if (sessionVersionRef.current !== version) return
+      failed = true
       dispatchRun({ type: 'fail', error: String(error) })
-      message.error(`对话失败:${String(error)}`)
       if (!inputSavedRef.current) {
         setInput(text)
         setMessages((items) => items.filter((item) => item.id !== pendingId))
@@ -205,7 +206,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       if (sessionVersionRef.current === version) {
         sendingRef.current = false
         setSending(false)
-        dispatchRun({ type: 'reset' })
+        if (!failed) dispatchRun({ type: 'reset' })
       }
     }
   }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setMessages])

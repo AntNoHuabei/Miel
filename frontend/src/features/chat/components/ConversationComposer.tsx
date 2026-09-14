@@ -43,7 +43,6 @@ interface ConversationComposerProps {
   reasoningIndex: number
   reasoningMarks: Record<number, string>
   reasoningLocked: boolean
-  reasoningNote?: string
   showCompatibleModelNote: boolean
   onAddWorkspace: () => void | Promise<void>
   onChangeInput: (value: string) => void
@@ -147,7 +146,6 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 <div className="bm-chat-model-panel-divider" />
                 <Flex justify="space-between" align="center" gap={16}><span className="bm-chat-model-panel-label">思考级别</span><Text type="secondary" className="bm-chat-model-panel-value">{props.reasoningStatus}</Text></Flex>
                 <Slider className="bm-chat-reasoning-slider" min={0} max={Math.max(props.reasoningSteps.length - 1, 0)} step={1} value={props.reasoningIndex} disabled={props.reasoningLocked} onChange={(value) => props.onChangeReasoning(props.reasoningSteps[value as number] ?? '')} marks={props.reasoningMarks} tooltip={{ open: false }} />
-                {props.reasoningNote && <Text type="secondary" className="bm-chat-model-panel-note">{props.reasoningNote}</Text>}
                 {props.showCompatibleModelNote && <Text type="secondary" className="bm-chat-model-panel-note">OpenAI 兼容模型会透传 reasoning_effort。</Text>}
               </div>}>
                 <Button type="text" className="bm-chat-model-trigger"><span className="bm-chat-model-trigger-name">{props.activeModelLabel}</span>{props.reasoningPillLabel && <span className="bm-chat-model-trigger-reasoning">{props.reasoningPillLabel}</span>}<RightOutlined className="bm-chat-model-trigger-chevron" /></Button>

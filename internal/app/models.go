@@ -68,9 +68,9 @@ type TodoStats struct {
 // Provider 模型服务商配置。
 // Kind 对应 trpc-agent-go 的 provider 体系:
 //
-//	openai / anthropic / ollama / deepseek / qwen / hunyuan / herdsman / custom
+//	openai / openrouter / anthropic / ollama / deepseek / qwen / hunyuan / herdsman / volcengine-plan / custom
 //
-// 其中 herdsman 与 custom 均使用 OpenAI 兼容协议。
+// 其中 openrouter、herdsman、volcengine-plan 与 custom 均使用 OpenAI 兼容协议。
 type Provider struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -114,10 +114,11 @@ type ProviderModelInput struct {
 
 // DiscoveredModel 是从 OpenAI 兼容服务动态发现的模型及能力。
 type DiscoveredModel struct {
-	ID         string        `json:"id"`
-	Status     string        `json:"status"`
-	Reasoning  ReasoningSpec `json:"reasoning"`
-	Multimodal bool          `json:"multimodal"`
+	ID            string        `json:"id"`
+	Status        string        `json:"status"`
+	Reasoning     ReasoningSpec `json:"reasoning"`
+	Multimodal    bool          `json:"multimodal"`
+	SupportsTools bool          `json:"supportsTools"`
 }
 
 // ModelOption 模型切换下拉的扁平选项(provider × 启用模型)。
@@ -180,6 +181,17 @@ type ChatMessage struct {
 	Content        string              `json:"content"`
 	CreatedAt      int64               `json:"createdAt"`
 	Attachments    []MessageAttachment `json:"attachments,omitempty"`
+}
+
+// ChatRunError is a terminal error associated with one persisted chat turn.
+type ChatRunError struct {
+	ID             int64  `json:"id"`
+	ConversationID int64  `json:"conversationId"`
+	UserMessageID  int64  `json:"userMessageId"`
+	RequestID      string `json:"requestId"`
+	Code           string `json:"code"`
+	Message        string `json:"message"`
+	CreatedAt      int64  `json:"createdAt"`
 }
 
 // MessageAttachment is an image owned by a persisted user message.

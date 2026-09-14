@@ -18,7 +18,7 @@ function props() {
     showWorkspaceControl: false, workspaces: [], currentWorkspace: undefined, selectedModel: '1::model',
     modelOptions: [{ label: 'Provider', options: [{ value: '1::model', label: 'Model' }] }], activeModelLabel: 'Model',
     reasoningPillLabel: '关闭', reasoningStatus: '关闭', reasoningSteps: ['', 'low'], reasoningIndex: 0,
-    reasoningMarks: { 0: '关闭', 1: '低' }, reasoningLocked: false, reasoningNote: undefined, showCompatibleModelNote: false,
+    reasoningMarks: { 0: '关闭', 1: '低' }, reasoningLocked: false, showCompatibleModelNote: false,
     onAddWorkspace: vi.fn(), onChangeInput: vi.fn(), onChangePermissionMode: vi.fn(), onChangeReasoning: vi.fn(),
     onChooseWorkspace: vi.fn(), onPaste: vi.fn(), onPickImages: vi.fn(), onRemoveAttachment: vi.fn(),
     onRemoveWorkspace: vi.fn(), onSend: vi.fn(), onSwitchModel: vi.fn(),

@@ -3,5 +3,6 @@ export interface AGUIToolCallLite { id: string; type: string; function: { name: 
 export interface ChatMetricsLite { model: string; promptTokens: number; completionTokens: number; totalTokens: number; reasoningTokens: number; cachedTokens: number; durationMs: number; firstTokenMs: number; tokensPerSecond: number }
 export interface ChatAttachmentDraftLite { id: string; name: string; mimeType: string; size: number; width: number; height: number; thumbnailDataUri: string }
 export interface MessageAttachmentLite extends ChatAttachmentDraftLite { messageId: number; kind: string; position: number; createdAt: number }
-export interface AGUIMessageLite { id: string; role: string; content?: unknown; name?: string; toolCalls?: AGUIToolCallLite[]; toolCallId?: string; error?: string; activityType?: string; metrics?: ChatMetricsLite; attachments?: Array<ChatAttachmentDraftLite | MessageAttachmentLite> }
+export interface ChatRunErrorLite { code: string; message: string }
+export interface AGUIMessageLite { id: string; role: string; content?: unknown; name?: string; toolCalls?: AGUIToolCallLite[]; toolCallId?: string; error?: string; runError?: ChatRunErrorLite; activityType?: string; metrics?: ChatMetricsLite; attachments?: Array<ChatAttachmentDraftLite | MessageAttachmentLite> }
 export interface AGUIMessagesSnapshotLite { type: 'MESSAGES_SNAPSHOT' | string; messages: AGUIMessageLite[] }

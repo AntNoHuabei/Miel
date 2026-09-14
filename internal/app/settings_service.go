@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/AntNoHuabei/blankmind/internal/credential"
 )
@@ -41,8 +42,10 @@ func resolveSecret(p *Provider) bool {
 //
 // 同时向 Agent 层暴露“默认 Provider”查询,供模型路由使用。
 type SettingsService struct {
-	db     *sql.DB
-	notify func(name string, data any)
+	db              *sql.DB
+	notify          func(name string, data any)
+	capabilityMu    sync.RWMutex
+	capabilityCache map[string]providerCapabilityCacheEntry
 }
 
 // NewSettingsService 构造 SettingsService。
@@ -261,6 +264,7 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 	if err := tx.Commit(); err != nil {
 		return Provider{}, err
 	}
+	s.invalidateProviderCapabilities(id)
 	provider, err := s.getProvider(id)
 	if err != nil {
 		return Provider{}, err
@@ -512,6 +516,7 @@ func (s *SettingsService) DeleteProvider(id int64) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	s.invalidateProviderCapabilities(id)
 	// 清理系统凭据(尽力而为,不存在也不报错)
 	_ = credential.Delete(credentialTarget(id))
 	s.notifyModelsChanged()
@@ -542,9 +547,19 @@ func (s *SettingsService) ProviderTemplates() []ProviderTemplate {
 			Multimodal: false, DocsURL: "https://platform.moonshot.cn",
 		},
 		{
+			Name: "火山方舟 Agent Plan", Kind: "volcengine-plan",
+			BaseURL: "https://ark.cn-beijing.volces.com/api/plan/v3", Model: "ark-code-latest",
+			Multimodal: false, DocsURL: "https://docs.volcengine.com/docs/82379/2366394?lang=zh",
+		},
+		{
 			Name: "Herdsman", Kind: "herdsman",
 			BaseURL: "http://localhost:8080/v1", Model: "",
 			Multimodal: false, DocsURL: "",
+		},
+		{
+			Name: "OpenRouter", Kind: "openrouter",
+			BaseURL: "https://openrouter.ai/api/v1", Model: "",
+			Multimodal: false, DocsURL: "https://openrouter.ai/models",
 		},
 		{
 			Name: "Ollama(本地)", Kind: "custom",

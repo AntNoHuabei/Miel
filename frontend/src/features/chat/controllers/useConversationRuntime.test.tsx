@@ -89,4 +89,20 @@ describe('useConversationRuntime', () => {
     expect(result.current.sending).toBe(false)
     expect(result.current.messages[0]?.id).toBe('selected')
   })
+
+  it('keeps chat failures inline without showing a toast', async () => {
+    mocks.chat.mockRejectedValue(new Error('429 Too Many Requests'))
+    const store = createConversationStore('runtime-inline-error')
+    store.getState().setInput('hello')
+    const { result } = renderHook(() => useConversationRuntime(runtimeOptions(store)))
+
+    await act(async () => { await result.current.send() })
+
+    expect(mocks.error).not.toHaveBeenCalled()
+    expect(result.current.sending).toBe(false)
+    expect(result.current.run).toMatchObject({
+      phase: 'error',
+      error: { code: '429', message: 'Error: 429 Too Many Requests' },
+    })
+  })
 })

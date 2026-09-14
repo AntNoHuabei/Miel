@@ -131,6 +131,11 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 	if err := mergePersistedUserMessages(result, history); err != nil {
 		return nil, err
 	}
+	runErrors, err := loadChatRunErrors(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	mergePersistedRunErrors(result, runErrors)
 	metrics, err := loadConversationMessageMetrics(conversationID)
 	if err != nil {
 		return nil, err
@@ -141,6 +146,62 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 	}
 	redactAGUIBinaryContent(result)
 	return result, nil
+}
+
+func mergePersistedRunErrors(snapshot map[string]any, runErrors []ChatRunError) {
+	if len(runErrors) == 0 {
+		return
+	}
+	messages, ok := snapshot["messages"].([]any)
+	if !ok {
+		messages = []any{}
+	}
+	byUserMessage := make(map[string][]ChatRunError)
+	for _, runErr := range runErrors {
+		key := "m" + strconv.FormatInt(runErr.UserMessageID, 10)
+		byUserMessage[key] = append(byUserMessage[key], runErr)
+	}
+	merged := make([]any, 0, len(messages)+len(runErrors))
+	var pending []ChatRunError
+	flushPending := func() {
+		for _, runErr := range pending {
+			merged = append(merged, runErrorSnapshotMessage(runErr))
+		}
+		pending = nil
+	}
+	for _, raw := range messages {
+		message, ok := raw.(map[string]any)
+		role, _ := message["role"].(string)
+		if ok && role == "user" {
+			flushPending()
+		}
+		merged = append(merged, raw)
+		if !ok || role != "user" {
+			continue
+		}
+		messageID, _ := message["id"].(string)
+		pending = append(pending, byUserMessage[messageID]...)
+		delete(byUserMessage, messageID)
+	}
+	flushPending()
+	for _, runErr := range runErrors {
+		key := "m" + strconv.FormatInt(runErr.UserMessageID, 10)
+		if _, pending := byUserMessage[key]; pending {
+			merged = append(merged, runErrorSnapshotMessage(runErr))
+		}
+	}
+	snapshot["messages"] = merged
+}
+
+func runErrorSnapshotMessage(runErr ChatRunError) map[string]any {
+	return map[string]any{
+		"id":   "error-" + strconv.FormatInt(runErr.ID, 10),
+		"role": "error",
+		"runError": map[string]any{
+			"code":    runErr.Code,
+			"message": runErr.Message,
+		},
+	}
 }
 
 func mergePersistedUserMessages(snapshot map[string]any, history []ChatMessage) error {

@@ -3,7 +3,7 @@ export interface ProviderLite { id: number; name: string; kind: string; baseUrl:
 export interface ProviderInputLite { id?: number; name: string; kind: string; baseUrl: string; apiKey: string; model: string; multimodal: boolean; isDefault: boolean; models?: ProviderModelInputLite[] }
 export interface ProviderModelLite { model: string; label: string; custom: boolean; multimodal: boolean }
 export interface ProviderModelInputLite { model: string; label?: string; custom?: boolean; multimodal?: boolean }
-export interface DiscoveredModelLite { id: string; status: string; reasoning: ReasoningSpecLite; multimodal: boolean }
+export interface DiscoveredModelLite { id: string; status: string; reasoning: ReasoningSpecLite; multimodal: boolean; supportsTools: boolean }
 export interface ModelOptionLite { providerId: number; providerName: string; kind: string; model: string; label: string; custom: boolean; multimodal: boolean; isDefault: boolean }
 export interface WorkspaceLite { name: string; path: string; isCurrent: boolean }
 export interface PingResultLite { ok: boolean; message: string; model: string; latencyMs: number }

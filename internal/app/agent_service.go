@@ -81,6 +81,12 @@ const systemInstruction = `你是 BlankMind,运行在本地的办公 Agent,通�
    需要运行本地命令时使用 execute_command;需要获取网页时使用 fetch_url。
    这些工具由应用执行权限控制，不要把命令拼接到 skill_run。`
 
+const plainChatInstruction = `你是 BlankMind。当前模型不支持工具调用，本轮只能进行普通对话。规则:
+1. 使用与用户相同的语言回复。
+2. 回复保持简洁，尽量用 Markdown 结构化。
+3. 不要声称已经读取或修改待办、记忆、文件、工作区或其它本地数据。
+4. 当用户要求执行本地操作时，明确说明当前模型仅支持纯聊天，并建议切换到支持 Agent 工具的模型。`
+
 // ChatRequest 一次对话入参。
 type ChatRequest struct {
 	ConversationID      int64    `json:"conversationId"` // 0 = 新建会话
@@ -100,7 +106,7 @@ type ChatRequest struct {
 //   - qwen -> enable_thinking(bool);deepseek/hunyuan/glm/minimax -> thinking.type=enabled
 //   - deepseek effort 模型另附 reasoning_effort;openai(o 系)只发 reasoning_effort
 //   - Herdsman 按动态能力下发 thinking_enabled / reasoning_effort
-//   - 自定义兼容网关(custom):reasoning_effort 尽力透传
+//   - OpenRouter 与自定义兼容网关:reasoning_effort 尽力透传
 func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	model = strings.ToLower(strings.TrimSpace(model))
@@ -141,7 +147,7 @@ func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 		eff = "high"
 	}
 
-	isCompatibleGateway := kind == "custom"
+	isCompatibleGateway := kind == "custom" || kind == "openrouter"
 	if (spec.Type == ReasoningNone || spec.Type == ReasoningAlways) && !isCompatibleGateway {
 		// 模型不支持/思考常开,无需下发任何参数;兼容网关走尽力透传。
 		return
@@ -174,7 +180,7 @@ func applyReasoning(gc *model.GenerationConfig, kind, model, level string) {
 	default:
 		// 自定义兼容网关模型不在目录内:reasoning_effort 尽力透传,
 		// 模型不支持时由服务商反馈;其它未登记 kind 不发(目录为准)。
-		if isCompatibleGateway && (eff == "low" || eff == "medium" || eff == "high") {
+		if isCompatibleGateway && (eff == "low" || eff == "medium" || eff == "high" || eff == "xhigh") {
 			gc.ReasoningEffort = &eff
 		}
 	}
@@ -196,8 +202,26 @@ type ChatResult struct {
 }
 
 // Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
-func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
+func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	msg := strings.TrimSpace(req.Message)
+	convID := req.ConversationID
+	var userMessageID int64
+	runErrorForwarded := false
+	runErrorPersisted := false
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		runErr := normalizeChatRunError("", retErr.Error())
+		if !runErrorForwarded {
+			s.emitChatRunError(convID, req.RequestID, runErr)
+		}
+		if !runErrorPersisted {
+			if _, err := s.saveChatRunError(convID, userMessageID, req.RequestID, runErr); err != nil {
+				log.Println("save chat run error:", err)
+			}
+		}
+	}()
 	if msg == "" && len(req.AttachmentIDs) == 0 {
 		return ChatResult{}, errors.New("消息不能为空")
 	}
@@ -212,6 +236,10 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if err != nil {
 		return ChatResult{}, errors.New("尚未配置模型服务商,请先在设置中配置后重试")
 	}
+	toolsEnabled := true
+	if supported, known := settingsSvc.providerSupportsTools(p); known {
+		toolsEnabled = supported
+	}
 	if len(req.AttachmentIDs) > 0 {
 		if s.attachments == nil {
 			return ChatResult{}, errors.New("图片附件服务未初始化")
@@ -223,7 +251,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 			return ChatResult{}, err
 		}
 	}
-	m, err := buildModel(p)
+	m, err := buildChatModel(p)
 	if err != nil {
 		return ChatResult{}, err
 	}
@@ -232,14 +260,13 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	if s.memory != nil && settingsSvc != nil {
 		if cfg, cfgErr := settingsSvc.memoryConfig(); cfgErr == nil {
 			memoryConfig = cfg
-			memoryEnabled = cfg.Enabled
+			memoryEnabled = cfg.Enabled && toolsEnabled
 		} else {
 			log.Println("load memory config:", cfgErr)
 		}
 	}
 
-	convID := req.ConversationID
-	convID, userMessageID, err := s.saveUserMessage(convID, msg, req.AttachmentIDs)
+	convID, userMessageID, err = s.saveUserMessage(convID, msg, req.AttachmentIDs)
 	if err != nil {
 		return ChatResult{}, err
 	}
@@ -269,26 +296,33 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	sourceContext := &todoToolSource{input: todoSourceInput{
 		Kind: "conversation", TextContent: msg, ConversationID: convID, MessageID: userMessageID,
 	}}
-	agentTools := chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID)
-	if memoryEnabled {
-		agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
+	var agentTools []tool.Tool
+	if toolsEnabled {
+		agentTools = chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID)
+		if memoryEnabled {
+			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
+		}
+	}
+	instruction := instructionWithCurrentTime(time.Now())
+	if !toolsEnabled {
+		instruction = plainChatInstruction + "\n当前本地时间:" + time.Now().Format("2006-01-02 15:04:05 -07:00")
 	}
 	opts := []llmagent.Option{
 		llmagent.WithModel(m),
-		llmagent.WithInstruction(instructionWithCurrentTime(time.Now())),
-		llmagent.WithTools(agentTools),
+		llmagent.WithInstruction(instruction),
 		llmagent.WithGenerationConfig(gc),
 		llmagent.WithMaxToolIterations(8),
 	}
-	if memoryEnabled {
-		opts = append(opts, llmagent.WithPreloadMemory(8))
+	var skillRepo skill.Repository
+	// skills/<name>/SKILL.md 即插即用。纯聊天模型不注册任何 Skill 工具。
+	if toolsEnabled {
+		if repo, err := newManagedSkillRepository(skillsDir()); err == nil {
+			skillRepo = repo
+		} else {
+			log.Println("load skills repo:", err)
+		}
 	}
-	// skills/<name>/SKILL.md 即插即用
-	if repo, err := newManagedSkillRepository(skillsDir()); err == nil {
-		opts = append(opts, knowledgeOnlySkillOptions(repo)...)
-	} else {
-		log.Println("load skills repo:", err)
-	}
+	opts = append(opts, chatCapabilityOptions(toolsEnabled, agentTools, skillRepo, memoryEnabled)...)
 	agent := llmagent.New("blankmind", opts...)
 	runnerOpts := []runner.Option{runner.WithSessionService(s.sessions)}
 	if memoryEnabled {
@@ -301,10 +335,14 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 	// (RUN/Text/ToolCall/Reasoning…),逐个经 agent.agui 推给前端;
 	// 同时保留 agent.chunk 纯文本流供现有 UI 与落库。
 	var traceUsage *model.Usage
+	var translatedErrorCode string
 	callbacks := aguitranslator.NewCallbacks().RegisterBeforeTranslate(
 		func(_ context.Context, ev *agentevent.Event) (*agentevent.Event, error) {
 			if ev != nil && ev.ExecutionTrace != nil && ev.ExecutionTrace.Usage != nil {
 				traceUsage = cloneMetricsUsage(ev.ExecutionTrace.Usage)
+			}
+			if ev != nil && ev.Response != nil && ev.Response.Error != nil && ev.Response.Error.Code != nil {
+				translatedErrorCode = strings.TrimSpace(*ev.Response.Error.Code)
 			}
 			return nil, nil
 		},
@@ -343,10 +381,22 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 
 	var answer strings.Builder
 	var answerMessageID string
+	var runErr *ChatRunError
 	s.emit("agent.start", map[string]any{"conversationId": convID, "requestId": req.RequestID})
 	for ev := range aguiEvents {
 		if ev == nil {
 			continue
+		}
+		isRunError := false
+		if failed, ok := ev.(*aguievents.RunErrorEvent); ok && strings.TrimSpace(failed.Message) != "" {
+			code := translatedErrorCode
+			if failed.Code != nil && strings.TrimSpace(*failed.Code) != "" {
+				code = strings.TrimSpace(*failed.Code)
+			}
+			normalized := normalizeChatRunError(code, failed.Message)
+			failed.Code = &normalized.Code
+			runErr = &normalized
+			isRunError = true
 		}
 		if b, mErr := ev.ToJSON(); mErr == nil {
 			var event map[string]any
@@ -357,6 +407,9 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 					"requestId":      req.RequestID,
 					"event":          event,
 				})
+				if isRunError {
+					runErrorForwarded = true
+				}
 			}
 		}
 		if te, ok := ev.(*aguievents.TextMessageContentEvent); ok && te.Delta != "" {
@@ -370,11 +423,24 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 		}
 	}
 	out := strings.TrimSpace(answer.String())
-	if out == "" {
-		return ChatResult{}, errors.New("模型未返回有效内容")
+	var metrics *ChatMetrics
+	if out != "" {
+		built := buildChatMetrics(p.Model, traceUsage, time.Since(startedAt))
+		metrics = &built
+		if _, err := s.saveMessage(convID, "assistant", out, answerMessageID, metrics); err != nil {
+			return ChatResult{}, err
+		}
 	}
-	metrics := buildChatMetrics(p.Model, traceUsage, time.Since(startedAt))
-	if _, err := s.saveMessage(convID, "assistant", out, answerMessageID, &metrics); err != nil {
+	if runErr != nil {
+		if _, err := s.saveChatRunError(convID, userMessageID, req.RequestID, *runErr); err != nil {
+			log.Println("save chat run error:", err)
+		} else {
+			runErrorPersisted = true
+		}
+		s.emit("conversations.changed", "updated")
+		return ChatResult{}, errors.New(runErr.Message)
+	}
+	if err := finalChatError(out, nil); err != nil {
 		return ChatResult{}, err
 	}
 	s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
@@ -384,7 +450,7 @@ func (s *AgentService) Chat(req ChatRequest) (ChatResult, error) {
 			log.Println("enqueue memory extraction:", err)
 		}
 	}
-	return ChatResult{ConversationID: convID, Answer: out, Metrics: &metrics}, nil
+	return ChatResult{ConversationID: convID, Answer: out, Metrics: metrics}, nil
 }
 
 func cloneMetricsUsage(usage *model.Usage) *model.Usage {
@@ -428,6 +494,30 @@ func knowledgeOnlySkillOptions(repo skill.Repository) []llmagent.Option {
 		llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly),
 		llmagent.WithWorkspaceExecSurfaceEnabled(false),
 	}
+}
+
+func chatCapabilityOptions(toolsEnabled bool, agentTools []tool.Tool, repo skill.Repository, preloadMemory bool) []llmagent.Option {
+	if !toolsEnabled {
+		return nil
+	}
+	opts := []llmagent.Option{llmagent.WithTools(agentTools)}
+	if preloadMemory {
+		opts = append(opts, llmagent.WithPreloadMemory(8))
+	}
+	if repo != nil {
+		opts = append(opts, knowledgeOnlySkillOptions(repo)...)
+	}
+	return opts
+}
+
+func finalChatError(answer string, runErr error) error {
+	if runErr != nil {
+		return runErr
+	}
+	if strings.TrimSpace(answer) != "" {
+		return nil
+	}
+	return errors.New("模型未返回有效内容")
 }
 
 func instructionWithCurrentTime(current time.Time) string {
@@ -714,6 +804,9 @@ func (s *AgentService) DeleteConversation(conversationID int64) error {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec("DELETE FROM chat_run_errors WHERE conversation_id = ?", conversationID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`
 		DELETE FROM message_metrics WHERE message_id IN (
 			SELECT id FROM messages WHERE conversation_id = ?
