@@ -19,12 +19,12 @@ import * as $models from "./models.js";
  * OpenDataDir opens the managed application root in Windows Explorer.
  */
 export function OpenDataDir(): $CancellablePromise<void> {
-    return $Call.ByID(651618190);
+    return $Call.ByID(2919793337);
 }
 
 /**
  * Paths returns the current locations of databases, logs, sources, attachments and outputs.
  */
 export function Paths(): $CancellablePromise<$models.DirectoryPaths> {
-    return $Call.ByID(1730443277);
+    return $Call.ByID(4012218414);
 }

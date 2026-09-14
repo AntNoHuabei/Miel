@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/AntNoHuabei/blankmind/internal/app"
+	"github.com/AntNoHuabei/Miel/internal/app"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -118,7 +118,7 @@ func main() {
 	}
 	activation := &deferredMainActivation{}
 	instance := application.New(application.Options{
-		Name:        "BlankMind",
+		Name:        "Miel",
 		Description: "A local-first AI office agent",
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.antnohuabei.blankmind",
@@ -159,7 +159,7 @@ func main() {
 	}
 
 	mainWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "BlankMind",
+		Title:            "Miel",
 		Width:            1000,
 		Height:           618,
 		Frameless:        true,
@@ -168,7 +168,7 @@ func main() {
 	})
 	quickWin := instance.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "quick-assistant",
-		Title:            "BlankMind",
+		Title:            "Miel",
 		Width:            680,
 		Height:           560,
 		MinWidth:         520,

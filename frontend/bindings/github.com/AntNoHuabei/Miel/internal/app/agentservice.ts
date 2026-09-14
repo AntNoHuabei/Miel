@@ -23,21 +23,21 @@ import * as $models from "./models.js";
  * Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
  */
 export function Chat(req: $models.ChatRequest): $CancellablePromise<$models.ChatResult> {
-    return $Call.ByID(144777739, req);
+    return $Call.ByID(103566506, req);
 }
 
 /**
  * DeleteConversation 删除会话及其消息。
  */
 export function DeleteConversation(conversationID: number): $CancellablePromise<void> {
-    return $Call.ByID(3497914249, conversationID);
+    return $Call.ByID(1677379224, conversationID);
 }
 
 /**
  * ListConversations 返回会话列表(近期在前)。
  */
 export function ListConversations(): $CancellablePromise<$models.Conversation[] | null> {
-    return $Call.ByID(2066596987);
+    return $Call.ByID(1379328896);
 }
 
 /**
@@ -45,5 +45,5 @@ export function ListConversations(): $CancellablePromise<$models.Conversation[] 
  * 返回值保持标准 MESSAGES_SNAPSHOT JSON 结构,前端可直接渲染 messages。
  */
 export function MessagesSnapshot(conversationID: number): $CancellablePromise<{ [_ in string]?: any } | null> {
-    return $Call.ByID(1314565245, conversationID);
+    return $Call.ByID(3734322460, conversationID);
 }

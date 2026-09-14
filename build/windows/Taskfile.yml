@@ -19,7 +19,7 @@ tasks:
     summary: Runs the application in Windows development mode
     preconditions:
       - sh: 'powershell -NoProfile -Command "if (-not (Get-Command ''{{.CC}}'' -ErrorAction SilentlyContinue)) { exit 1 }"'
-        msg: "BlankMind requires MinGW-w64 GCC for SQLite Memory. Install GCC and make sure `go env CC` points to gcc.exe."
+        msg: "Miel requires MinGW-w64 GCC for SQLite Memory. Install GCC and make sure `go env CC` points to gcc.exe."
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
     env:
@@ -54,7 +54,7 @@ tasks:
       - task: common:generate:icons
     preconditions:
       - sh: 'powershell -NoProfile -Command "if (-not (Get-Command ''{{.CC}}'' -ErrorAction SilentlyContinue)) { exit 1 }"'
-        msg: "BlankMind requires MinGW-w64 GCC for SQLite Memory. Install GCC and make sure `go env CC` points to gcc.exe."
+        msg: "Miel requires MinGW-w64 GCC for SQLite Memory. Install GCC and make sure `go env CC` points to gcc.exe."
       - sh: '{{if eq .OBFUSCATED "true"}}command -v garble >/dev/null 2>&1{{else}}true{{end}}'
         msg: "garble is required for obfuscated builds. Install it with: go install mvdan.cc/garble@v0.16.0 (requires Go 1.24+). See https://github.com/burrowers/garble/releases for version/toolchain compatibility."
     cmds:

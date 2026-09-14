@@ -87,7 +87,7 @@ func generateWeeklyReport(t *TodoService, days int64) (string, string, error) {
 func renderWeeklyReport(a *weeklyAgg) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# 工作周报(%s ~ %s)\n\n", a.From, a.To)
-	fmt.Fprintf(&b, "> 由 BlankMind 依据本地待办与操作日志自动汇总(统计窗口最近 %d 天)。\n\n", a.Days)
+	fmt.Fprintf(&b, "> 由 Miel 依据本地待办与操作日志自动汇总(统计窗口最近 %d 天)。\n\n", a.Days)
 
 	fmt.Fprintf(&b, "## 一、本周完成(%d)\n", len(a.Done))
 	if len(a.Done) == 0 {
@@ -147,7 +147,7 @@ func renderWeeklyReport(a *weeklyAgg) string {
 	for _, e := range a.Events {
 		fmt.Fprintf(&b, "- %s [%s] %s\n", timeFmt(e.TS), e.Type, e.Summary)
 	}
-	b.WriteString("\n---\n*由 BlankMind 自动生成*\n")
+	b.WriteString("\n---\n*由 Miel 自动生成*\n")
 	return b.String()
 }
 

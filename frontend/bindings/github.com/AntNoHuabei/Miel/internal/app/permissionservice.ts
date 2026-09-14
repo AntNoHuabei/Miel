@@ -10,21 +10,21 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function CancelPendingApprovals(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(2159525898, sessionID);
+    return $Call.ByID(2158907213, sessionID);
 }
 
 export function GetPermissionState(): $CancellablePromise<$models.PermissionState> {
-    return $Call.ByID(2989603617);
+    return $Call.ByID(4285051486);
 }
 
 export function ResolveApproval(id: string, decision: $models.ApprovalDecision): $CancellablePromise<void> {
-    return $Call.ByID(523374340, id, decision);
+    return $Call.ByID(3033644485, id, decision);
 }
 
 export function RevokeSessionGrant(sessionID: string, grantID: string): $CancellablePromise<void> {
-    return $Call.ByID(4193390633, sessionID, grantID);
+    return $Call.ByID(1278513726, sessionID, grantID);
 }
 
 export function SetPermissionMode(mode: $models.PermissionMode): $CancellablePromise<void> {
-    return $Call.ByID(3881020979, mode);
+    return $Call.ByID(3304205462, mode);
 }

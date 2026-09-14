@@ -11,7 +11,7 @@ import (
 // store 持有全局数据库句柄(单连接即可,桌面应用访问量小)。
 var store *sql.DB
 
-// dataDir 返回应用数据目录(Windows 下为 %LOCALAPPDATA%\BlankMind)。
+// dataDir returns the Miel data directory, with a legacy BlankMind fallback.
 func dataDir() string {
 	dir, err := appDirectories.Ensure(DirectoryRoot)
 	if err != nil {

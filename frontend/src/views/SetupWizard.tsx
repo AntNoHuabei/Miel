@@ -33,7 +33,7 @@ export default function SetupWizard({ onDone }: Props) {
     >
       <div style={{ width: 720 }}>
         <Title level={2} style={{ textAlign: 'center', marginBottom: 4 }}>
-          👋 欢迎使用 BlankMind
+          👋 欢迎使用 Miel
         </Title>
         <Paragraph style={{ textAlign: 'center' }}>
           <Text type="secondary">
@@ -82,7 +82,7 @@ export default function SetupWizard({ onDone }: Props) {
           onCancel={() => setOpen(false)}
           onSaved={() => {
             setOpen(false)
-            message.success('配置完成,开始使用 BlankMind')
+            message.success('配置完成,开始使用 Miel')
             onDone()
           }}
         />

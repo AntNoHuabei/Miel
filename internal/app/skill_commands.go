@@ -53,7 +53,7 @@ func newSkillRunTool(t *TodoService, source *todoToolSource) tool.Tool {
 			return executeSkillCommand(ctx, t, source, req)
 		},
 		function.WithName("skill_run"),
-		function.WithDescription("Execute one Cobra subcommand from a loaded built-in BlankMind skill. Only todo, reminder, and office are allowed. Pass every flag and value as a separate args item; shell syntax and arbitrary programs are not supported."),
+		function.WithDescription("Execute one Cobra subcommand from a loaded built-in Miel skill. Only todo, reminder, and office are allowed. Pass every flag and value as a separate args item; shell syntax and arbitrary programs are not supported."),
 	)
 }
 

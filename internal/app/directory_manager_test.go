@@ -8,7 +8,7 @@ import (
 )
 
 func TestDirectoryManagerKeepsStableLayout(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "BlankMind")
+	root := filepath.Join(t.TempDir(), "Miel")
 	manager := NewDirectoryManager(root)
 	if err := manager.EnsureAll(); err != nil {
 		t.Fatal(err)
@@ -30,6 +30,40 @@ func TestDirectoryManagerKeepsStableLayout(t *testing.T) {
 	if paths.Database != filepath.Join(root, "blankmind.db") || paths.MemoryDatabase != filepath.Join(root, "memory.db") || paths.AGUIDatabase != filepath.Join(root, "agui.db") {
 		t.Fatalf("database paths moved unexpectedly: %#v", paths)
 	}
+}
+
+func TestDefaultDataRootPrefersMielAndFallsBackToLegacy(t *testing.T) {
+	t.Run("fresh install", func(t *testing.T) {
+		dataHome := t.TempDir()
+		if got, want := defaultDataRoot(dataHome), filepath.Join(dataHome, "Miel"); got != want {
+			t.Fatalf("defaultDataRoot() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("legacy install", func(t *testing.T) {
+		dataHome := t.TempDir()
+		legacy := filepath.Join(dataHome, "BlankMind")
+		if err := os.MkdirAll(legacy, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if got := defaultDataRoot(dataHome); got != legacy {
+			t.Fatalf("defaultDataRoot() = %q, want legacy root %q", got, legacy)
+		}
+	})
+
+	t.Run("renamed install", func(t *testing.T) {
+		dataHome := t.TempDir()
+		legacy := filepath.Join(dataHome, "BlankMind")
+		current := filepath.Join(dataHome, "Miel")
+		for _, path := range []string{legacy, current} {
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := defaultDataRoot(dataHome); got != current {
+			t.Fatalf("defaultDataRoot() = %q, want current root %q", got, current)
+		}
+	})
 }
 
 func TestDirectoryManagerOutputPathValidatesFilename(t *testing.T) {

@@ -10,33 +10,33 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function AddMemory(input: $models.MemoryInput): $CancellablePromise<$models.MemoryItem> {
-    return $Call.ByID(2531929303, input);
+    return $Call.ByID(545781662, input);
 }
 
 export function ClearMemories(): $CancellablePromise<void> {
-    return $Call.ByID(3459452801);
+    return $Call.ByID(292160644);
 }
 
 export function DeleteMemory(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3543467989, id);
+    return $Call.ByID(1391769978, id);
 }
 
 export function ExportMemories(): $CancellablePromise<string> {
-    return $Call.ByID(2458202904);
+    return $Call.ByID(126856199);
 }
 
 export function GetSettings(): $CancellablePromise<$models.MemorySettingsView> {
-    return $Call.ByID(3742061642);
+    return $Call.ByID(979579879);
 }
 
 export function ListMemories(): $CancellablePromise<$models.MemoryItem[] | null> {
-    return $Call.ByID(4222189258);
+    return $Call.ByID(2084385969);
 }
 
 export function SaveSettings(input: $models.MemoryConfigInput): $CancellablePromise<$models.MemorySettingsView> {
-    return $Call.ByID(4275059381, input);
+    return $Call.ByID(1325215790, input);
 }
 
 export function UpdateMemory(input: $models.MemoryUpdateInput): $CancellablePromise<$models.MemoryItem> {
-    return $Call.ByID(349733079, input);
+    return $Call.ByID(3765036808, input);
 }

@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="blankmind.exe"
+        Path="miel.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\My Product">
+        InstallLocation="C:\Program Files\AntNoHuabei\Miel">
     </Installer>
     <PackageInformation
-        PackageName="My Product"
-        PackageDisplayName="My Product"
-        PublisherName="CN=My Company"
-        PublisherDisplayName="My Company"
+        PackageName="Miel"
+        PackageDisplayName="Miel"
+        PublisherName="CN=AntNoHuabei"
+        PublisherDisplayName="AntNoHuabei"
         Version="0.1.0.0"
-        PackageDescription="A BlankMind application">
+        PackageDescription="A local-first AI office agent">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.blankmind"
-                Description="A BlankMind application"
-                DisplayName="My Product"
-                ExecutableName="blankmind.exe"
+                Id="com.antnohuabei.miel"
+                Description="A local-first AI office agent"
+                DisplayName="Miel"
+                ExecutableName="miel.exe"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>My Product</DisplayName>
-            <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>A BlankMind application</Description>
+            <DisplayName>Miel</DisplayName>
+            <PublisherDisplayName>AntNoHuabei</PublisherDisplayName>
+            <Description>A local-first AI office agent</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="blankmind.msix" />
+    <SaveLocation PackagePath="miel.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

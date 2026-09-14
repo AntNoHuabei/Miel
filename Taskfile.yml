@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  APP_NAME: "blankmind"
+  APP_NAME: "miel"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
@@ -12,7 +12,7 @@ includes:
 
 tasks:
   build:
-    summary: Builds BlankMind for Windows with CGO enabled
+    summary: Builds Miel for Windows with CGO enabled
     cmds:
       - task: windows:build
 
@@ -27,6 +27,6 @@ tasks:
       - task: windows:run
 
   dev:
-    summary: Runs BlankMind in Windows development mode
+    summary: Runs Miel in Windows development mode
     cmds:
       - task: windows:dev

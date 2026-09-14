@@ -138,7 +138,7 @@ export default function QuickAssistantWindow({
   return (
     <div className="bm-quick-window">
       <header className="bm-quick-titlebar">
-        <div className="bm-quick-brand">BlankMind</div>
+        <div className="bm-quick-brand">Miel</div>
         <div className="bm-quick-drag" />
         <Tooltip title="新建会话"><Button type="text" icon={<PlusOutlined />} disabled={runtime.sending} onClick={newConversation} /></Tooltip>
         <Tooltip title="从粘贴板生成待办"><Button type="text" icon={<CheckSquareOutlined />} disabled={runtime.sending} onClick={startClipboard} /></Tooltip>
@@ -171,13 +171,13 @@ export default function QuickAssistantWindow({
             {runtime.messages.length === 0 && !runtime.run.streaming && !runtime.run.error ? (
               <div className="bm-quick-empty">
                 <Typography.Title level={2}>有什么需要处理？</Typography.Title>
-                <Typography.Text type="secondary">对话会保存到 BlankMind 的会话列表。</Typography.Text>
+                <Typography.Text type="secondary">对话会保存到 Miel 的会话列表。</Typography.Text>
               </div>
             ) : (
               runtime.messages.map((item, index) => <Fragment key={item.id || index}><SnapshotMessage message={item} /></Fragment>)
             )}
             {phase && <div className="bm-quick-phase"><Spin size="small" /><span>{phase}</span></div>}
-            {runtime.run.streaming && <div className="bm-chat-assistant-message"><Typography.Text type="secondary">BlankMind</Typography.Text><div className="bm-md">{runtime.run.streaming}</div></div>}
+            {runtime.run.streaming && <div className="bm-chat-assistant-message"><Typography.Text type="secondary">Miel</Typography.Text><div className="bm-md">{runtime.run.streaming}</div></div>}
             {runtime.run.error && !isPersistedTailError(runtime.messages, runtime.run.error) && <ChatRunErrorMessage error={runtime.run.error} />}
           </div>
           <div className="bm-quick-composer">
@@ -197,7 +197,7 @@ export default function QuickAssistantWindow({
               }}
               autoSize={{ minRows: 2, maxRows: 6 }}
               variant="borderless"
-              placeholder="给 BlankMind 发消息"
+              placeholder="给 Miel 发消息"
               disabled={runtime.sending}
             />
             <Flex align="center" justify="space-between" className="bm-quick-composer-footer">

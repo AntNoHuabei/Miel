@@ -54,7 +54,7 @@ export function friendlyChatError(error: AgentRunError): FriendlyChatError {
     return { title: '服务商额度不足', description: '请检查账户余额或用量限制后重试。' }
   }
   if (status === '429' || raw.includes('rate_limit') || raw.includes('rate limit')) {
-    return { title: '请求过于频繁', description: 'BlankMind 已自动重试，但服务商仍在限流，请稍后再试。' }
+    return { title: '请求过于频繁', description: 'Miel 已自动重试，但服务商仍在限流，请稍后再试。' }
   }
   if (/^5\d{2}$/.test(status)) {
     return { title: '模型服务暂时不可用', description: '服务商当前异常，请稍后重试。' }

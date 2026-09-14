@@ -15,48 +15,48 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function Delete(name: string): $CancellablePromise<void> {
-    return $Call.ByID(3484778010, name);
+    return $Call.ByID(3053809859, name);
 }
 
 /**
  * ImportFromSkillHub accepts a SkillHub detail/download URL. The response may be SKILL.md, JSON, or ZIP.
  */
 export function ImportFromSkillHub(url: string): $CancellablePromise<$models.Skill> {
-    return $Call.ByID(2262826600, url);
+    return $Call.ByID(3567826269, url);
 }
 
 /**
  * ImportLocal imports a directory containing SKILL.md or a ZIP archive.
  */
 export function ImportLocal(path: string): $CancellablePromise<$models.Skill> {
-    return $Call.ByID(501619343, path);
+    return $Call.ByID(2585522248, path);
 }
 
 /**
  * InstallSkillHub installs a catalog entry by its public slug.
  */
 export function InstallSkillHub(slug: string): $CancellablePromise<$models.Skill> {
-    return $Call.ByID(1759564660, slug);
+    return $Call.ByID(431361015, slug);
 }
 
 /**
  * ListSkillHubSkills returns a public, searchable page from the SkillHub catalog.
  */
 export function ListSkillHubSkills(page: number, pageSize: number, keyword: string): $CancellablePromise<$models.SkillHubPage> {
-    return $Call.ByID(1719993051, page, pageSize, keyword);
+    return $Call.ByID(2225171502, page, pageSize, keyword);
 }
 
 export function ListSkills(): $CancellablePromise<$models.Skill[] | null> {
-    return $Call.ByID(464751515);
+    return $Call.ByID(1572784778);
 }
 
 /**
  * PickLocal opens the native picker and imports the selected directory or ZIP.
  */
 export function PickLocal(): $CancellablePromise<$models.Skill> {
-    return $Call.ByID(1132274627);
+    return $Call.ByID(2171086468);
 }
 
 export function SetEnabled(name: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(510577288, name, enabled);
+    return $Call.ByID(2398075561, name, enabled);
 }

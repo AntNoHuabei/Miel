@@ -1,3 +1,3 @@
-import * as Services from '../../../bindings/github.com/AntNoHuabei/blankmind/internal/app'
+import * as Services from '../../../bindings/github.com/AntNoHuabei/Miel/internal/app'
 
 export { Services }

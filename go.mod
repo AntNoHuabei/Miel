@@ -1,4 +1,4 @@
-module github.com/AntNoHuabei/blankmind
+module github.com/AntNoHuabei/Miel
 
 go 1.25.0
 

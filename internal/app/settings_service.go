@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AntNoHuabei/blankmind/internal/credential"
+	"github.com/AntNoHuabei/Miel/internal/credential"
 )
 
 // credentialTarget 返回某服务商在系统凭据中的目标名。

@@ -34,7 +34,7 @@ export default function AppShell() {
     const reminder = parseEventData<ReminderItem>(raw)
     if (!reminder) return
     addReminder(reminder)
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('BlankMind 提醒', { body: reminder.text })
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('Miel 提醒', { body: reminder.text })
   }, [addReminder]))
   useWailsEvent('todos.changed', refreshTodosIfLoaded, [])
 
@@ -52,7 +52,7 @@ export default function AppShell() {
         <div className="bm-window-title-actions">
           <Tooltip title={sidebarOpen ? '收起会话侧栏' : '展开会话侧栏'}><Button type="text" aria-label={sidebarOpen ? '收起会话侧栏' : '展开会话侧栏'} icon={sidebarOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />} onMouseUp={releaseMouseFocus} onClick={toggleSidebar} /></Tooltip>
           {!sidebarOpen && <Tooltip title="新建会话"><Button type="text" aria-label="新建会话" icon={<PlusOutlined />} onMouseUp={releaseMouseFocus} onClick={requestNewChat} /></Tooltip>}
-          <span className="bm-window-title-name">BlankMind</span>
+          <span className="bm-window-title-name">Miel</span>
         </div>
         <div className="bm-window-title-drag" />
         <div className="bm-window-controls" aria-label="窗口控制">

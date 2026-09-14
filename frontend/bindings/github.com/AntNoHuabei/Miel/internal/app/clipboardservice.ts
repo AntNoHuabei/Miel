@@ -15,13 +15,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function ConfirmTodos(req: $models.ConfirmClipboardTodosReq): $CancellablePromise<$models.Todo[] | null> {
-    return $Call.ByID(1367497831, req);
+    return $Call.ByID(1400733498, req);
 }
 
 export function DiscardDraft(draftID: string): $CancellablePromise<void> {
-    return $Call.ByID(462260683, draftID);
+    return $Call.ByID(3747301450, draftID);
 }
 
 export function ExtractTodos(): $CancellablePromise<$models.ClipboardTodoDraft> {
-    return $Call.ByID(1133855872);
+    return $Call.ByID(3340436561);
 }

@@ -33,7 +33,7 @@ function App() {
   if (configured === null) {
     return (
       <Flex align="center" justify="center" style={{ height: '100vh' }}>
-        <Spin size="large" tip="BlankMind 启动中…">
+        <Spin size="large" tip="Miel 启动中…">
           <div style={{ padding: 24 }} />
         </Spin>
       </Flex>

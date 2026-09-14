@@ -18,61 +18,61 @@ import * as $models from "./models.js";
  * CreateTodo 新增待办并写操作日志。
  */
 export function CreateTodo($in: $models.TodoInput): $CancellablePromise<$models.Todo> {
-    return $Call.ByID(3838720110, $in);
+    return $Call.ByID(2767029029, $in);
 }
 
 /**
  * DeleteTodo 删除待办并写日志。
  */
 export function DeleteTodo(id: number): $CancellablePromise<void> {
-    return $Call.ByID(3890522589, id);
+    return $Call.ByID(75882058, id);
 }
 
 /**
  * GetTodo 按 ID 读取单个待办。
  */
 export function GetTodo(id: number): $CancellablePromise<$models.Todo> {
-    return $Call.ByID(1203534646, id);
+    return $Call.ByID(1326055255, id);
 }
 
 /**
  * GetTodoSource returns the immutable source payload used to create a todo.
  */
 export function GetTodoSource(sourceID: number): $CancellablePromise<$models.TodoSource> {
-    return $Call.ByID(1295397499, sourceID);
+    return $Call.ByID(2400278690, sourceID);
 }
 
 /**
  * ListEvents 返回操作日志;since > 0 时只返回该时间点之后(周报等按周聚合)。
  */
 export function ListEvents(since: number): $CancellablePromise<$models.Event[] | null> {
-    return $Call.ByID(2267199011, since);
+    return $Call.ByID(3110526920, since);
 }
 
 /**
  * ListTodos 返回全部待办(调用方自行过滤/排序,数据量小)。
  */
 export function ListTodos(): $CancellablePromise<$models.Todo[] | null> {
-    return $Call.ByID(3106814143);
+    return $Call.ByID(501696206);
 }
 
 /**
  * SetTodoStatus 快捷改状态(勾选完成 / 重开)。
  */
 export function SetTodoStatus(id: number, status: string): $CancellablePromise<$models.Todo> {
-    return $Call.ByID(2489415572, id, status);
+    return $Call.ByID(4293546629, id, status);
 }
 
 /**
  * TodoStats 计算快捷视图汇总数据(角标与里程碑提醒)。
  */
 export function TodoStats(): $CancellablePromise<$models.TodoStats> {
-    return $Call.ByID(283741193);
+    return $Call.ByID(1144253540);
 }
 
 /**
  * UpdateTodo 更新待办的信息字段与状态;状态流转为 done 时写完成日志。
  */
 export function UpdateTodo($in: $models.TodoInput): $CancellablePromise<$models.Todo> {
-    return $Call.ByID(3290844979, $in);
+    return $Call.ByID(1871383372, $in);
 }

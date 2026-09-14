@@ -18,26 +18,26 @@ import * as $models from "./models.js";
  * DiscardDrafts removes composer drafts that have not been sent.
  */
 export function DiscardDrafts(ids: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(581332801, ids);
+    return $Call.ByID(3412010444, ids);
 }
 
 /**
  * GetImageDataURI loads the original image on demand for the preview overlay.
  */
 export function GetImageDataURI(id: string): $CancellablePromise<string> {
-    return $Call.ByID(2094388814, id);
+    return $Call.ByID(3795678163, id);
 }
 
 /**
  * PasteImage stages the Windows clipboard image. Text-only clipboards return nil.
  */
 export function PasteImage(): $CancellablePromise<$models.ChatAttachmentDraft | null> {
-    return $Call.ByID(3347024309);
+    return $Call.ByID(3826131194);
 }
 
 /**
  * PickImages opens a Wails native multi-file picker and stages the selection.
  */
 export function PickImages(): $CancellablePromise<$models.ChatAttachmentDraft[] | null> {
-    return $Call.ByID(4090137570);
+    return $Call.ByID(757423633);
 }

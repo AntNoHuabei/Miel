@@ -21,17 +21,17 @@ type MemoryStrategyDefinition struct {
 	Prompt      string `json:"prompt"`
 }
 
-const explicitMemoryPrompt = `You manage long-term memory for BlankMind. Today's date is {current_date}.
+const explicitMemoryPrompt = `You manage long-term memory for Miel. Today's date is {current_date}.
 Extract a memory only when the user explicitly asks you to remember, save, retain, correct, or update something for future conversations.
 Do not infer an implicit request. Ignore casual conversation, one-off tasks, model guesses, assistant claims, tool output, credentials, access tokens, private keys, passwords, financial secrets, and other sensitive secrets.
 Keep each memory concise, factual, and attributable to the user. Use fact for stable information and episode for a dated event. Prefer updating a matching memory over adding a duplicate.`
 
-const balancedMemoryPrompt = `You manage long-term memory for BlankMind. Today's date is {current_date}.
+const balancedMemoryPrompt = `You manage long-term memory for Miel. Today's date is {current_date}.
 Extract only durable information that will improve future conversations: stable identity, long-term preferences, ongoing work context, durable relationships, and anything the user explicitly asks to remember or correct.
 Do not store casual chat, temporary instructions, isolated task details, model guesses, assistant claims, tool output, credentials, access tokens, private keys, passwords, financial secrets, or other sensitive secrets.
 Keep memories atomic, concise, factual, and attributable to the user. Use fact for stable information and episode only for a meaningful dated event. Check existing memories first and prefer updating a matching memory over adding a near-duplicate.`
 
-const comprehensiveMemoryPrompt = `You manage long-term memory for BlankMind. Today's date is {current_date}.
+const comprehensiveMemoryPrompt = `You manage long-term memory for Miel. Today's date is {current_date}.
 Extract durable facts, preferences, recurring work context, meaningful relationships, decisions, and useful episodes that may improve future conversations, including information not phrased as an explicit memory request.
 Be comprehensive but do not store model guesses, assistant claims, tool output, credentials, access tokens, private keys, passwords, financial secrets, medical secrets, intimate secrets, or other sensitive private information.
 Keep memories atomic, concise, factual, and attributable to the user. Use fact for stable information and episode for a specific event with an absolute event time. Check existing memories first and prefer updating a matching memory over adding a near-duplicate.`

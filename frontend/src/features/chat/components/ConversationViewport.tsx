@@ -56,7 +56,7 @@ export function ConversationViewport({
         {messages.length === 0 && !streaming && !error && (
           <section className="bm-chat-empty-state" aria-labelledby="bm-chat-empty-title">
             <div className="bm-chat-empty-intro">
-              <Typography.Title level={1} id="bm-chat-empty-title" className="bm-chat-empty-title">你好，我是 BlankMind</Typography.Title>
+              <Typography.Title level={1} id="bm-chat-empty-title" className="bm-chat-empty-title">你好，我是 Miel</Typography.Title>
               <Text type="secondary" className="bm-chat-empty-copy">可以让我记录待办、安排里程碑、生成周报，或创建文档与表格。</Text>
             </div>
             <div className="bm-chat-quick-list">
@@ -71,7 +71,7 @@ export function ConversationViewport({
           </Fragment>
         ))}
         {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} reasoning={reasoning} tools={tools} />}
-        {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>BlankMind</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
+        {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
         {error && !isPersistedTailError(messages, error) && <ChatRunErrorMessage error={error} />}
         {pendingApproval && <PermissionApprovalModal request={pendingApproval} onResolve={onResolveApproval} resolving={resolvingApproval} />}
       </Flex>

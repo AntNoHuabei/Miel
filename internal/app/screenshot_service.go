@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AntNoHuabei/blankmind/internal/capture"
+	"github.com/AntNoHuabei/Miel/internal/capture"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 

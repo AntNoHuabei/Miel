@@ -20,35 +20,35 @@ import * as $models from "./models.js";
  * AddWorkspace 添加一个真实存在的目录并切换到它。
  */
 export function AddWorkspace(path: string): $CancellablePromise<$models.Workspace> {
-    return $Call.ByID(3409758735, path);
+    return $Call.ByID(1383612140, path);
 }
 
 /**
  * DataDir 返回应用数据目录(设置页展示与打开,便于用户找到导出产物)。
  */
 export function DataDir(): $CancellablePromise<string> {
-    return $Call.ByID(2026335954);
+    return $Call.ByID(1791462635);
 }
 
 /**
  * DefaultModelSupportsVision 按当前默认模型及目录能力判断是否支持图片输入。
  */
 export function DefaultModelSupportsVision(): $CancellablePromise<boolean> {
-    return $Call.ByID(3641007329);
+    return $Call.ByID(2001683458);
 }
 
 /**
  * DefaultProvider 返回当前默认服务商;无配置时返回错误(首启向导据此拦截入口)。
  */
 export function DefaultProvider(): $CancellablePromise<$models.Provider> {
-    return $Call.ByID(2009889961);
+    return $Call.ByID(1575208488);
 }
 
 /**
  * DeleteProvider 删除一个服务商。
  */
 export function DeleteProvider(id: number): $CancellablePromise<void> {
-    return $Call.ByID(1699182037, id);
+    return $Call.ByID(1132753270, id);
 }
 
 /**
@@ -56,7 +56,7 @@ export function DeleteProvider(id: number): $CancellablePromise<void> {
  * 若这是最后一个可用模型则拒绝。
  */
 export function DisableModel(providerID: number, model: string): $CancellablePromise<void> {
-    return $Call.ByID(527800978, providerID, model);
+    return $Call.ByID(1853313797, providerID, model);
 }
 
 /**
@@ -65,7 +65,7 @@ export function DisableModel(providerID: number, model: string): $CancellablePro
  * 接口，直接返回随应用维护的官方文本模型目录。
  */
 export function DiscoverProviderModels($in: $models.ProviderInput): $CancellablePromise<$models.DiscoveredModel[] | null> {
-    return $Call.ByID(4134076443, $in);
+    return $Call.ByID(2362257724, $in);
 }
 
 /**
@@ -73,56 +73,56 @@ export function DiscoverProviderModels($in: $models.ProviderInput): $Cancellable
  * 内置模型传 catalog label;自定义模型由前端传入。
  */
 export function EnableModel(providerID: number, model: string, label: string, custom: boolean): $CancellablePromise<void> {
-    return $Call.ByID(95746113, providerID, model, label, custom);
+    return $Call.ByID(1185850728, providerID, model, label, custom);
 }
 
 /**
  * FetchProviderModels 保留原有字符串列表接口，供旧调用方兼容使用。
  */
 export function FetchProviderModels($in: $models.ProviderInput): $CancellablePromise<string[] | null> {
-    return $Call.ByID(4185565950, $in);
+    return $Call.ByID(3249093647, $in);
 }
 
 /**
  * GetSetting 读取设置项;不存在返回空串与 nil。
  */
 export function GetSetting(key: string): $CancellablePromise<string> {
-    return $Call.ByID(2768597003, key);
+    return $Call.ByID(558514900, key);
 }
 
 /**
  * HasProviders 返回是否已配置至少一个模型服务商(首启向导判定)。
  */
 export function HasProviders(): $CancellablePromise<boolean> {
-    return $Call.ByID(2996645121);
+    return $Call.ByID(326162430);
 }
 
 /**
  * ListProviders 返回全部服务商,默认项排最前。
  */
 export function ListProviders(): $CancellablePromise<$models.Provider[] | null> {
-    return $Call.ByID(3683199331);
+    return $Call.ByID(2832790102);
 }
 
 /**
  * ListSettings 返回全部设置项。
  */
 export function ListSettings(): $CancellablePromise<$models.Setting[] | null> {
-    return $Call.ByID(3705863550);
+    return $Call.ByID(609888057);
 }
 
 /**
  * ListWorkspaces 返回已添加的工作目录,当前项排最前。
  */
 export function ListWorkspaces(): $CancellablePromise<$models.Workspace[] | null> {
-    return $Call.ByID(1439062353);
+    return $Call.ByID(1177862006);
 }
 
 /**
  * ModelCatalog 返回内置模型目录(前端渲染模型下拉与思考档位)。
  */
 export function ModelCatalog(): $CancellablePromise<$models.CatalogProvider[] | null> {
-    return $Call.ByID(1687162807);
+    return $Call.ByID(2688888692);
 }
 
 /**
@@ -130,21 +130,21 @@ export function ModelCatalog(): $CancellablePromise<$models.CatalogProvider[] | 
  * IsDefault=true 表示该行是当前默认使用的模型。
  */
 export function ModelOptions(): $CancellablePromise<$models.ModelOption[] | null> {
-    return $Call.ByID(1789941174);
+    return $Call.ByID(2737607233);
 }
 
 /**
  * OpenDataDir 在系统文件管理器中打开应用数据目录。
  */
 export function OpenDataDir(): $CancellablePromise<void> {
-    return $Call.ByID(3158252478);
+    return $Call.ByID(2465880971);
 }
 
 /**
  * PickWorkspace 打开系统目录选择器,选择后自动添加并切换。
  */
 export function PickWorkspace(): $CancellablePromise<$models.Workspace> {
-    return $Call.ByID(2689521263);
+    return $Call.ByID(3386850774);
 }
 
 /**
@@ -152,28 +152,28 @@ export function PickWorkspace(): $CancellablePromise<$models.Workspace> {
  * 它是“模型配置向导”的联通测试入口;引导完成后即进入对话 Agent 阶段。
  */
 export function PingProvider($in: $models.ProviderInput): $CancellablePromise<$models.PingResult> {
-    return $Call.ByID(4105393294, $in);
+    return $Call.ByID(1587585681, $in);
 }
 
 /**
  * ProviderModels 返回服务商已启用的模型集合。
  */
 export function ProviderModels(id: number): $CancellablePromise<$models.ProviderModel[] | null> {
-    return $Call.ByID(2925528268, id);
+    return $Call.ByID(2772175943, id);
 }
 
 /**
  * ProviderTemplates 返回内置厂商模板(设置向导快速填充)。
  */
 export function ProviderTemplates(): $CancellablePromise<$models.ProviderTemplate[] | null> {
-    return $Call.ByID(3602868829);
+    return $Call.ByID(3538006212);
 }
 
 /**
  * RemoveWorkspace 移除工作目录;不会删除磁盘上的文件。
  */
 export function RemoveWorkspace(path: string): $CancellablePromise<void> {
-    return $Call.ByID(2127603404, path);
+    return $Call.ByID(1115878073, path);
 }
 
 /**
@@ -181,26 +181,26 @@ export function RemoveWorkspace(path: string): $CancellablePromise<void> {
  * 并保证 providers.model 落在集合内;若标记为默认会清除其它默认标记。
  */
 export function SaveProvider($in: $models.ProviderInput): $CancellablePromise<$models.Provider> {
-    return $Call.ByID(3435514179, $in);
+    return $Call.ByID(155800656, $in);
 }
 
 /**
  * SetProviderModel 把某服务商下的某启用模型设为“当前使用模型”,并使其服务商为默认。
  */
 export function SetProviderModel(providerID: number, model: string): $CancellablePromise<void> {
-    return $Call.ByID(280325549, providerID, model);
+    return $Call.ByID(501825638, providerID, model);
 }
 
 /**
  * SetSetting 写入设置项(upsert)。
  */
 export function SetSetting(key: string, value: string): $CancellablePromise<void> {
-    return $Call.ByID(282278335, key, value);
+    return $Call.ByID(436875264, key, value);
 }
 
 /**
  * SetWorkspace 切换到已添加的工作目录;传入空串表示退出工作区。
  */
 export function SetWorkspace(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3077405738, path);
+    return $Call.ByID(3837409265, path);
 }

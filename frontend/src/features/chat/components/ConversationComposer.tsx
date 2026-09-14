@@ -90,7 +90,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 void props.onSend()
               }
             }}
-            placeholder="给 BlankMind 发消息…(Enter 发送 / Shift+Enter 换行)"
+            placeholder="给 Miel 发消息…(Enter 发送 / Shift+Enter 换行)"
             autoSize={{ minRows: 2, maxRows: 8 }}
             variant="borderless"
             style={{ padding: '12px 14px 4px', fontSize: 14, lineHeight: 1.6 }}

@@ -8,15 +8,15 @@
   IgnorableNamespaces="uap3">
   
   <Identity 
-    Name="com.example.blankmind"
-    Publisher="CN=My Company"
+    Name="com.antnohuabei.miel"
+    Publisher="CN=AntNoHuabei"
     Version="0.1.0.0" 
     ProcessorArchitecture="x64" />
   
   <Properties>
-    <DisplayName>My Product</DisplayName>
-    <PublisherDisplayName>My Company</PublisherDisplayName>
-    <Description>A BlankMind application</Description>
+    <DisplayName>Miel</DisplayName>
+    <PublisherDisplayName>AntNoHuabei</PublisherDisplayName>
+    <Description>A local-first AI office agent</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   
@@ -29,10 +29,10 @@
   </Resources>
   
   <Applications>
-    <Application Id="com.example.blankmind" Executable="blankmind.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="com.antnohuabei.miel" Executable="miel.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="My Product"
-        Description="A BlankMind application"
+        DisplayName="Miel"
+        Description="A local-first AI office agent"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -41,7 +41,7 @@
       </uap:VisualElements>
       
       <Extensions>
-        <desktop:Extension Category="windows.fullTrustProcess" Executable="blankmind.exe" />
+        <desktop:Extension Category="windows.fullTrustProcess" Executable="miel.exe" />
         
         
       </Extensions>

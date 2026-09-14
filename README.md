@@ -1,98 +1,119 @@
-# 🧠 BlankMind — 本地办公 Agent
+# Miel
 
-一个本地优先的 AI 办公助手桌面应用:**免登录、数据全在本机、托盘后台常驻**,通过对话 + 工具 + Skill 完成待办管理、截图处理、周报生成与文档/表格产出。
+Miel 是一个面向 Windows 的本地优先 AI 办公 Agent。它通过对话、工具和 Skill 协助管理待办、处理截图、生成文档与表格，并将会话和业务数据保存在本机。
 
-技术栈:Wails3(Go)+ React 18 + TypeScript + Vite + Ant Design + SQLite。BlankMind 仅支持 Windows，长期记忆使用 CGO SQLite。
+项目基于 Wails 3、Go、React、TypeScript、Vite、Ant Design 和 SQLite 构建。
 
-## ✨ 功能
+## 主要能力
 
-- **对话 Agent 中枢**:基于 trpc-agent-go,function calling 驱动;流式输出、多轮会话、历史可回溯。
-- **模型服务商灵活接入**:内置 DeepSeek / OpenAI / OpenRouter / 火山方舟 Agent Plan / 通义千问 / Moonshot / Herdsman / Ollama 模板,支持任意 OpenAI 兼容的自定义服务商;默认未配置时用全屏向导引导(首次启动必经)。
-- **待办与里程碑**:手动/对话/截图/粘贴板来源;自动生成的待办保留原文或原图,可从待办页追溯。
-- **浮动助手**:`Alt+S` 在任意应用上方打开持久化快捷对话;失焦仅隐藏,显式关闭后下次新建会话。
-- **粘贴板转待办**:`Alt+T` 读取粘贴板文本或图片,经 AI 提取、编辑确认后写入待办。
-- **单实例运行**:基于 Wails 3 进程唯一性机制;重复启动会唤起现有主页,不会创建第二个 BlankMind 进程。
-- **里程碑倒计时**:未完成里程碑以卡片呈现剩余天数/进度,逾期红色预警。
-- **双通道提醒**:系统通知 + 应用内提醒中心/角标(每分钟自动扫描,托盘态也能收到)。
-- **全局截图**:默认 `Ctrl+Alt+S`(设置可改)任意时刻截屏 → 弹出处理菜单:
-  - **转待办**:视觉模型提取任务 → 勾选确认 → 入库(需多模态模型)
-  - **问答**:针对截图内容提问/总结/翻译
-  - **仅保存**:落盘到截图库并记备注
-- **办公生成**(对话内一句话触发):
-  - 周报 `generate_weekly_report`:聚合一周完成/新增/里程碑/逾期/操作流水,自动落盘
-  - 文档 `create_document`(markdown)、表格 `create_table`(CSV)、待办导出 `export_todos`(md/csv 带 BOM)
-- **Skill 扩展**:数据目录 `skills/<name>/SKILL.md` 即插即用(trpc-agent-go 加载),无需改代码。
-- **长期记忆**:基于 trpc-agent-go SQLite Memory，支持跨会话召回、自动提取策略、自定义提示词和本地记忆管理。
-- **皮肤系统**:内置明亮 / 暗夜 / 护眼绿 / 极客紫,设置页一键热切换并持久化。
-- **后台常驻**:关窗进系统托盘(显示/隐藏/退出),数据目录可从设置页一键打开。
+- **对话 Agent**：支持流式响应、多轮会话、工具调用、会话历史和 KV Cache 复用。
+- **工作区工具**：可列出目录、读写文件、执行命令和访问网页；相对路径始终以当前选择的工作区为基准。
+- **权限控制**：区分工作区内外操作，支持临时审批和不同授权模式，工作区外访问仍按规则确认。
+- **模型接入**：内置 DeepSeek、OpenAI、OpenRouter、火山方舟 Agent Plan、通义千问、Moonshot、Herdsman 和 Ollama 模板，也支持任意 OpenAI 兼容服务。
+- **模型能力配置**：支持模型级多模态能力和思考级别配置。
+- **待办与里程碑**：支持手动、对话、截图和粘贴板来源，并保留原文或原图以便追溯。
+- **快捷助手**：使用 `Alt+S` 打开浮动对话，使用 `Alt+T` 从粘贴板生成待办。
+- **截图处理**：默认使用 `Ctrl+Alt+S` 截图，可转待办、进行视觉问答或仅保存到本地。
+- **办公产物**：可生成周报、Markdown 文档、CSV 表格，并导出待办。
+- **长期记忆**：基于 SQLite Memory 提供跨会话召回、自动提取、自定义提示词和本地管理。
+- **Skill 扩展**：从本地目录、ZIP 或 SkillHub 导入 Skill，可单独启用和停用。
+- **桌面集成**：支持系统托盘、全局快捷键、原生窗口主题和单实例运行。
 
-## 🚀 开发与运行
+## 快速开始
 
-前置条件：Windows 10/11、WebView2、Go、Node.js，以及 MinGW-w64 GCC。`go env CC` 必须指向可执行的 `gcc.exe`。
+### 环境要求
+
+- Windows 10 或 Windows 11
+- WebView2 Runtime
+- Go 1.25 或更高版本
+- Node.js 和 npm
+- MinGW-w64 GCC，且 `go env CC` 能找到 `gcc.exe`
+- Wails 3 CLI
+
+### 获取源码
 
 ```powershell
-wails3 task dev          # 开发模式(前后端热重载)
-wails3 task build        # Windows 生产构建，默认 CGO_ENABLED=1
-wails3 task package      # NSIS（默认）或 MSIX 安装包
+git clone https://github.com/AntNoHuabei/Miel.git
+cd Miel
 ```
 
-前端单独调试:
+### 开发与构建
 
-```bash
+```powershell
+wails3 task dev       # 启动前后端开发模式
+wails3 task build     # 构建 Windows 应用到 bin/miel.exe
+wails3 task package   # 生成 NSIS 安装包，可切换为 MSIX
+```
+
+长期记忆依赖 `github.com/mattn/go-sqlite3`，因此 Go 测试和 Windows 构建必须启用 CGO。
+
+```powershell
+$env:CGO_ENABLED = '1'
+go test ./...
+
 cd frontend
 npm install
-npm run build     # tsc + vite 生产打包
+npm run test:run
+npm run build
 ```
 
-> 长期记忆依赖 `github.com/mattn/go-sqlite3`，因此 Windows 构建不能关闭 CGO。缺少 GCC 时 Taskfile 会在编译前给出明确错误。
+Wails 后端接口发生变化后，应在仓库根目录重新生成前端绑定：
 
-## 🗂 数据目录(Windows:`%LOCALAPPDATA%\BlankMind`)
+```powershell
+wails3 generate bindings -ts -d frontend/bindings
+```
+
+## 数据与兼容性
+
+全新安装默认使用 `%LOCALAPPDATA%\Miel`。如果升级前的 `%LOCALAPPDATA%\BlankMind` 已存在，且 `%LOCALAPPDATA%\Miel` 尚未创建，Miel 会继续使用旧目录，不移动或复制用户数据。
+
+为保证升级兼容，部分内部文件名和持久化键仍保留 `blankmind` 前缀。
 
 | 路径 | 内容 |
 | --- | --- |
-| `blankmind.db` | SQLite:providers / todos / events / conversations / messages / screenshots / settings |
-| `agui.db` | trpc-agent-go 会话与 AG-UI 消息轨迹 |
-| `memory.db` | 跨会话长期记忆，作用域为 `blankmind-app/user` |
-| `logs/blankmind.log` | 应用运行日志(同时保留标准输出) |
+| `blankmind.db` | 服务商、待办、事件、会话、消息、截图和设置 |
+| `agui.db` | Agent 会话与 AG-UI 消息轨迹 |
+| `memory.db` | 跨会话长期记忆 |
+| `logs/blankmind.log` | 应用日志 |
 | `screenshots/` | 截图原图 |
-| `sources/clipboard/` | 已确认待办关联的粘贴板图片来源 |
-| `outputs/reports/` | 生成的周报(markdown) |
-| `outputs/documents/` | 生成的文档(markdown) |
-| `outputs/tables/` | 生成的表格(CSV)与待办导出 |
-| `outputs/memories/` | 设置页导出的完整记忆 JSON |
-| `skills/` | 用户 Skill 目录(`<name>/SKILL.md`) |
+| `sources/clipboard/` | 待办关联的粘贴板图片来源 |
+| `attachments/chat/` | 对话附件、草稿和缩略图 |
+| `outputs/reports/` | 周报 |
+| `outputs/documents/` | Markdown 文档 |
+| `outputs/tables/` | CSV 表格和待办导出 |
+| `outputs/memories/` | 记忆导出文件 |
+| `skills/` | 已安装的用户 Skill |
 
-所有持久化路径由 Go 侧 `DirectoryManager` 统一管理，Wails `DirectoryService.Paths()` 返回同一份路径契约。新增数据库、日志、附件或产物类型时，应先在 `internal/app/directory_manager.go` 增加目录类型，再由业务服务引用，避免直接拼接应用根目录。
+所有持久化路径由 `internal/app/directory_manager.go` 统一管理。新增数据库、日志、附件或产物类型时，应先扩展 `DirectoryManager`，避免在业务服务中直接拼接应用数据目录。
 
-## 🧩 添加自定义 Skill
+## Skill 目录
 
-在数据目录 `skills/` 下新建目录与 `SKILL.md`,对话中即可被 Agent 按需加载调用(格式遵循 trpc-agent-go skill 约定)。
+每个 Skill 使用独立目录，并以 `SKILL.md` 作为入口：
 
-## 🏗 项目结构(Go 侧)
+```text
+skills/
+└── example-skill/
+    └── SKILL.md
+```
 
-| 文件 | 职责 |
-| --- | --- |
-| `main.go` | 装配:服务注册 / 托盘 / 全局热键 / 事件广播 |
-| `storage.go` | SQLite 打开与建表迁移 |
-| `settings_service.go` | Provider CRUD / 联通测试 / 应用设置 |
-| `todo_service.go` | 待办 CRUD / 状态 / 统计 / 事件日志 |
-| `agent_service.go` | 对话 Agent(llmagent)+ 会话持久化 |
-| `agent_tools.go` | 待办类 function-calling 工具 |
-| `office_tools.go` | 周报/文档/表格/导出办公工具 |
-| `screenshot_service.go` | 截屏 / 视觉提取转待办 / 截图问答 |
-| `clipboard_service.go` | 粘贴板文本/图片提取、确认与来源文件生命周期 |
-| `capture_windows.go` | Windows GDI 截屏(纯 syscall) |
-| `reminder_service.go` | 每分钟 deadline 扫描提醒引擎 |
-| `system_service.go` | 系统托盘与全局快捷键注册 |
-| `outputs.go` | 产物目录与“打开数据目录” |
-| `directory_manager.go` | 数据库、日志、附件、来源、skills 与产物的统一路径管理 |
-| `directory_service.go` | 向 Wails/前端暴露统一目录路径接口 |
-| `model_client.go` | OpenAI 兼容模型客户端构建 / Ping |
-| `memory_runtime.go` | SQLite Memory、召回工具与后台提取队列 |
-| `memory_service.go` | 记忆设置、管理与 JSON 导出 API |
+Miel 会从数据目录加载已启用的 Skill。内置 Skill 的命令执行范围受后端白名单限制。
 
-## 📌 说明
+## 项目结构
 
-- BlankMind 当前仅支持 Windows；构建、凭据、窗口主题、托盘和截图实现均按 Windows 维护。
-- 视觉能力(截图转待办/问答)依赖配置**多模态**模型(设置中勾选"多模态")。
-- 火山方舟 Agent Plan（Token Plan）必须使用套餐专属地址 `https://ark.cn-beijing.volces.com/api/plan/v3`。
+```text
+.
+├── internal/app/        Go 业务服务、Agent、工具、权限和持久化
+├── internal/capture/    Windows 截图实现
+├── internal/credential/ 系统凭据存储
+├── frontend/src/        React 界面与前端状态
+├── frontend/bindings/   Wails 生成的 TypeScript 绑定
+├── build/windows/       Windows 清单、安装包和资源配置
+├── main.go              Wails 应用装配与窗口创建
+└── Taskfile.yml         开发、构建和打包任务
+```
+
+## 平台说明
+
+- 当前仅维护 Windows 构建。
+- 视觉功能需要为对应模型启用多模态能力。
+- 火山方舟 Agent Plan 必须使用套餐专属地址 `https://ark.cn-beijing.volces.com/api/plan/v3`。

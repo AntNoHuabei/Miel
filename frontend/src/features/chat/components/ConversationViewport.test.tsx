@@ -58,7 +58,7 @@ describe('ConversationViewport', () => {
       />,
     )
     expect(screen.getByText('请求过于频繁')).toBeVisible()
-    expect(screen.queryByText('你好，我是 BlankMind')).not.toBeInTheDocument()
+    expect(screen.queryByText('你好，我是 Miel')).not.toBeInTheDocument()
     const detail = screen.getByText('raw provider rate limit response')
     expect(detail).not.toBeVisible()
     await userEvent.click(screen.getByText('查看技术详情'))

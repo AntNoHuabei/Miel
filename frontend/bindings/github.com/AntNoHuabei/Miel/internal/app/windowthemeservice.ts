@@ -15,5 +15,5 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
  * SetTheme 同步前端皮肤 ID 到原生窗口。
  */
 export function SetTheme(themeID: string): $CancellablePromise<void> {
-    return $Call.ByID(2485286056, themeID);
+    return $Call.ByID(4162921889, themeID);
 }

@@ -65,12 +65,34 @@ type DirectoryManager struct {
 	root string
 }
 
+const (
+	productDataDirectoryName = "Miel"
+	legacyDataDirectoryName  = "BlankMind"
+)
+
 // NewDirectoryManager creates a manager rooted at root. An empty root uses the platform data home.
 func NewDirectoryManager(root string) *DirectoryManager {
 	if strings.TrimSpace(root) == "" {
-		root = filepath.Join(xdg.DataHome, "BlankMind")
+		root = defaultDataRoot(xdg.DataHome)
 	}
 	return &DirectoryManager{root: filepath.Clean(root)}
+}
+
+func defaultDataRoot(dataHome string) string {
+	current := filepath.Join(dataHome, productDataDirectoryName)
+	if directoryExists(current) {
+		return current
+	}
+	legacy := filepath.Join(dataHome, legacyDataDirectoryName)
+	if directoryExists(legacy) {
+		return legacy
+	}
+	return current
+}
+
+func directoryExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 var appDirectories = NewDirectoryManager("")

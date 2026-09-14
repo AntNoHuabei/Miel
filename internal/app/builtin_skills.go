@@ -11,7 +11,7 @@ import (
 var builtinSkills embed.FS
 
 // builtinSkills keeps the three application-owned skills in sync with the
-// command contract shipped by the current BlankMind version.
+// command contract shipped by the current Miel version.
 func ensureBuiltinSkills(skillsRoot string) {
 	for _, name := range []string{"todo", "reminder", "office"} {
 		data, err := builtinSkills.ReadFile("skills/" + name + "/SKILL.md")

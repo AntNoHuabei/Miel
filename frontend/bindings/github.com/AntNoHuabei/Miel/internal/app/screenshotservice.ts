@@ -18,7 +18,7 @@ import * as $models from "./models.js";
  * AskAboutShot 对截图进行单轮问答(解释/翻译/描述/追问等)。
  */
 export function AskAboutShot(req: $models.AskShotReq): $CancellablePromise<string> {
-    return $Call.ByID(3996553896, req);
+    return $Call.ByID(796196055, req);
 }
 
 /**
@@ -26,33 +26,33 @@ export function AskAboutShot(req: $models.AskShotReq): $CancellablePromise<strin
  * 是否“保存”由用户在菜单里决定(此时才写操作日志)。
  */
 export function Capture(): $CancellablePromise<$models.ScreenshotResult> {
-    return $Call.ByID(1242974436);
+    return $Call.ByID(4198007141);
 }
 
 /**
  * ConfirmExtracted 把前端确认后的截图待办批量入库(来源 screenshot)。
  */
 export function ConfirmExtracted(req: $models.ConfirmExtractedReq): $CancellablePromise<$models.Todo[] | null> {
-    return $Call.ByID(2297437514, req);
+    return $Call.ByID(3287181561, req);
 }
 
 /**
  * EmitEvent 跨包(热键等)触发该服务事件,等价于服务内部 emit。
  */
 export function EmitEvent(name: string, data: any): $CancellablePromise<void> {
-    return $Call.ByID(2932484555, name, data);
+    return $Call.ByID(2070278450, name, data);
 }
 
 /**
  * ExtractTodos 用视觉模型把截图里的任务/安排提取为结构化待办(供预览)。
  */
 export function ExtractTodos(id: number): $CancellablePromise<$models.ExtractedTodo[] | null> {
-    return $Call.ByID(3514618792, id);
+    return $Call.ByID(1768524643, id);
 }
 
 /**
  * SaveShot “仅保存”:补备注并写操作日志。
  */
 export function SaveShot(req: $models.SaveShotReq): $CancellablePromise<void> {
-    return $Call.ByID(803619347, req);
+    return $Call.ByID(3153907660, req);
 }

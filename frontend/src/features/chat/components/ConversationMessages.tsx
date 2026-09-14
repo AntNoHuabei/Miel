@@ -134,7 +134,7 @@ export function SnapshotMessage({ message, toolName }: { message: AGUIMessageLit
   return (
     <>
       {(message.toolCalls ?? []).map((call) => <div className="bm-agent-process" key={call.id}><details className="bm-agent-detail"><summary><ToolOutlined /><span>{getToolLabel(call.function.name)}</span><Text type="secondary" className="bm-tool-status">已调用</Text></summary><div className="bm-tool-detail"><code>{call.function.name}</code>{call.function.arguments && <pre>{call.function.arguments}</pre>}</div></details></div>)}
-      {content && <div className="bm-chat-assistant-message"><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>BlankMind</Text><div className="bm-md">{renderMarkdown(content)}</div><AssistantMessageFooter message={message} content={content} /></div>}
+      {content && <div className="bm-chat-assistant-message"><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(content)}</div><AssistantMessageFooter message={message} content={content} /></div>}
     </>
   )
 }
