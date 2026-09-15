@@ -3,6 +3,7 @@ module github.com/AntNoHuabei/Miel
 go 1.25.0
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/adrg/xdg v0.5.3
 	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260514093510-e9e910b230b9
 	github.com/google/uuid v1.6.0
@@ -21,6 +22,7 @@ require (
 )
 
 require (
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

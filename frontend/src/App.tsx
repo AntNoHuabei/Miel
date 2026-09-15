@@ -4,6 +4,7 @@ import { settingsRepository } from './shared/repositories'
 import SetupWizard from './views/SetupWizard'
 import AppShell from './views/MainLayout'
 import QuickAssistantWindow from './views/QuickAssistantWindow'
+import { Window as WailsWindow } from '@wailsio/runtime'
 
 // App 负责“免登录 + 首启引导”:没有任何模型服务商配置时,全屏配置向导拦住入口。
 function App() {
@@ -49,10 +50,15 @@ function App() {
   }
 
   if (!configured) {
-    return <SetupWizard onDone={() => void check()} />
+    return <SetupWizard onDone={() => void check()} onExit={() => runWindowAction(() => WailsWindow.Close())} />
   }
 
   return <AppShell />
+}
+
+function runWindowAction(action: () => Promise<void>) {
+  const runtime = (window as typeof window & { _wails?: { environment?: unknown } })._wails
+  if (runtime?.environment) void action()
 }
 
 export default App

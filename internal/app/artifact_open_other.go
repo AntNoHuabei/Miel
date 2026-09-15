@@ -12,5 +12,7 @@ func openArtifactFile(path string) error {
 	if runtime.GOOS == "darwin" {
 		command = "open"
 	}
-	return exec.Command(command, path).Start()
+	cmd := exec.Command(command, path)
+	hideProcessWindow(cmd)
+	return cmd.Start()
 }

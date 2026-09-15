@@ -33,6 +33,11 @@ declare module "@wailsio/runtime" {
             "screenshot.captured": { [_ in string]?: any } | null;
             "screenshot.processed": { [_ in string]?: any } | null;
             "screenshot.saved": { [_ in string]?: any } | null;
+            "skill.dependency.confirmation-required": app$0.SkillDependencyPlan;
+            "skill.dependency.detected": app$0.SkillDependencyPlan;
+            "skill.dependency.failed": app$0.SkillEnvironmentStatus;
+            "skill.dependency.progress": app$0.SkillInstallProgress;
+            "skill.dependency.ready": app$0.SkillEnvironmentStatus;
             "time": string;
             "todo.source.changed": number;
             "todos.changed": string;

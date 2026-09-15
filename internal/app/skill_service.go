@@ -64,9 +64,10 @@ type skillState struct {
 
 // SkillService manages documents under the application skills directory.
 type SkillService struct {
-	manager *DirectoryManager
-	client  *http.Client
-	picker  func() (string, error)
+	manager      *DirectoryManager
+	client       *http.Client
+	picker       func() (string, error)
+	dependencies *SkillDependencyService
 }
 
 func NewSkillService(manager *DirectoryManager) *SkillService {
@@ -100,6 +101,46 @@ func (s *SkillService) skillsRoot() (string, error) {
 		return "", errors.New("技能服务未初始化")
 	}
 	return s.manager.Ensure(DirectorySkills)
+}
+
+// ReconcileDependencyState keeps unconfirmed executable skills out of the Agent repository.
+func (s *SkillService) ReconcileDependencyState() error {
+	if s == nil || s.dependencies == nil {
+		return nil
+	}
+	root, err := s.skillsRoot()
+	if err != nil {
+		return err
+	}
+	state, err := s.loadState(root)
+	if err != nil {
+		return err
+	}
+	changed := false
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || isBuiltinSkill(entry.Name()) {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		if _, err := os.Stat(filepath.Join(dir, skillManifestFile)); err == nil {
+			continue
+		}
+		plan := detectSkillDependencies(dir, normalizeSkillName(entry.Name()))
+		enabled, recorded := state.Enabled[plan.Skill]
+		automatic := plan.Confidence == "high" && plan.EntryCommand != "" && len(plan.EntryArgs) > 0
+		if plan.Runtime != "" && !automatic && (!recorded || enabled) {
+			state.Enabled[plan.Skill] = false
+			changed = true
+		}
+	}
+	if changed {
+		return s.saveState(root, state)
+	}
+	return nil
 }
 
 func (s *SkillService) ListSkills() ([]Skill, error) {
@@ -212,6 +253,20 @@ func (s *SkillService) SetEnabled(name string, enabled bool) error {
 		}
 		return errors.New("技能不存在")
 	}
+	if enabled && s.dependencies != nil {
+		plan, inspectErr := s.dependencies.InspectSkillDependencies(name)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		if plan.NeedsReview {
+			return errors.New("Skill 依赖需要确认后才能启用")
+		}
+		if plan.Runtime != "" {
+			if _, initErr := s.dependencies.InitializeSkill(name); initErr != nil {
+				return initErr
+			}
+		}
+	}
 	state, err := s.loadState(root)
 	if err != nil {
 		return err
@@ -237,6 +292,9 @@ func (s *SkillService) Delete(name string) error {
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("删除技能失败: %w", err)
+	}
+	if s.dependencies != nil {
+		_ = s.dependencies.RemoveSkillEnvironment(name)
 	}
 	state, err := s.loadState(root)
 	if err == nil {
@@ -346,6 +404,33 @@ func (s *SkillService) installDirectory(source, origin, sourceURL string) (Skill
 	if err := copySkillFiles(source, installed.Path); err != nil {
 		return Skill{}, err
 	}
+	return s.finalizeImportedSkill(installed)
+}
+
+func (s *SkillService) finalizeImportedSkill(installed Skill) (Skill, error) {
+	if s.dependencies == nil {
+		return installed, nil
+	}
+	plan, err := s.dependencies.InspectSkillDependencies(installed.Name)
+	if err != nil {
+		return Skill{}, err
+	}
+	if plan.Runtime == "" {
+		return installed, nil
+	}
+	root, err := s.skillsRoot()
+	if err != nil {
+		return Skill{}, err
+	}
+	state, err := s.loadState(root)
+	if err != nil {
+		return Skill{}, err
+	}
+	state.Enabled[installed.Name] = false
+	if err := s.saveState(root, state); err != nil {
+		return Skill{}, err
+	}
+	installed.Enabled = false
 	return installed, nil
 }
 
@@ -585,7 +670,7 @@ func normalizeSkillName(name string) string {
 
 func isBuiltinSkill(name string) bool {
 	switch normalizeSkillName(name) {
-	case "todo", "reminder", "office":
+	case "todo", "reminder", "office", "websearch":
 		return true
 	default:
 		return false

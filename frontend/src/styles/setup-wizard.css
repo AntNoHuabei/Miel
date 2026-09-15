@@ -1,0 +1,64 @@
+.bm-setup-wizard {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 56px 24px 24px;
+  background: linear-gradient(135deg, #f5f7fa, #e6ecf5);
+}
+
+.bm-setup-wizard-content {
+  width: min(720px, 100%);
+  max-height: 100%;
+  min-height: 0;
+}
+
+.bm-setup-wizard-controls {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+}
+
+.bm-setup-wizard-controls .ant-btn {
+  width: 38px;
+  height: 32px;
+  border-radius: 0;
+}
+
+.bm-setup-wizard-controls .is-close:hover {
+  color: #fff;
+  background: #d9363e;
+}
+
+.bm-setup-wizard-templates {
+  max-height: min(540px, calc(100vh - 290px));
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.bm-setup-wizard-templates::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.bm-setup-wizard-exit {
+  text-align: center;
+}
+
+@media (max-height: 680px) {
+  .bm-setup-wizard {
+    align-items: flex-start;
+    padding-top: 48px;
+  }
+
+  .bm-setup-wizard-templates {
+    max-height: calc(100vh - 250px);
+  }
+}

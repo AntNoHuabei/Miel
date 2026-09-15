@@ -36,6 +36,8 @@ var (
 	todoSvc     *TodoService
 )
 
+const maxAgentToolIterations = 20
+
 // AgentService 是基于 trpc-agent-go 的对话 Agent 服务:
 //   - 每次 Chat 按“默认 Provider”动态构建 LLMAgent,会话可并行
 //   - 办公能力(待办/统计/日志)以 function calling 暴露
@@ -50,6 +52,7 @@ type AgentService struct {
 	memory      *memoryRuntime
 	attachments *ChatAttachmentService
 	permissions *PermissionService
+	webSearch   *WebSearchService
 	artifacts   *ArtifactService
 	historyMu   sync.Mutex
 	closeOnce   sync.Once
@@ -71,17 +74,20 @@ func (s *AgentService) emit(name string, data any) {
 const systemInstruction = `你是 Miel,运行在本地的办公 Agent,通过工具管理用户的待办与里程碑,
 并基于操作日志生成周报与办公文档。规则:
 1. 使用与用户相同的语言回复。
-2. 需要操作待办、提醒或办公产出时,先用 skill_load 加载对应的 todo、reminder 或 office skill,
+2. 需要操作待办、提醒、办公产出或联网检索时,先用 skill_load 加载对应的 todo、reminder、office 或 websearch skill,
    再严格按照 skill 文档通过 skill_run 执行命令。
 3. 涉及截止时间但用户未给出具体日期时应追问;修改或删除待办前先查询并核对 ID。
 4. 用户询问待办、统计、进度或周报时必须执行 skill 命令读取真实数据,不要编造。
 5. 回复保持简洁,尽量用 Markdown 结构化。
-6. 可加载用户 skills 目录中的技能获取知识,但 skill_run 仅执行 Miel 内置 skill。
+6. 用户 skills 目录中的外部技能必须按其文档加载,并通过 skill_run 的 run 命令执行已确认入口;
+   不要用 execute_command 绕过 Skill 的依赖初始化与独立环境。
+	外部 Skill 成功时，skill_run 会返回 outputPaths 和 artifacts；这些已是最终交付，直接向用户报告，
+	不要为检查、移动、重复发布或重复执行而继续调用任何工具。
 7. memory_search 用于查询与当前请求有关的长期记忆;仅当用户明确要求记住时调用 memory_add。
    不保存凭据、密钥、密码、隐私秘密、模型推测或工具输出。
 8. 需要查看或修改工作区文件时使用 list_directory、read_file、write_file;
-   需要运行本地命令时使用 execute_command;需要获取网页时使用 fetch_url。
-   这些工具由应用执行权限控制，不要把命令拼接到 skill_run。
+   需要运行工作区本地命令时使用 execute_command;需要获取网页时使用 fetch_url。
+   execute_command 不可执行已安装 Skill 目录中的脚本；这类调用必须使用 skill_run 的 run 命令。
 9. 当工作区中的文件是用户要求的最终交付物时，使用 publish_artifact 发布；不要发布临时文件、日志或普通编辑。`
 
 const plainChatInstruction = `你是 Miel。当前模型不支持工具调用，本轮只能进行普通对话。规则:
@@ -208,13 +214,18 @@ type ChatResult struct {
 func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	msg := strings.TrimSpace(req.Message)
 	convID := req.ConversationID
+	chatStartedAt := time.Now()
+	logCtx := withLogContext(context.Background(), convID, req.RequestID)
+	logInfo(logCtx, "chat.start", "has_text", msg != "", "attachment_count", len(req.AttachmentIDs))
 	var userMessageID int64
 	runErrorForwarded := false
 	runErrorPersisted := false
 	defer func() {
 		if retErr == nil {
+			logInfo(logCtx, "chat.finish", "status", "done", "duration_ms", time.Since(chatStartedAt).Milliseconds())
 			return
 		}
+		logError(logCtx, "chat.finish", retErr, "status", "failed", "duration_ms", time.Since(chatStartedAt).Milliseconds())
 		runErr := normalizeChatRunError("", retErr.Error())
 		if !runErrorForwarded {
 			s.emitChatRunError(convID, req.RequestID, runErr)
@@ -273,6 +284,8 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	if err != nil {
 		return ChatResult{}, err
 	}
+	logCtx = withLogContext(logCtx, convID, req.RequestID)
+	logInfo(logCtx, "chat.input.saved", "message_id", userMessageID)
 	s.emit("agent.input.saved", map[string]any{
 		"conversationId": convID,
 		"messageId":      userMessageID,
@@ -302,9 +315,9 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	var agentTools []tool.Tool
 	publisher := &runArtifactService{ArtifactService: s.artifacts, scope: artifactScope{ConversationID: convID, RequestID: req.RequestID, UserMessageID: userMessageID}}
 	if toolsEnabled {
-		agentTools = chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID)
+		agentTools = chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID, s.webSearch)
 		if memoryEnabled {
-			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID)
+			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID, s.webSearch)
 		}
 	}
 	if toolsEnabled && s.artifacts != nil {
@@ -326,7 +339,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		llmagent.WithModel(m),
 		llmagent.WithInstruction(instruction),
 		llmagent.WithGenerationConfig(gc),
-		llmagent.WithMaxToolIterations(8),
+		llmagent.WithMaxToolIterations(maxAgentToolIterations),
 	}
 	var skillRepo skill.Repository
 	// skills/<name>/SKILL.md 即插即用。纯聊天模型不注册任何 Skill 工具。
@@ -383,7 +396,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}),
 	)
 
-	ctx := WithPermissionContext(context.Background(), s.permissions, req.PermissionSessionID, workspacePath)
+	ctx := WithPermissionContext(logCtx, s.permissions, req.PermissionSessionID, workspacePath)
 	threadID := "conv-" + strconv.FormatInt(convID, 10)
 	aguiMsgs := make([]aguitypes.Message, 0, len(hist))
 	for _, h := range hist {
@@ -399,14 +412,17 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		Messages: aguiMsgs,
 	}
 	startedAt := time.Now()
+	logInfo(ctx, "model.run.start", "provider", p.Kind, "model", p.Model, "max_tool_iterations", maxAgentToolIterations, "tools_enabled", toolsEnabled)
 	aguiEvents, err := aguiR.Run(ctx, input)
 	if err != nil {
+		logError(ctx, "model.run.start_failed", err, "provider", p.Kind, "model", p.Model)
 		return ChatResult{}, err
 	}
 
 	var answer strings.Builder
 	var answerMessageID string
 	var runErr *ChatRunError
+	toolCallsObserved := 0
 	s.emit("agent.start", map[string]any{"conversationId": convID, "requestId": req.RequestID})
 	for ev := range aguiEvents {
 		if ev == nil {
@@ -426,6 +442,18 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		if b, mErr := ev.ToJSON(); mErr == nil {
 			var event map[string]any
 			if json.Unmarshal(b, &event) == nil {
+				eventType, _ := event["type"].(string)
+				switch eventType {
+				case "TOOL_CALL_START":
+					toolCallsObserved++
+					logInfo(ctx, "tool.start", "tool_call_number", toolCallsObserved, "tool_call_id", event["toolCallId"], "tool", event["toolCallName"])
+				case "TOOL_CALL_END":
+					logInfo(ctx, "tool.arguments.complete", "tool_call_id", event["toolCallId"])
+				case "TOOL_CALL_RESULT":
+					logInfo(ctx, "tool.result.received", "tool_call_id", event["toolCallId"])
+				case "RUN_ERROR":
+					logError(ctx, "model.run.failed", errors.New(sanitizeLogText(fmt.Sprint(event["message"]))), "code", event["code"], "tool_calls_observed", toolCallsObserved, "duration_ms", time.Since(startedAt).Milliseconds())
+				}
 				if event["type"] == "CUSTOM" && event["name"] == "tool.artifacts" && s.artifacts != nil {
 					if value, ok := event["value"].(map[string]any); ok {
 						toolCallID, _ := value["toolCallId"].(string)
@@ -486,6 +514,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
 	}
 	s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
+	logInfo(ctx, "model.run.finish", "status", "done", "tool_calls_observed", toolCallsObserved, "duration_ms", time.Since(startedAt).Milliseconds())
 	s.emit("conversations.changed", "updated")
 	if memoryEnabled && memoryConfig.AutoExtract && msg != "" {
 		if err := s.memory.enqueue(m, memoryConfig, msg, out); err != nil {
@@ -610,7 +639,11 @@ func stableConversationSlot(providerID, conversationID int64) int64 {
 }
 
 func chatAgentTools(sourceContext *todoToolSource, memoryTools []tool.Tool, args ...any) []tool.Tool {
-	tools := []tool.Tool{newSkillRunTool(todoSvc, sourceContext)}
+	var search *WebSearchService
+	if len(args) >= 4 {
+		search, _ = args[3].(*WebSearchService)
+	}
+	tools := []tool.Tool{newSkillRunTool(todoSvc, sourceContext, search)}
 	if len(args) >= 3 {
 		permissions, _ := args[0].(*PermissionService)
 		workspace, _ := args[1].(string)

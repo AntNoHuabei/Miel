@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from 'react'
-import type { RefObject } from 'react'
+import type { RefObject, UIEventHandler } from 'react'
 import { Button, Flex, Typography } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import type { AGUIMessageLite } from '../../../api'
@@ -21,11 +21,13 @@ interface ConversationViewportProps {
   phase: AgentPhase
   process: AgentProcessStep[]
   tools: AgentToolCall[]
+  skillProgress?: { skill: string; stage: string; message?: string; state: string } | null
   artifacts: ArtifactRefLite[]
   error: AgentRunError | null
   pendingApproval: ApprovalRequest | null
   resolvingApproval: boolean
   scrollRef: RefObject<HTMLDivElement>
+  onScroll?: UIEventHandler<HTMLDivElement>
   quickPrompts: string[]
   onQuickPrompt: (prompt: string) => void
   onResolveApproval: (decision: ApprovalDecision) => void | Promise<void>
@@ -39,16 +41,19 @@ export function ConversationViewport({
   phase,
   process,
   tools,
+  skillProgress = null,
   artifacts,
   error,
   pendingApproval,
   resolvingApproval,
   scrollRef,
+  onScroll,
   quickPrompts,
   onQuickPrompt,
   onResolveApproval,
 }: ConversationViewportProps) {
-  const showProcess = sending || process.length > 0 || tools.length > 0
+  const showProcess = sending || process.length > 0 || tools.length > 0 || skillProgress !== null
+  const hasTimelineText = process.some((step) => step.type === 'text')
   const processBeforeIndex = showProcess && messages[messages.length - 1]?.role === 'assistant' ? messages.length - 1 : -1
   const toolNames = useMemo(() => {
     const names = new Map<string, string>()
@@ -57,7 +62,7 @@ export function ConversationViewport({
   }, [messages])
 
   return (
-    <div className={`bm-chat-messages ${messages.length === 0 && !streaming && !error ? 'is-empty' : ''}`} ref={scrollRef} style={{ flex: 1, overflowY: 'auto', minWidth: 0, minHeight: 0 }}>
+    <div className={`bm-chat-messages ${messages.length === 0 && !streaming && !error ? 'is-empty' : ''}`} ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflowY: 'auto', minWidth: 0, minHeight: 0 }}>
       <Flex vertical className="bm-chat-message-track" style={{ padding: '8px 24px 24px' }}>
         {messages.length === 0 && !streaming && !error && (
           <section className="bm-chat-empty-state" aria-labelledby="bm-chat-empty-title">
@@ -72,12 +77,12 @@ export function ConversationViewport({
         )}
         {messages.map((message, index) => (
           <Fragment key={message.id || index}>
-            {index === processBeforeIndex && <AgentProcess phase={phase} process={process} tools={tools} />}
+            {index === processBeforeIndex && <AgentProcess phase={phase} process={process} tools={tools} skillProgress={skillProgress} />}
             <SnapshotMessage message={message} conversationId={conversationId} toolName={message.toolCallId ? toolNames.get(message.toolCallId) : undefined} />
           </Fragment>
         ))}
-        {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} process={process} tools={tools} />}
-        {streaming && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
+        {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} process={process} tools={tools} skillProgress={skillProgress} />}
+        {streaming && !hasTimelineText && <div style={{ margin: '6px 0' }}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(streaming)}<span className="bm-cursor" /></div></div>}
         <ArtifactItems artifacts={artifacts} />
         {error && !isPersistedTailError(messages, error) && <ChatRunErrorMessage error={error} />}
         {pendingApproval && <PermissionApprovalModal request={pendingApproval} onResolve={onResolveApproval} resolving={resolvingApproval} />}

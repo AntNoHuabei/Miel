@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import type { UIEvent } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createConversationStore } from '../model/conversationStore'
 
@@ -104,5 +105,29 @@ describe('useConversationRuntime', () => {
       phase: 'error',
       error: { code: '429', message: 'Error: 429 Too Many Requests' },
     })
+  })
+
+  it('only follows output while the viewport remains near the bottom', async () => {
+    const store = createConversationStore('runtime-scroll-follow')
+    const { result } = renderHook(() => useConversationRuntime(runtimeOptions(store)))
+    const viewport = document.createElement('div')
+    Object.defineProperties(viewport, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 200 },
+      scrollTop: { configurable: true, writable: true, value: 400 },
+    })
+    result.current.scrollRef.current = viewport
+    act(() => store.getState().dispatchRun({ type: 'start', requestId: 'scroll-test', conversationId: 0 }))
+    await waitFor(() => expect(viewport.scrollTop).toBe(1000))
+
+    viewport.scrollTop = 400
+    act(() => result.current.onMessagesScroll({ currentTarget: viewport } as UIEvent<HTMLDivElement>))
+    act(() => store.getState().dispatchRun({ type: 'chunk', payload: { conversationId: 0, delta: 'new output' } }))
+    await waitFor(() => expect(viewport.scrollTop).toBe(400))
+
+    viewport.scrollTop = 800
+    act(() => result.current.onMessagesScroll({ currentTarget: viewport } as UIEvent<HTMLDivElement>))
+    act(() => store.getState().dispatchRun({ type: 'chunk', payload: { conversationId: 0, delta: 'more output' } }))
+    await waitFor(() => expect(viewport.scrollTop).toBe(1000))
   })
 })

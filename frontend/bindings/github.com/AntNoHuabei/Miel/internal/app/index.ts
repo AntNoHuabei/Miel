@@ -10,6 +10,7 @@ import * as MemoryService from "./memoryservice.js";
 import * as PermissionService from "./permissionservice.js";
 import * as ScreenshotService from "./screenshotservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as SkillDependencyService from "./skilldependencyservice.js";
 import * as SkillService from "./skillservice.js";
 import * as TodoService from "./todoservice.js";
 import * as WindowThemeService from "./windowthemeservice.js";
@@ -23,6 +24,7 @@ export {
     PermissionService,
     ScreenshotService,
     SettingsService,
+    SkillDependencyService,
     SkillService,
     TodoService,
     WindowThemeService
@@ -74,8 +76,12 @@ export type {
     ScreenshotResult,
     Setting,
     Skill,
+    SkillDependencyPlan,
+    SkillEnvironmentStatus,
     SkillHubPage,
     SkillHubSkill,
+    SkillInstallProgress,
+    SkillRuntimeStatus,
     Todo,
     TodoInput,
     TodoSource,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,52 +18,56 @@ import (
 type DirectoryKind string
 
 const (
-	DirectoryRoot            DirectoryKind = "root"
-	DirectoryLogs            DirectoryKind = "logs"
-	DirectoryScreenshots     DirectoryKind = "screenshots"
-	DirectorySources         DirectoryKind = "sources"
-	DirectoryClipboardSource DirectoryKind = "sources.clipboard"
-	DirectorySkills          DirectoryKind = "skills"
-	DirectoryOutputs         DirectoryKind = "outputs"
-	DirectoryOutputReports   DirectoryKind = "outputs.reports"
-	DirectoryOutputDocuments DirectoryKind = "outputs.documents"
-	DirectoryOutputTables    DirectoryKind = "outputs.tables"
-	DirectoryOutputMemories  DirectoryKind = "outputs.memories"
-	DirectoryArtifacts       DirectoryKind = "outputs.artifacts"
-	DirectoryArtifactFiles   DirectoryKind = "outputs.artifacts.files"
-	DirectoryArtifactCache   DirectoryKind = "outputs.artifacts.cache"
-	DirectoryArtifactTrash   DirectoryKind = "outputs.artifacts.trash"
-	DirectoryAttachments     DirectoryKind = "attachments"
-	DirectoryChatAttachments DirectoryKind = "attachments.chat"
-	DirectoryChatDrafts      DirectoryKind = "attachments.chat.drafts"
-	DirectoryChatFiles       DirectoryKind = "attachments.chat.files"
-	DirectoryChatThumbnails  DirectoryKind = "attachments.chat.thumbnails"
+	DirectoryRoot              DirectoryKind = "root"
+	DirectoryLogs              DirectoryKind = "logs"
+	DirectoryScreenshots       DirectoryKind = "screenshots"
+	DirectorySources           DirectoryKind = "sources"
+	DirectoryClipboardSource   DirectoryKind = "sources.clipboard"
+	DirectorySkills            DirectoryKind = "skills"
+	DirectorySkillEnvironments DirectoryKind = "skills.environments"
+	DirectoryRuntimeCache      DirectoryKind = "runtime.cache"
+	DirectoryOutputs           DirectoryKind = "outputs"
+	DirectoryOutputReports     DirectoryKind = "outputs.reports"
+	DirectoryOutputDocuments   DirectoryKind = "outputs.documents"
+	DirectoryOutputTables      DirectoryKind = "outputs.tables"
+	DirectoryOutputMemories    DirectoryKind = "outputs.memories"
+	DirectoryArtifacts         DirectoryKind = "outputs.artifacts"
+	DirectoryArtifactFiles     DirectoryKind = "outputs.artifacts.files"
+	DirectoryArtifactCache     DirectoryKind = "outputs.artifacts.cache"
+	DirectoryArtifactTrash     DirectoryKind = "outputs.artifacts.trash"
+	DirectoryAttachments       DirectoryKind = "attachments"
+	DirectoryChatAttachments   DirectoryKind = "attachments.chat"
+	DirectoryChatDrafts        DirectoryKind = "attachments.chat.drafts"
+	DirectoryChatFiles         DirectoryKind = "attachments.chat.files"
+	DirectoryChatThumbnails    DirectoryKind = "attachments.chat.thumbnails"
 )
 
 // DirectoryPaths is the stable, inspectable path contract for the application.
 // Database files intentionally remain at the root for compatibility with prior releases.
 type DirectoryPaths struct {
-	Root             string `json:"root"`
-	Database         string `json:"database"`
-	AGUIDatabase     string `json:"aguiDatabase"`
-	MemoryDatabase   string `json:"memoryDatabase"`
-	Logs             string `json:"logs"`
-	LogFile          string `json:"logFile"`
-	Screenshots      string `json:"screenshots"`
-	Sources          string `json:"sources"`
-	ClipboardSources string `json:"clipboardSources"`
-	Skills           string `json:"skills"`
-	Outputs          string `json:"outputs"`
-	Reports          string `json:"reports"`
-	Documents        string `json:"documents"`
-	Tables           string `json:"tables"`
-	Memories         string `json:"memories"`
-	Artifacts        string `json:"artifacts"`
-	Attachments      string `json:"attachments"`
-	ChatAttachments  string `json:"chatAttachments"`
-	ChatDrafts       string `json:"chatDrafts"`
-	ChatFiles        string `json:"chatFiles"`
-	ChatThumbnails   string `json:"chatThumbnails"`
+	Root              string `json:"root"`
+	Database          string `json:"database"`
+	AGUIDatabase      string `json:"aguiDatabase"`
+	MemoryDatabase    string `json:"memoryDatabase"`
+	Logs              string `json:"logs"`
+	LogFile           string `json:"logFile"`
+	Screenshots       string `json:"screenshots"`
+	Sources           string `json:"sources"`
+	ClipboardSources  string `json:"clipboardSources"`
+	Skills            string `json:"skills"`
+	SkillEnvironments string `json:"skillEnvironments"`
+	RuntimeCache      string `json:"runtimeCache"`
+	Outputs           string `json:"outputs"`
+	Reports           string `json:"reports"`
+	Documents         string `json:"documents"`
+	Tables            string `json:"tables"`
+	Memories          string `json:"memories"`
+	Artifacts         string `json:"artifacts"`
+	Attachments       string `json:"attachments"`
+	ChatAttachments   string `json:"chatAttachments"`
+	ChatDrafts        string `json:"chatDrafts"`
+	ChatFiles         string `json:"chatFiles"`
+	ChatThumbnails    string `json:"chatThumbnails"`
 }
 
 // DirectoryManager owns all persistent application paths and their creation.
@@ -172,6 +177,10 @@ func (d *DirectoryManager) Path(kind DirectoryKind) string {
 		return filepath.Join(d.root, "sources", "clipboard")
 	case DirectorySkills:
 		return filepath.Join(d.root, "skills")
+	case DirectorySkillEnvironments:
+		return filepath.Join(d.root, "skill-envs")
+	case DirectoryRuntimeCache:
+		return filepath.Join(d.root, "runtime-cache")
 	case DirectoryOutputs:
 		return filepath.Join(d.root, "outputs")
 	case DirectoryOutputReports:
@@ -218,7 +227,7 @@ func (d *DirectoryManager) Ensure(kind DirectoryKind) (string, error) {
 func (d *DirectoryManager) EnsureAll() error {
 	for _, kind := range []DirectoryKind{
 		DirectoryRoot, DirectoryLogs, DirectoryScreenshots, DirectorySources,
-		DirectoryClipboardSource, DirectorySkills, DirectoryOutputs,
+		DirectoryClipboardSource, DirectorySkills, DirectorySkillEnvironments, DirectoryRuntimeCache, DirectoryOutputs,
 		DirectoryOutputReports, DirectoryOutputDocuments, DirectoryOutputTables,
 		DirectoryOutputMemories, DirectoryAttachments, DirectoryChatAttachments,
 		DirectoryChatDrafts, DirectoryChatFiles, DirectoryChatThumbnails,
@@ -235,7 +244,7 @@ func (d *DirectoryManager) EnsureAll() error {
 func (d *DirectoryManager) Paths() DirectoryPaths {
 	return DirectoryPaths{
 		Root: d.Root(), Database: d.DatabasePath("blankmind.db"), AGUIDatabase: d.DatabasePath("agui.db"), MemoryDatabase: d.DatabasePath("memory.db"),
-		Logs: d.Path(DirectoryLogs), LogFile: d.LogFilePath(), Screenshots: d.Path(DirectoryScreenshots), Sources: d.Path(DirectorySources), ClipboardSources: d.Path(DirectoryClipboardSource), Skills: d.Path(DirectorySkills),
+		Logs: d.Path(DirectoryLogs), LogFile: d.LogFilePath(), Screenshots: d.Path(DirectoryScreenshots), Sources: d.Path(DirectorySources), ClipboardSources: d.Path(DirectoryClipboardSource), Skills: d.Path(DirectorySkills), SkillEnvironments: d.Path(DirectorySkillEnvironments), RuntimeCache: d.Path(DirectoryRuntimeCache),
 		Outputs: d.Path(DirectoryOutputs), Reports: d.Path(DirectoryOutputReports), Documents: d.Path(DirectoryOutputDocuments), Tables: d.Path(DirectoryOutputTables), Memories: d.Path(DirectoryOutputMemories),
 		Artifacts:   d.Path(DirectoryArtifacts),
 		Attachments: d.Path(DirectoryAttachments), ChatAttachments: d.Path(DirectoryChatAttachments), ChatDrafts: d.Path(DirectoryChatDrafts), ChatFiles: d.Path(DirectoryChatFiles), ChatThumbnails: d.Path(DirectoryChatThumbnails),
@@ -248,12 +257,33 @@ func (d *DirectoryManager) ConfigureLogging() (io.Closer, error) {
 	if _, err := d.Ensure(DirectoryLogs); err != nil {
 		return nil, err
 	}
+	if err := rotateLogFile(d.LogFilePath(), 10<<20); err != nil {
+		return nil, err
+	}
 	file, err := os.OpenFile(d.LogFilePath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("打开日志文件失败: %w", err)
 	}
-	log.SetOutput(io.MultiWriter(os.Stderr, file))
+	output := io.MultiWriter(os.Stderr, file)
+	log.SetOutput(output)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	return file, nil
+}
+
+func rotateLogFile(path string, maxBytes int64) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && info.Size() < maxBytes) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("检查日志文件失败: %w", err)
+	}
+	backup := path + ".1"
+	_ = os.Remove(backup)
+	if err := os.Rename(path, backup); err != nil {
+		return fmt.Errorf("轮转日志文件失败: %w", err)
+	}
+	return nil
 }
 
 // OpenRoot opens the application data directory in the native file manager.
@@ -261,7 +291,9 @@ func (d *DirectoryManager) OpenRoot() error {
 	if _, err := d.Ensure(DirectoryRoot); err != nil {
 		return err
 	}
-	if err := exec.Command("explorer", d.Root()).Start(); err != nil {
+	cmd := exec.Command("explorer", d.Root())
+	hideProcessWindow(cmd)
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("打开数据目录失败: %w", err)
 	}
 	return nil

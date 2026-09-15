@@ -64,7 +64,23 @@ type artifactTool struct {
 }
 
 func (t *artifactTool) Call(ctx context.Context, args []byte) (any, error) {
-	return t.CallableTool.Call(context.WithValue(ctx, artifactPublisherKey{}, t.publication), args)
+	result, err := t.CallableTool.Call(context.WithValue(ctx, artifactPublisherKey{}, t.publication), args)
+	if err != nil || t.Declaration().Name != "skill_run" || t.publication == nil {
+		return result, err
+	}
+	run, ok := result.(skillRunResponse)
+	if !ok || run.ExitCode != 0 || len(run.OutputPaths) == 0 {
+		return result, nil
+	}
+	for _, path := range run.OutputPaths {
+		ref, importErr := t.publication.importFile(t.publication.scoped(ctx), t.publication.info(), path)
+		if importErr != nil {
+			return nil, fmt.Errorf("归档 Skill 输出 %q: %w", path, importErr)
+		}
+		run.Artifacts = append(run.Artifacts, ref)
+		logInfo(ctx, "skill.run.output.published", "skill_output_path", path, "artifact_id", ref.ID, "artifact_version", ref.Version)
+	}
+	return run, nil
 }
 
 func (t *artifactTool) StateDelta(toolCallID string, _ []byte, resultJSON []byte) map[string][]byte {
@@ -74,14 +90,18 @@ func (t *artifactTool) StateDelta(toolCallID string, _ []byte, resultJSON []byte
 		if json.Unmarshal(resultJSON, &result) != nil || result.ExitCode != 0 {
 			return nil
 		}
-		var envelope struct {
-			OK   bool           `json:"ok"`
-			Data artifactOutput `json:"data"`
+		if len(result.Artifacts) > 0 {
+			output.Artifacts = result.Artifacts
+		} else {
+			var envelope struct {
+				OK   bool           `json:"ok"`
+				Data artifactOutput `json:"data"`
+			}
+			if json.Unmarshal([]byte(result.Stdout), &envelope) != nil || !envelope.OK {
+				return nil
+			}
+			output = envelope.Data
 		}
-		if json.Unmarshal([]byte(result.Stdout), &envelope) != nil || !envelope.OK {
-			return nil
-		}
-		output = envelope.Data
 	} else {
 		if json.Unmarshal(resultJSON, &output) != nil {
 			return nil

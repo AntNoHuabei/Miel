@@ -235,6 +235,7 @@ func (e permissionToolEnv) writeFile(ctx context.Context, in writeFileInput) (pe
 }
 
 func (e permissionToolEnv) executeCommand(ctx context.Context, in commandInput) (permissionToolResult, error) {
+	startedAt := time.Now()
 	command := strings.TrimSpace(in.Command)
 	if command == "" {
 		return permissionToolResult{OK: false, Code: "invalid_command", Message: "command 不能为空"}, nil
@@ -257,7 +258,12 @@ func (e permissionToolEnv) executeCommand(ctx context.Context, in commandInput) 
 	if err != nil {
 		return permissionToolResult{OK: false, Code: pathErrorCode(err, "invalid_workdir"), Message: err.Error()}, nil
 	}
+	if executesManagedSkill(command, workdir) {
+		logInfo(ctx, "command.blocked", "reason", "managed_skill_execution", "shell", shell, "workdir", workdir)
+		return permissionToolResult{OK: false, Code: "managed_skill_execution", Message: "已安装 Skill 的脚本必须通过 skill_run 的 run 命令执行，以便初始化隔离环境和使用内置运行时"}, nil
+	}
 	if result, ok := e.authorize(ctx, "execute_command", "execute", command, workdir, outside); !ok {
+		logInfo(ctx, "command.denied", "shell", shell, "workdir", workdir, "outside_workspace", outside)
 		return result, nil
 	}
 	timeout := time.Duration(in.TimeoutMS) * time.Millisecond
@@ -272,19 +278,40 @@ func (e permissionToolEnv) executeCommand(ctx context.Context, in commandInput) 
 	} else {
 		cmd = exec.CommandContext(cmdCtx, "cmd.exe", "/D", "/S", "/C", command)
 	}
+	hideProcessWindow(cmd)
 	cmd.Dir = workdir
 	cmd.Env = minimalCommandEnv()
+	logInfo(ctx, "command.start", "shell", shell, "workdir", workdir, "outside_workspace", outside, "timeout_ms", timeout.Milliseconds())
 	out, err := cmd.CombinedOutput()
 	if len(out) > maxPermissionOutput {
 		out = out[:maxPermissionOutput]
 	}
 	if cmdCtx.Err() != nil {
+		logError(ctx, "command.finish", cmdCtx.Err(), "status", "timeout", "duration_ms", time.Since(startedAt).Milliseconds(), "output_bytes", len(out))
 		return permissionToolResult{OK: false, Code: "command_timeout", Message: "命令执行超时", Data: map[string]any{"output": string(out)}}, nil
 	}
 	if err != nil {
+		logError(ctx, "command.finish", err, "status", "failed", "duration_ms", time.Since(startedAt).Milliseconds(), "output_bytes", len(out))
 		return permissionToolResult{OK: false, Code: "command_failed", Message: err.Error(), Data: map[string]any{"output": string(out)}}, nil
 	}
+	logInfo(ctx, "command.finish", "status", "done", "duration_ms", time.Since(startedAt).Milliseconds(), "output_bytes", len(out))
 	return permissionToolResult{OK: true, Data: map[string]any{"output": string(out)}}, nil
+}
+
+func executesManagedSkill(command, workdir string) bool {
+	skillRoot, err := appDirectories.Ensure(DirectorySkills)
+	if err != nil {
+		return false
+	}
+	if isWithin(skillRoot, workdir) {
+		return true
+	}
+	// Shell commands are intentionally opaque. Compare normalized absolute paths
+	// so direct references such as "python C:\\...\\skills\\watermark\\..."
+	// cannot bypass skill_run.
+	normalizedCommand := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(command, "/", "\\"), "\"", ""))
+	normalizedRoot := strings.ToLower(strings.ReplaceAll(filepath.Clean(skillRoot), "/", "\\"))
+	return strings.Contains(normalizedCommand, normalizedRoot)
 }
 
 func (e permissionToolEnv) fetchURL(ctx context.Context, in fetchURLInput) (permissionToolResult, error) {
@@ -316,7 +343,8 @@ func (e permissionToolEnv) fetchURL(ctx context.Context, in fetchURLInput) (perm
 }
 
 func minimalCommandEnv() []string {
-	return []string{"SystemRoot=" + os.Getenv("SystemRoot"), "TEMP=" + os.Getenv("TEMP"), "TMP=" + os.Getenv("TMP"), "PATH=" + os.Getenv("PATH")}
+	env := []string{"SystemRoot=" + os.Getenv("SystemRoot"), "TEMP=" + os.Getenv("TEMP"), "TMP=" + os.Getenv("TMP")}
+	return append(env, bundledRuntimeEnv(installedRuntimeRoot(), appDirectories, "")...)
 }
 
 func parseSafeURL(raw string) (*url.URL, error) {

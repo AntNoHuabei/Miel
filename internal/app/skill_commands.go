@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -16,15 +18,19 @@ import (
 )
 
 type skillRunRequest struct {
-	Skill   string   `json:"skill" jsonschema:"description=Loaded built-in skill name,enum=todo,enum=reminder,enum=office,required"`
+	Skill   string   `json:"skill" jsonschema:"description=Loaded skill name,required"`
 	Command string   `json:"command" jsonschema:"description=Cobra subcommand declared by the loaded skill,required"`
 	Args    []string `json:"args" jsonschema:"description=Command flags and values as separate arguments"`
 }
 
+var skillDependencySvc *SkillDependencyService
+
 type skillRunResponse struct {
-	Stdout   string `json:"stdout"`
-	Stderr   string `json:"stderr"`
-	ExitCode int    `json:"exitCode"`
+	Stdout      string        `json:"stdout"`
+	Stderr      string        `json:"stderr"`
+	ExitCode    int           `json:"exitCode"`
+	OutputPaths []string      `json:"outputPaths,omitempty"`
+	Artifacts   []ArtifactRef `json:"artifacts,omitempty"`
 }
 
 type skillCommandEnvelope struct {
@@ -47,22 +53,55 @@ func usageErrorf(format string, args ...any) error {
 	return skillUsageError{err: fmt.Errorf(format, args...)}
 }
 
-func newSkillRunTool(t *TodoService, source *todoToolSource) tool.Tool {
+func newSkillRunTool(t *TodoService, source *todoToolSource, webSearch ...*WebSearchService) tool.Tool {
+	var search *WebSearchService
+	if len(webSearch) > 0 {
+		search = webSearch[0]
+	}
 	return function.NewFunctionTool(
 		func(ctx context.Context, req skillRunRequest) (skillRunResponse, error) {
-			return executeSkillCommand(ctx, t, source, req)
+			return executeSkillCommandWithWebSearch(ctx, t, source, search, req)
 		},
 		function.WithName("skill_run"),
-		function.WithDescription("Execute one Cobra subcommand from a loaded built-in Miel skill. Only todo, reminder, and office are allowed. Pass every flag and value as a separate args item; shell syntax and arbitrary programs are not supported."),
+		function.WithDescription("Execute one command from a loaded Miel skill. Built-in skills use declared Cobra commands; external skills use only their confirmed bundled Node/Python entry. Pass arguments as separate items; shell syntax is not supported."),
 	)
 }
 
 func executeSkillCommand(ctx context.Context, t *TodoService, source *todoToolSource, req skillRunRequest) (skillRunResponse, error) {
+	return executeSkillCommandWithWebSearch(ctx, t, source, nil, req)
+}
+
+func executeSkillCommandWithWebSearch(ctx context.Context, t *TodoService, source *todoToolSource, webSearch *WebSearchService, req skillRunRequest) (skillRunResponse, error) {
 	skillName := strings.ToLower(strings.TrimSpace(req.Skill))
 	commandName := strings.ToLower(strings.TrimSpace(req.Command))
-	root, allowed := newBuiltinSkillCommand(skillName, t, source)
+	root, allowed := newBuiltinSkillCommand(skillName, t, source, webSearch)
 	if root == nil {
-		return failedSkillRun(2, "invalid_skill", "仅支持内置 skill: todo、reminder、office"), nil
+		if skillDependencySvc == nil {
+			return failedSkillRun(2, "invalid_skill", "Skill 依赖服务未初始化"), nil
+		}
+		if commandName != "run" {
+			return failedSkillRun(2, "invalid_command", "外部 Skill 仅支持 run 命令"), nil
+		}
+		// command already carries the external Skill action. Some models still
+		// repeat it as the first argv item; never pass that control value through
+		// to the declared Python/Node entry.
+		args := trimRepeatedExternalSkillCommand(req.Args, commandName)
+		output, runErr := skillDependencySvc.ExecuteSkillContext(ctx, skillName, args)
+		if runErr != nil {
+			return skillRunResponse{}, fmt.Errorf("Skill %s 初始化或执行失败: %w", skillName, runErr)
+		}
+		skillDir, directoryErr := skillDependencySvc.skillDirectory(skillName)
+		if directoryErr != nil {
+			return skillRunResponse{}, fmt.Errorf("解析 Skill 输出目录: %w", directoryErr)
+		}
+		outputs := declaredSkillOutputPaths(output, skillDir)
+		if skillName == "watermark" && len(outputs) == 0 {
+			return skillRunResponse{}, errors.New("水印 Skill 未产生可验证的输出文件，已中断交付")
+		}
+		for _, outputPath := range outputs {
+			logInfo(ctx, "skill.run.output", "skill", skillName, "output_path", outputPath)
+		}
+		return skillRunResponse{Stdout: string(output), ExitCode: 0, OutputPaths: outputs}, nil
 	}
 	if !allowed[commandName] {
 		return failedSkillRun(2, "invalid_command", fmt.Sprintf("skill %s 不支持 command %q", skillName, req.Command)), nil
@@ -98,6 +137,52 @@ func executeSkillCommand(ctx context.Context, t *TodoService, source *todoToolSo
 		return skillRunResponse{}, fmt.Errorf("execute %s %s: %w", skillName, commandName, err)
 	}
 	return skillRunResponse{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: 0}, nil
+}
+
+func trimRepeatedExternalSkillCommand(args []string, command string) []string {
+	if len(args) == 0 || !strings.EqualFold(strings.TrimSpace(args[0]), command) {
+		return args
+	}
+	return append([]string(nil), args[1:]...)
+}
+
+// declaredSkillOutputPaths accepts only the documented, line-oriented output
+// contract. A successful process alone is insufficient for file-producing
+// Skills: the application must be able to verify the exact file it delivers.
+// Relative paths are resolved from the declared Skill working directory, never
+// the application's process directory.
+func declaredSkillOutputPaths(output []byte, skillDir string) []string {
+	seen := make(map[string]struct{})
+	paths := make([]string, 0)
+	for _, line := range strings.Split(string(output), "\n") {
+		raw := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "wrote "))
+		if raw == "" || !strings.HasPrefix(strings.TrimSpace(line), "wrote ") {
+			continue
+		}
+		path := raw
+		wasRelative := !filepath.IsAbs(path)
+		if wasRelative {
+			path = filepath.Join(skillDir, path)
+		}
+		path, err := filepath.Abs(path)
+		if err != nil {
+			continue
+		}
+		path = filepath.Clean(path)
+		if wasRelative && !isWithin(skillDir, path) {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	return paths
 }
 
 func isSkillBusinessError(err error) bool {
@@ -137,7 +222,11 @@ func setSkillFlagErrors(cmd *cobra.Command) {
 	}
 }
 
-func newBuiltinSkillCommand(skillName string, t *TodoService, source *todoToolSource) (*cobra.Command, map[string]bool) {
+func newBuiltinSkillCommand(skillName string, t *TodoService, source *todoToolSource, webSearch ...*WebSearchService) (*cobra.Command, map[string]bool) {
+	var search *WebSearchService
+	if len(webSearch) > 0 {
+		search = webSearch[0]
+	}
 	switch skillName {
 	case "todo":
 		return newTodoCommand(t, source), commandSet("add", "list", "get", "status", "delete", "stats", "events")
@@ -145,9 +234,60 @@ func newBuiltinSkillCommand(skillName string, t *TodoService, source *todoToolSo
 		return newReminderCommand(), commandSet("upcoming", "settings")
 	case "office":
 		return newOfficeCommand(t), commandSet("weekly", "document", "table", "export-todos")
+	case "websearch":
+		return newWebSearchCommand(search), commandSet("search", "fetch")
 	default:
 		return nil, nil
 	}
+}
+
+func newWebSearchCommand(service *WebSearchService) *cobra.Command {
+	root := &cobra.Command{Use: "websearch"}
+	var query string
+	var limit int
+	search := &cobra.Command{
+		Use:  "search",
+		Args: noCommandArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if service == nil {
+				return errors.New("联网搜索服务未初始化")
+			}
+			if strings.TrimSpace(query) == "" {
+				return usageErrorf("--query 不能为空")
+			}
+			if limit < 1 || limit > 10 {
+				return usageErrorf("--limit 必须在 1 到 10 之间")
+			}
+			response, err := service.Search(cmd.Context(), query, limit)
+			if err != nil {
+				return err
+			}
+			return writeSkillData(cmd, response)
+		},
+	}
+	search.Flags().StringVar(&query, "query", "", "搜索关键词")
+	search.Flags().IntVar(&limit, "limit", 5, "返回结果数量")
+	var rawURL string
+	fetch := &cobra.Command{
+		Use:  "fetch",
+		Args: noCommandArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if service == nil {
+				return errors.New("联网搜索服务未初始化")
+			}
+			if strings.TrimSpace(rawURL) == "" {
+				return usageErrorf("--url 不能为空")
+			}
+			document, err := service.Fetch(cmd.Context(), rawURL)
+			if err != nil {
+				return err
+			}
+			return writeSkillData(cmd, document)
+		},
+	}
+	fetch.Flags().StringVar(&rawURL, "url", "", "公开 HTTP(S) 网页地址")
+	root.AddCommand(search, fetch)
+	return root
 }
 
 func commandSet(names ...string) map[string]bool {

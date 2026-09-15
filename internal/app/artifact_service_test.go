@@ -14,6 +14,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 func newArtifactTestService(t *testing.T) *ArtifactService {
@@ -215,6 +216,34 @@ func TestArtifactToolEmitsFrameworkDeltaAndSnapshotAssociatesArtifacts(t *testin
 	messages = snapshot["messages"].([]any)
 	if len(messages) != 3 || messages[2].(map[string]any)["role"] != "artifact" {
 		t.Fatalf("orphan snapshot = %#v", messages)
+	}
+}
+
+func TestArtifactToolAutomaticallyPublishesVerifiedSkillOutput(t *testing.T) {
+	s := newArtifactTestService(t)
+	publication := &runArtifactService{ArtifactService: s, scope: artifactScope{ConversationID: 7, RequestID: "r1", UserMessageID: 9}}
+	output := filepath.Join(t.TempDir(), "watermarked.jpg")
+	if err := os.WriteFile(output, []byte("watermarked-image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base := function.NewFunctionTool(func(context.Context, struct{}) (skillRunResponse, error) {
+		return skillRunResponse{ExitCode: 0, OutputPaths: []string{output}}, nil
+	}, function.WithName("skill_run"))
+	wrapped := &artifactTool{CallableTool: base, publication: publication}
+	result, err := wrapped.Call(context.Background(), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, ok := result.(skillRunResponse)
+	if !ok || len(run.Artifacts) != 1 || run.Artifacts[0].Name != "watermarked.jpg" {
+		t.Fatalf("automatic publication = %#v", result)
+	}
+	encoded, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delta := wrapped.StateDelta("tool-1", nil, encoded); len(delta[skill.StateKeyArtifacts]) == 0 {
+		t.Fatal("automatic publication state delta missing")
 	}
 }
 

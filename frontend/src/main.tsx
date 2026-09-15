@@ -7,6 +7,7 @@ import './styles/todos.css'
 import './styles/quick-assistant.css'
 import './styles/app-shell.css'
 import './styles/settings.css'
+import './styles/setup-wizard.css'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

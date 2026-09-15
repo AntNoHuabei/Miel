@@ -136,6 +136,11 @@ func init() {
 	application.RegisterEvent[string]("clipboard.todo.show")
 	application.RegisterEvent[string]("memory.changed")
 	application.RegisterEvent[string]("artifacts.changed")
+	application.RegisterEvent[app.SkillDependencyPlan]("skill.dependency.detected")
+	application.RegisterEvent[app.SkillDependencyPlan]("skill.dependency.confirmation-required")
+	application.RegisterEvent[app.SkillInstallProgress]("skill.dependency.progress")
+	application.RegisterEvent[app.SkillEnvironmentStatus]("skill.dependency.ready")
+	application.RegisterEvent[app.SkillEnvironmentStatus]("skill.dependency.failed")
 	application.RegisterEvent[app.MemoryStatus]("memory.status")
 }
 
@@ -190,6 +195,7 @@ func main() {
 		application.NewService(svcs.Clipboard),
 		application.NewService(svcs.ChatAttachments),
 		application.NewService(svcs.Skills),
+		application.NewService(svcs.SkillDependencies),
 		application.NewService(svcs.Artifacts),
 	} {
 		instance.RegisterService(service)

@@ -23,7 +23,7 @@ func TestSkillServiceListsBuiltinsAndManagesImportedSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 3 || items[0].Source != "builtin" {
+	if len(items) != 4 || items[0].Source != "builtin" {
 		t.Fatalf("unexpected builtin skills: %#v", items)
 	}
 
@@ -100,6 +100,42 @@ func TestSkillServiceImportsZipAndRejectsTraversal(t *testing.T) {
 	}
 	if _, err := svc.ImportLocal(badPath); err == nil {
 		t.Fatal("traversal archive was accepted")
+	}
+}
+
+func TestSkillServiceDisablesImportedRuntimeSkillUntilConfirmation(t *testing.T) {
+	manager := NewDirectoryManager(t.TempDir())
+	svc := NewSkillService(manager)
+	svc.dependencies = NewSkillDependencyService(manager, nil)
+	source := filepath.Join(t.TempDir(), "watermark")
+	if err := os.MkdirAll(filepath.Join(source, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"SKILL.md":             "---\nname: watermark\ndescription: test\n---\nRun `python scripts/watermark.py`.\n",
+		"pyproject.toml":       "[project]\nname='watermark'\ndependencies=['Pillow>=10']\n",
+		"scripts/watermark.py": "from PIL import Image\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	installed, err := svc.ImportLocal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installed.Enabled {
+		t.Fatal("runtime skill was enabled before dependency confirmation")
+	}
+	items, err := svc.ListSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.Name == "watermark" && item.Enabled {
+			t.Fatal("persisted runtime skill state remained enabled")
+		}
 	}
 }
 

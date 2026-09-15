@@ -57,6 +57,13 @@ export function PickLocal(): $CancellablePromise<$models.Skill> {
     return $Call.ByID(2171086468);
 }
 
+/**
+ * ReconcileDependencyState keeps unconfirmed executable skills out of the Agent repository.
+ */
+export function ReconcileDependencyState(): $CancellablePromise<void> {
+    return $Call.ByID(166842390);
+}
+
 export function SetEnabled(name: string, enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(2398075561, name, enabled);
 }

@@ -272,7 +272,7 @@ func (s *PermissionService) hasGrant(sessionID, tool, target string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, grant := range s.grants[strings.TrimSpace(sessionID)] {
-		if grant.Tool == tool && withinPath(target, grant.Root) {
+		if grant.Tool == tool && (grant.Root == "network" || withinPath(target, grant.Root)) {
 			return true
 		}
 	}

@@ -180,6 +180,8 @@ export interface DirectoryPaths {
     "sources": string;
     "clipboardSources": string;
     "skills": string;
+    "skillEnvironments": string;
+    "runtimeCache": string;
     "outputs": string;
     "reports": string;
     "documents": string;
@@ -494,6 +496,41 @@ export interface Skill {
     "updatedAt": number;
 }
 
+/**
+ * SkillDependencyPlan is the reviewable, non-shell installation contract.
+ */
+export interface SkillDependencyPlan {
+    "schemaVersion": number;
+    "skill": string;
+    "runtime": string;
+    "evidence": string[] | null;
+    "confidence": string;
+    "packageManager"?: string;
+    "lockfile"?: string;
+    "dependencyFile"?: string;
+    "dependencySources"?: string[] | null;
+    "autoUpdate": boolean;
+    "entryCommand"?: string;
+    "entryArgs"?: string[] | null;
+    "network": boolean;
+    "needsReview": boolean;
+    "source": string;
+}
+
+export interface SkillEnvironmentStatus {
+    "skill": string;
+    "state": string;
+    "runtime"?: string;
+    "environment"?: string;
+    "planHash"?: string;
+    "runtimeVersion"?: string;
+    "packageManagerVersion"?: string;
+    "dependencySourceHash"?: string;
+    "lockHash"?: string;
+    "error"?: string;
+    "updatedAt": number;
+}
+
 export interface SkillHubPage {
     "skills": SkillHubSkill[] | null;
     "total": number;
@@ -515,6 +552,24 @@ export interface SkillHubSkill {
     "version": string;
     "iconUrl": string;
     "verified": boolean;
+}
+
+export interface SkillInstallProgress {
+    "skill": string;
+    "stage": string;
+    "message"?: string;
+    "state": string;
+}
+
+/**
+ * SkillRuntimeStatus describes one bundled runtime installed next to Miel.
+ */
+export interface SkillRuntimeStatus {
+    "name": string;
+    "version": string;
+    "path": string;
+    "available": boolean;
+    "message"?: string;
 }
 
 /**

@@ -4,6 +4,35 @@ import { describe, expect, it, vi } from 'vitest'
 import { ConversationViewport } from './ConversationViewport'
 
 describe('ConversationViewport', () => {
+  it('renders assistant text and tools in event order', () => {
+    const { container } = render(
+      <ConversationViewport
+        conversationId={7}
+        messages={[{ id: 'user-1', role: 'user', content: 'request' }]}
+        streaming="beforeafter"
+        sending
+        phase="responding"
+        process={[
+          { type: 'text', id: 'm1', content: 'before', status: 'done' },
+          { type: 'tool', id: 't1' },
+          { type: 'text', id: 'm2', content: 'after', status: 'streaming' },
+        ]}
+        tools={[{ id: 't1', name: 'skill_run', args: '{}', result: 'ok', status: 'done' }]}
+        artifacts={[]}
+        error={null}
+        pendingApproval={null}
+        resolvingApproval={false}
+        scrollRef={{ current: null }}
+        quickPrompts={[]}
+        onQuickPrompt={vi.fn()}
+        onResolveApproval={vi.fn()}
+      />,
+    )
+    const timeline = container.querySelector('.bm-agent-process')
+    expect(timeline).toHaveTextContent(/before.*skill_run.*after/)
+    expect(screen.queryAllByText('beforeafter')).toHaveLength(0)
+  })
+
   it('renders separate reasoning blocks in tool execution order and only opens active reasoning', async () => {
     const { container } = render(
       <ConversationViewport

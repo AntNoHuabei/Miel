@@ -117,11 +117,13 @@ export default function ChatView() {
             phase={runtime.run.phase}
             process={runtime.run.process}
             tools={runtime.run.tools}
+            skillProgress={runtime.run.skillProgress}
             artifacts={runtime.run.artifacts}
             error={runtime.run.error}
             pendingApproval={permissions.pendingApproval}
             resolvingApproval={permissions.resolving}
             scrollRef={runtime.scrollRef}
+            onScroll={runtime.onMessagesScroll}
             quickPrompts={QUICK_PROMPTS}
             onResolveApproval={permissions.resolveApproval}
             onQuickPrompt={(prompt) => {

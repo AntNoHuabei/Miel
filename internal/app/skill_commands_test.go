@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -265,9 +266,47 @@ func TestSkillRunSeparatesBusinessAndInfrastructureErrors(t *testing.T) {
 	}
 }
 
+func TestTrimRepeatedExternalSkillCommand(t *testing.T) {
+	if got := trimRepeatedExternalSkillCommand([]string{"run", "--input", "photo.jpg"}, "run"); !reflect.DeepEqual(got, []string{"--input", "photo.jpg"}) {
+		t.Fatalf("normalized arguments = %#v", got)
+	}
+	if got := trimRepeatedExternalSkillCommand([]string{"--input", "photo.jpg"}, "run"); !reflect.DeepEqual(got, []string{"--input", "photo.jpg"}) {
+		t.Fatalf("arguments changed unexpectedly = %#v", got)
+	}
+}
+
+func TestDeclaredSkillOutputPathsOnlyReturnsExistingWrittenFiles(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "watermarked.jpg")
+	if err := os.WriteFile(file, []byte("image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := []byte("notice\nwrote " + file + "\nwrote C:\\missing.jpg\n")
+	if got := declaredSkillOutputPaths(output, filepath.Dir(file)); !reflect.DeepEqual(got, []string{file}) {
+		t.Fatalf("output paths = %#v", got)
+	}
+}
+
+func TestDeclaredSkillOutputPathsResolvesRelativePathWithinSkill(t *testing.T) {
+	skillDir := t.TempDir()
+	outputDir := filepath.Join(skillDir, "out")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(outputDir, "watermarked.jpg")
+	if err := os.WriteFile(file, []byte("image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := declaredSkillOutputPaths([]byte("wrote out\\watermarked.jpg\n"), skillDir); !reflect.DeepEqual(got, []string{file}) {
+		t.Fatalf("relative output paths = %#v", got)
+	}
+	if got := declaredSkillOutputPaths([]byte("wrote ..\\outside.jpg\n"), skillDir); len(got) != 0 {
+		t.Fatalf("outside output paths = %#v", got)
+	}
+}
+
 func TestBuiltinSkillsOverwriteStaleInstalledCopies(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"todo", "reminder", "office"} {
+	for _, name := range []string{"todo", "reminder", "office", "websearch"} {
 		dir := filepath.Join(root, name)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -277,7 +316,7 @@ func TestBuiltinSkillsOverwriteStaleInstalledCopies(t *testing.T) {
 		}
 	}
 	ensureBuiltinSkills(root)
-	for _, name := range []string{"todo", "reminder", "office"} {
+	for _, name := range []string{"todo", "reminder", "office", "websearch"} {
 		content, err := os.ReadFile(filepath.Join(root, name, "SKILL.md"))
 		if err != nil {
 			t.Fatal(err)

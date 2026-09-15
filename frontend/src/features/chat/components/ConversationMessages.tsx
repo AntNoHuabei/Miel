@@ -160,20 +160,22 @@ export function SnapshotMessage({ message, toolName, conversationId = 0 }: { mes
   )
 }
 
-export function AgentProcess({ phase, process, tools }: { phase: AgentPhase; process: AgentProcessStep[]; tools: AgentToolCall[] }) {
+export function AgentProcess({ phase, process, tools, skillProgress }: { phase: AgentPhase; process: AgentProcessStep[]; tools: AgentToolCall[]; skillProgress: { skill: string; stage: string; message?: string; state: string } | null }) {
   const active = !['done', 'error', 'idle'].includes(phase)
-  const label = phase === 'thinking' ? '正在思考' : phase === 'tool' ? '正在使用工具' : phase === 'responding' ? '正在组织回复' : phase === 'done' ? '处理完成' : phase === 'error' ? '处理失败' : '正在等待模型响应'
+  const label = phase === 'thinking' ? '正在思考' : phase === 'tool' ? '正在使用工具' : phase === 'responding' ? '正在组织回复' : phase === 'done' ? '处理完成' : phase === 'error' ? '处理失败，对话已结束' : '正在等待模型响应'
   return (
     <div className="bm-agent-process">
       <Flex align="center" gap={8} className="bm-agent-status">
         {active ? <LoadingOutlined spin /> : phase === 'error' ? <WarningOutlined /> : <CheckCircleOutlined />}
         <Text type="secondary">{label}</Text>
       </Flex>
+      {skillProgress && <div className="bm-tool-detail"><Text type="secondary">{skillProgress.skill} · {skillProgress.message || skillProgress.stage}</Text></div>}
       {process.map((step) => {
         if (step.type === 'reasoning') return step.content && <details className="bm-agent-detail" key={`reasoning-${step.id}`} open={step.status === 'thinking' && phase === 'thinking'}><summary><BulbOutlined /><span>思考过程</span></summary><div className="bm-agent-reasoning">{step.content}</div></details>
+        if (step.type === 'text') return step.content && <div className="bm-chat-assistant-message" key={`text-${step.id}`}><Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>Miel</Text><div className="bm-md">{renderMarkdown(step.content)}{step.status === 'streaming' && <span className="bm-cursor" />}</div></div>
         const tool = tools.find((item) => item.id === step.id)
         if (!tool) return null
-        return <details className="bm-agent-detail" key={`tool-${tool.id}`}><summary>{tool.status === 'done' ? <CheckCircleOutlined /> : <ToolOutlined />}<span>{getToolLabel(tool.name)}</span><Text type="secondary" className="bm-tool-status">{tool.status === 'preparing' ? '准备中' : tool.status === 'running' ? '执行中' : '已完成'}</Text></summary><div className="bm-tool-detail"><code>{tool.name}</code>{tool.args && <pre>{tool.args}</pre>}{tool.result && <pre>{tool.result}</pre>}</div></details>
+        return <details className="bm-agent-detail" key={`tool-${tool.id}`}><summary>{tool.status === 'done' ? <CheckCircleOutlined /> : tool.status === 'failed' ? <WarningOutlined /> : <ToolOutlined />}<span>{getToolLabel(tool.name)}</span><Text type="secondary" className="bm-tool-status">{tool.status === 'preparing' ? '准备中' : tool.status === 'running' ? '执行中' : tool.status === 'failed' ? '已终止' : '已完成'}</Text></summary><div className="bm-tool-detail"><code>{tool.name}</code>{tool.args && <pre>{tool.args}</pre>}{tool.result && <pre>{tool.result}</pre>}</div></details>
       })}
     </div>
   )

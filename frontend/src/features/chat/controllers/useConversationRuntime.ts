@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { UIEvent } from 'react'
 import { App as AntApp } from 'antd'
 import { useStore } from 'zustand'
 import type { StoreApi } from 'zustand/vanilla'
@@ -6,6 +7,7 @@ import type { ChatAttachmentDraftLite } from '../../../api'
 import { chatRepository } from '../../../shared/repositories'
 import { useWailsEvent } from '../../../shared/wails/events'
 import type { AgentEnvelope } from '../model/agentRun'
+import type { SkillInstallProgressLite } from '../../../api'
 import type { ConversationState } from '../model/conversationStore'
 
 interface RequestContext {
@@ -60,6 +62,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const sessionVersionRef = useRef(0)
   const messageLoadVersionRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const followOutputRef = useRef(true)
 
   useEffect(() => { conversationRef.current = conversationId }, [conversationId])
 
@@ -80,9 +83,14 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   useEffect(() => { if (conversationRef.current > 0) void loadMessages(conversationRef.current) }, [loadMessages])
   useEffect(() => {
     requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      if (followOutputRef.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     })
   }, [messages, run.artifacts, run.phase, run.process, run.streaming, run.tools])
+
+  const onMessagesScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const viewport = event.currentTarget
+    followOutputRef.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 48
+  }, [])
 
   useWailsEvent<string>('artifacts.changed', useCallback(() => {
     if (!sendingRef.current && conversationRef.current > 0) void loadMessages(conversationRef.current)
@@ -101,6 +109,9 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   useWailsEvent<AgentEnvelope>('agent.agui', useCallback((payload) => {
     if (payload?.event && accepts(payload)) dispatchRun({ type: 'event', payload })
   }, [accepts, dispatchRun]))
+  useWailsEvent<SkillInstallProgressLite>('skill.dependency.progress', useCallback((payload) => {
+    if (sendingRef.current) dispatchRun({ type: 'skill-progress', payload })
+  }, [dispatchRun]))
   useWailsEvent<{ conversationId: number; requestId?: string }>('agent.start', useCallback((payload) => {
     if (accepts(payload)) dispatchRun({ type: 'event', payload: { ...payload, event: { type: 'RUN_STARTED' } } })
   }, [accepts, dispatchRun]))
@@ -125,6 +136,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
     conversationRef.current = 0
+    followOutputRef.current = true
     setConversation(0)
     setMessages([])
     setInput('')
@@ -142,6 +154,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
     conversationRef.current = id
+    followOutputRef.current = true
     targetRef.current = id
     sendingRef.current = false
     setSending(false)
@@ -163,6 +176,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     const version = sessionVersionRef.current
     const requestConversationId = conversationRef.current
     const id = requestId(options.requestPrefix)
+    followOutputRef.current = true
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
     activeRequestRef.current = id
@@ -215,5 +229,5 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     }
   }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setMessages])
 
-  return { conversationId, dispatchRun, input, loadMessages, messages, openConversation, reset, run, scrollRef, send, sending, setInput }
+  return { conversationId, dispatchRun, input, loadMessages, messages, onMessagesScroll, openConversation, reset, run, scrollRef, send, sending, setInput }
 }

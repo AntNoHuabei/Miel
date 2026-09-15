@@ -43,6 +43,24 @@ func TestPermissionToolResolvePathUsesWorkspaceAsRelativeBase(t *testing.T) {
 	}
 }
 
+func TestExecuteManagedSkillIsBlockedOutsideSkillRun(t *testing.T) {
+	previous := appDirectories
+	manager := NewDirectoryManager(t.TempDir())
+	SetDirectoryManager(manager)
+	t.Cleanup(func() { SetDirectoryManager(previous) })
+	skillRoot := manager.Path(DirectorySkills)
+	skillScript := filepath.Join(skillRoot, "watermark", "scripts", "watermark.py")
+	if !executesManagedSkill(`python "`+skillScript+`"`, t.TempDir()) {
+		t.Fatal("absolute managed Skill script was not blocked")
+	}
+	if !executesManagedSkill("python scripts/watermark.py", filepath.Join(skillRoot, "watermark")) {
+		t.Fatal("managed Skill workdir was not blocked")
+	}
+	if executesManagedSkill("python normal.py", t.TempDir()) {
+		t.Fatal("ordinary workspace command was incorrectly blocked")
+	}
+}
+
 func TestPermissionToolResolvePathRequiresWorkspaceForRelativePath(t *testing.T) {
 	env := permissionToolEnv{}
 	if _, _, err := env.resolvePath("."); !errors.Is(err, errWorkspaceRequired) {
@@ -211,6 +229,35 @@ func TestPermissionCommandUsesWorkspaceForDefaultAndRelativeWorkdir(t *testing.T
 				t.Fatalf("command workdir = %q, want %q", output, tt.want)
 			}
 		})
+	}
+}
+
+func TestMinimalCommandEnvPrefersBundledSkillRuntimes(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	t.Setenv("MIEL_RUNTIME_ROOT", runtimeRoot)
+	t.Setenv("PATH", filepath.Join(t.TempDir(), "system-bin"))
+	env := minimalCommandEnv()
+	wantPrefix := strings.Join([]string{
+		filepath.Join(runtimeRoot, "node"),
+		filepath.Join(runtimeRoot, "python"),
+		filepath.Join(runtimeRoot, "uv"),
+	}, string(os.PathListSeparator)) + string(os.PathListSeparator)
+	var pathValue string
+	for _, item := range env {
+		if strings.HasPrefix(item, "PATH=") {
+			pathValue = strings.TrimPrefix(item, "PATH=")
+		}
+	}
+	if !strings.HasPrefix(pathValue, wantPrefix) {
+		t.Fatalf("PATH = %q, want bundled runtime prefix %q", pathValue, wantPrefix)
+	}
+	for _, want := range []string{
+		"UV_PYTHON=" + filepath.Join(runtimeRoot, "python", "python.exe"),
+		"UV_NO_MANAGED_PYTHON=true",
+	} {
+		if !containsEnv(env, want) {
+			t.Fatalf("command environment does not contain %q: %#v", want, env)
+		}
 	}
 }
 

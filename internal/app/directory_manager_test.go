@@ -1,9 +1,13 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,7 +19,7 @@ func TestDirectoryManagerKeepsStableLayout(t *testing.T) {
 	}
 	paths := manager.Paths()
 	for _, path := range []string{
-		paths.Root, paths.Logs, paths.Screenshots, paths.ClipboardSources, paths.Skills,
+		paths.Root, paths.Logs, paths.Screenshots, paths.ClipboardSources, paths.Skills, paths.SkillEnvironments, paths.RuntimeCache,
 		paths.Reports, paths.Documents, paths.Tables, paths.Memories,
 		paths.Artifacts,
 		paths.ChatDrafts, paths.ChatFiles, paths.ChatThumbnails,
@@ -87,12 +91,15 @@ func TestDirectoryManagerOutputPathValidatesFilename(t *testing.T) {
 func TestDirectoryManagerConfigureLogging(t *testing.T) {
 	manager := NewDirectoryManager(t.TempDir())
 	old := log.Writer()
+	oldSlog := slog.Default()
 	defer log.SetOutput(old)
+	defer slog.SetDefault(oldSlog)
 	closer, err := manager.ConfigureLogging()
 	if err != nil {
 		t.Fatal(err)
 	}
 	log.Print("directory manager test")
+	logInfo(withLogContext(context.Background(), 42, "request-1"), "chat.test", "status", "done")
 	if err := closer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +107,24 @@ func TestDirectoryManagerConfigureLogging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) == "" {
-		t.Fatal("log file is empty")
+	text := string(data)
+	if !strings.Contains(text, "directory manager test") || !strings.Contains(text, `"msg":"chat.test"`) || !strings.Contains(text, `"request_id":"request-1"`) || !strings.Contains(text, `"conversation_id":42`) {
+		t.Fatalf("log file does not contain standard and structured entries: %s", text)
+	}
+}
+
+func TestRotateLogFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "blankmind.log")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rotateLogFile(path, 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path + ".1"); err != nil {
+		t.Fatalf("rotated log is missing: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("active log should be moved before reopening: %v", err)
 	}
 }

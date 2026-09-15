@@ -17,6 +17,8 @@ vars:
 tasks:
   dev:
     summary: Runs the application in Windows development mode
+    deps:
+      - task: common:stage:runtimes
     preconditions:
       - sh: 'powershell -NoProfile -Command "if (-not (Get-Command ''{{.CC}}'' -ErrorAction SilentlyContinue)) { exit 1 }"'
         msg: "Miel requires MinGW-w64 GCC for SQLite Memory. Install GCC and make sure `go env CC` points to gcc.exe."
@@ -94,10 +96,14 @@ tasks:
     dir: build/windows/nsis
     deps:
       - task: build
+      - task: common:stage:runtimes
     preconditions:
       - sh: '[ "{{.INSTALL_SCOPE}}" = "user" ] || [ "{{.INSTALL_SCOPE}}" = "machine" ]'
         msg: "INSTALL_SCOPE must be 'user' or 'machine', got '{{.INSTALL_SCOPE}}'"
+      - sh: '[ "{{.ARCH}}" = "amd64" ]'
+        msg: "Bundled Skill runtimes currently support Windows amd64 only."
     cmds:
+      - defer: { task: common:clean:runtimes }
       # Create the Microsoft WebView2 bootstrapper if it doesn't exist
       - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
       - makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi
@@ -110,17 +116,13 @@ tasks:
     summary: Creates an MSIX package
     deps:
       - task: build
+      - task: common:stage:runtimes
+    preconditions:
+      - sh: '[ "{{.ARCH}}" = "amd64" ]'
+        msg: "Bundled Skill runtimes currently support Windows amd64 only."
     cmds:
-      - |-
-        wails3 tool msix \
-          --config "{{.ROOT_DIR}}/wails.json" \
-          --name "{{.APP_NAME}}" \
-          --executable "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" \
-          --arch "{{.ARCH}}" \
-          --out "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}-{{.ARCH}}.msix" \
-          {{if .CERT_PATH}}--cert "{{.CERT_PATH}}"{{end}} \
-          {{if .PUBLISHER}}--publisher "{{.PUBLISHER}}"{{end}} \
-          {{if .USE_MSIX_TOOL}}--use-msix-tool{{else}}--use-makeappx{{end}}
+      - defer: { task: common:clean:runtimes }
+      - powershell -NoProfile -ExecutionPolicy Bypass -File "{{.ROOT_DIR}}/build/scripts/build-msix.ps1" -Executable "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" -RuntimeDirectory "{{.ROOT_DIR}}/build/windows/runtime-stage" -Output "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}-{{.ARCH}}.msix" -Architecture "{{.ARCH}}"
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       CERT_PATH: '{{.CERT_PATH | default ""}}'

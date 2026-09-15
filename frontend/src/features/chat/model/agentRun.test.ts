@@ -94,6 +94,23 @@ describe('agentRunReducer', () => {
     expect(state.tools[0]).toMatchObject({ name: 'list_todos', args: '{}', result: 'ok', status: 'done' })
   })
 
+  it('keeps assistant text interleaved with tool calls', () => {
+    const state = replay([
+      { type: 'TEXT_MESSAGE_START', messageId: 'm1' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm1', delta: 'before' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'm1' },
+      { type: 'TOOL_CALL_START', toolCallId: 't1', toolCallName: 'skill_run' },
+      { type: 'TOOL_CALL_RESULT', toolCallId: 't1', content: 'ok' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'm2' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm2', delta: 'after' },
+    ])
+    expect(state.process).toEqual([
+      { type: 'text', id: 'm1', content: 'before', status: 'done' },
+      { type: 'tool', id: 't1' },
+      { type: 'text', id: 'm2', content: 'after', status: 'streaming' },
+    ])
+  })
+
   it('tracks persisted input and terminal states', () => {
     let state = started()
     state = agentRunReducer(state, { type: 'input-saved', payload: { requestId: 'r1', conversationId: 9 } })
@@ -111,12 +128,21 @@ describe('agentRunReducer', () => {
       payload: {
         requestId: 'r1',
         conversationId: 9,
+        event: { type: 'TOOL_CALL_START', toolCallId: 't1', toolCallName: 'skill_run' },
+      },
+    })
+    state = agentRunReducer(state, {
+      type: 'event',
+      payload: {
+        requestId: 'r1',
+        conversationId: 9,
         event: { type: 'RUN_ERROR', message: '403 model is only available on agentic harnesses' },
       },
     })
     state = agentRunReducer(state, { type: 'fail', error: '模型未返回有效内容' })
     expect(state).toMatchObject({
       phase: 'error',
+      tools: [{ id: 't1', status: 'failed' }],
       error: { code: '403', message: '403 model is only available on agentic harnesses' },
     })
   })

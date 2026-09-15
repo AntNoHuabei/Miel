@@ -8,18 +8,19 @@ var Emit = func(_ string, _ any) {}
 
 // Services 是装配产物,供 main 注册为 wails 服务。
 type Services struct {
-	Directories     *DirectoryService
-	Settings        *SettingsService
-	Permissions     *PermissionService
-	Memory          *MemoryService
-	Todo            *TodoService
-	Agent           *AgentService
-	Screenshot      *ScreenshotService
-	Clipboard       *ClipboardService
-	ChatAttachments *ChatAttachmentService
-	Reminder        *ReminderService
-	Skills          *SkillService
-	Artifacts       *ArtifactService
+	Directories       *DirectoryService
+	Settings          *SettingsService
+	Permissions       *PermissionService
+	Memory            *MemoryService
+	Todo              *TodoService
+	Agent             *AgentService
+	Screenshot        *ScreenshotService
+	Clipboard         *ClipboardService
+	ChatAttachments   *ChatAttachmentService
+	Reminder          *ReminderService
+	Skills            *SkillService
+	SkillDependencies *SkillDependencyService
+	Artifacts         *ArtifactService
 }
 
 // Bootstrap 初始化存储与内置 skills,构造并装配各业务服务
@@ -55,6 +56,8 @@ func Bootstrap() (*Services, error) {
 		_ = memoryRuntime.Close()
 		return nil, err
 	}
+	webSearch := NewWebSearchService()
+	agent.webSearch = webSearch
 	agent.artifacts = artifacts
 	artifacts.agent = agent
 	if err := artifacts.ImportLegacy(); err != nil {
@@ -66,6 +69,12 @@ func Bootstrap() (*Services, error) {
 	clipboard := NewClipboardService(todo, settings, memoryRuntime)
 	rem := NewReminderService(store)
 	skills := NewSkillService(appDirectories)
+	skillDependencies := NewSkillDependencyService(appDirectories, settings)
+	skills.dependencies = skillDependencies
+	if err := skills.ReconcileDependencyState(); err != nil {
+		return nil, err
+	}
+	skillDependencySvc = skillDependencies
 
 	// 服务 → 事件总线:间接引用 var Emit,main 注入后同样生效
 	notify := func(name string, data any) { Emit(name, data) }
@@ -76,20 +85,22 @@ func Bootstrap() (*Services, error) {
 	memoryRuntime.setNotify(notify)
 	shot.SetNotify(notify)
 	artifacts.notify = notify
+	skillDependencies.setNotify(notify)
 
 	rem.Start(context.Background())
 	return &Services{
-		Directories:     NewDirectoryService(appDirectories),
-		Settings:        settings,
-		Permissions:     permissions,
-		Memory:          memoryService,
-		Todo:            todo,
-		Agent:           agent,
-		Screenshot:      shot,
-		Clipboard:       clipboard,
-		ChatAttachments: chatAttachments,
-		Reminder:        rem,
-		Skills:          skills,
-		Artifacts:       artifacts,
+		Directories:       NewDirectoryService(appDirectories),
+		Settings:          settings,
+		Permissions:       permissions,
+		Memory:            memoryService,
+		Todo:              todo,
+		Agent:             agent,
+		Screenshot:        shot,
+		Clipboard:         clipboard,
+		ChatAttachments:   chatAttachments,
+		Reminder:          rem,
+		Skills:            skills,
+		SkillDependencies: skillDependencies,
+		Artifacts:         artifacts,
 	}, nil
 }

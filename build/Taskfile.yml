@@ -1,6 +1,21 @@
 version: '3'
 
 tasks:
+  fetch:runtimes:
+    summary: Downloads and verifies bundled Skill runtimes into the external cache
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File "{{.ROOT_DIR}}/build/scripts/fetch-runtime.ps1" -Action Fetch
+
+  stage:runtimes:
+    summary: Stages bundled Skill runtimes for Windows packaging
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File "{{.ROOT_DIR}}/build/scripts/fetch-runtime.ps1" -Action Stage -StageDirectory "{{.ROOT_DIR}}/build/windows/runtime-stage"
+
+  clean:runtimes:
+    internal: true
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File "{{.ROOT_DIR}}/build/scripts/fetch-runtime.ps1" -Action Clean -StageDirectory "{{.ROOT_DIR}}/build/windows/runtime-stage"
+
   go:mod:tidy:
     internal: true
     run: once
