@@ -49,6 +49,29 @@ func setupQuickHotkeys(inst *application.App, quick *quickWindowController) {
 	}
 }
 
+// setupVocabularyHotkey saves the current foreground text selection without
+// forcing the user out of the application they are reading.
+func setupVocabularyHotkey(inst *application.App, vocabulary *app.VocabularyService, resolveHotkey func() string) {
+	hotkey := resolveHotkey()
+	if err := inst.GlobalShortcut.Register(hotkey, func() {
+		text, err := app.ReadSelectedText()
+		if err != nil {
+			log.Println("capture selected word failed:", err)
+			inst.Event.Emit("vocabulary.capture.failed", err.Error())
+			return
+		}
+		word, err := vocabulary.AddSelectedText(text)
+		if err != nil {
+			log.Println("save selected word failed:", err)
+			inst.Event.Emit("vocabulary.capture.failed", err.Error())
+			return
+		}
+		inst.Event.Emit("vocabulary.captured", word)
+	}); err != nil {
+		log.Printf("register vocabulary hotkey %s failed: %v", hotkey, err)
+	}
+}
+
 type quickWindowController struct {
 	inst  *application.App
 	main  application.Window

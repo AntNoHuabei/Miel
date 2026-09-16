@@ -147,7 +147,7 @@ export function SkillsSettingsPage() {
       const installed = await skillRepository.pickLocal();
       await loadInstalled();
       await initializeImportedSkill(installed);
-      message.success("技能已安装并初始化");
+      message.success(installed.kind === "instruction" ? "文档型技能已安装" : "技能已安装并初始化");
     } catch (error) {
       message.error(String(error));
     } finally {
@@ -228,9 +228,14 @@ export function SkillsSettingsPage() {
     setDependencyBusy(skill.name);
     try {
       let plan = await skillRepository.inspectDependencies(skill.name);
+      if (plan.kind === "instruction" || plan.kind === "builtin") return true;
       if (plan.needsReview && plan.confidence !== "high")
         plan = await skillRepository.generateDependencyPlan(skill.name);
-      if (!plan.runtime) return true;
+      if (plan.kind === "instruction") return true;
+      if (plan.kind === "unresolved") {
+        message.error(`无法启用 ${skill.name}：${plan.reason || "执行入口无法确定"}`);
+        return false;
+      }
       if (!(await confirmPlan(plan))) return false;
       if (plan.source !== "manifest")
         await skillRepository.confirmDependencyPlan(skill.name, plan);
@@ -249,6 +254,7 @@ export function SkillsSettingsPage() {
   };
 
   async function initializeImportedSkill(skill: SkillLite) {
+    const previous = skills.find((item) => item.name === skill.name);
     setDependencyBusy(skill.name);
     setDependencyProgress((current) => ({
       ...current,
@@ -256,11 +262,12 @@ export function SkillsSettingsPage() {
     }));
     try {
       const plan = await skillRepository.inspectDependencies(skill.name);
-      if (!plan.runtime) {
-        await skillRepository.setEnabled(skill.name, true);
+      if (plan.kind === "instruction") {
+        setDependencyProgress((current) => ({ ...current, [skill.name]: {skill:skill.name, stage:"ready", state:"not-required", message:"文档型 · 按说明使用"} }));
+        await loadInstalled();
         return;
       }
-      if (plan.confidence !== "high" || !plan.entryCommand || !(plan.entryArgs || []).length) {
+      if (plan.kind === "unresolved" || !plan.canRun || !plan.entryCommand || !(plan.entryArgs || []).length) {
         throw new Error("无法安全确定 Skill 的运行时依赖或执行入口，已中断自动初始化");
       }
       const confirmed = plan.source === "manifest"
@@ -277,7 +284,7 @@ export function SkillsSettingsPage() {
         ...current,
         [skill.name]: { skill: skill.name, stage: "ready", message: "依赖环境已就绪", state: "ready" },
       }));
-      await skillRepository.setEnabled(skill.name, true);
+      if (!previous || previous.enabled) await skillRepository.setEnabled(skill.name, true);
       await loadInstalled();
     } catch (error) {
       setDependencyProgress((current) => ({
@@ -291,10 +298,13 @@ export function SkillsSettingsPage() {
   }
 
   const environmentLabel = (skill: SkillLite) => {
+    if (skill.kind === "instruction") return <Tag color="blue">文档型 · 按说明使用</Tag>;
+    if (skill.kind === "unresolved") return <Tag color="warning">无法确定入口</Tag>;
     const state = environments[skill.name]?.state || "none";
     const labels: Record<string, string> = {
-      none: "无需依赖",
+      none: "未初始化",
       "needs-review": "待确认",
+      "not-required": "无需独立环境",
       initializing: "初始化中",
       ready: "已就绪",
       failed: "失败",
@@ -312,7 +322,7 @@ export function SkillsSettingsPage() {
                 : "default"
         }
       >
-        {labels[state] || state}
+        {skill.kind === "executable" ? "可执行型 · " : ""}{labels[state] || state}
       </Tag>
     );
   };
@@ -333,7 +343,7 @@ export function SkillsSettingsPage() {
       const installed = await skillRepository.installHub(skill.slug);
       await loadInstalled();
       await initializeImportedSkill(installed);
-      message.success(`${skill.name || skill.slug} 已安装并初始化`);
+      message.success(installed.kind === "instruction" ? `${skill.name || skill.slug} 已安装` : `${skill.name || skill.slug} 已安装并初始化`);
     } catch (error) {
       message.error(`安装失败:${String(error)}`);
     } finally {
@@ -435,6 +445,7 @@ export function SkillsSettingsPage() {
                               {skill.description || "无描述"}
                             </Text>
                             {environmentLabel(skill)}
+                            {skill.kind === "unresolved" && <Text type="warning">{skill.capabilityReason}</Text>}
                           </div>
                           {dependencyProgress[skill.name]?.message && (
                             <Text type={dependencyProgress[skill.name].state === "failed" ? "danger" : "secondary"} className="bm-skill-progress-message">
@@ -450,7 +461,7 @@ export function SkillsSettingsPage() {
                               : "本地"}
                         </span>
                         <div className="bm-skills-actions">
-                          <Tooltip
+                          {skill.kind !== "instruction" && skill.kind !== "builtin" && <Tooltip
                             title={
                               environments[skill.name]?.state === "failed"
                                 ? "修复依赖环境"
@@ -469,7 +480,7 @@ export function SkillsSettingsPage() {
                                 )
                               }
                             />
-                          </Tooltip>
+                          </Tooltip>}
                           <Switch
                             size="small"
                             checked={skill.enabled}

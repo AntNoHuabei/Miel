@@ -106,16 +106,7 @@ func (s *SkillDependencyService) InspectSkillDependencies(name string) (SkillDep
 	if err != nil {
 		return SkillDependencyPlan{}, err
 	}
-	plan, found, err := readSkillManifest(filepath.Join(dir, skillManifestFile))
-	if err != nil {
-		return SkillDependencyPlan{}, err
-	}
-	if found {
-		plan.Skill = normalizeSkillName(name)
-		normalizePlanSlices(&plan)
-		return plan, nil
-	}
-	plan = detectSkillDependencies(dir, normalizeSkillName(name))
+	plan := resolveSkillCapability(dir, normalizeSkillName(name))
 	s.notify("skill.dependency.detected", plan)
 	if plan.NeedsReview {
 		s.notify("skill.dependency.confirmation-required", plan)
@@ -207,7 +198,7 @@ func (s *SkillDependencyService) ConfirmSkillDependencyPlan(name string, plan Sk
 	if err := writeSkillManifest(filepath.Join(dir, skillManifestFile), plan); err != nil {
 		return SkillDependencyPlan{}, err
 	}
-	return plan, nil
+	return resolveSkillCapability(dir, normalizeSkillName(name)), nil
 }
 
 func normalizePlanSlices(plan *SkillDependencyPlan) {
@@ -280,6 +271,13 @@ func (s *SkillDependencyService) GetSkillEnvironmentStatus(name string) (SkillEn
 	if err != nil {
 		return SkillEnvironmentStatus{}, err
 	}
+	capability := resolveSkillCapability(dir, normalizeSkillName(name))
+	if capability.Kind == "instruction" || capability.Kind == "builtin" {
+		return SkillEnvironmentStatus{Skill: name, State: "not-required"}, nil
+	}
+	if capability.Kind == "unresolved" {
+		return SkillEnvironmentStatus{Skill: name, State: "needs-review", Error: capability.Reason}, nil
+	}
 	data, err := os.ReadFile(filepath.Join(dir, ".blankmind.skill-state.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		plan, planErr := s.InspectSkillDependencies(name)
@@ -313,8 +311,7 @@ func (s *SkillDependencyService) InitializeSkill(name string) (SkillEnvironmentS
 		return SkillEnvironmentStatus{Skill: plan.Skill, State: "needs-review", Runtime: plan.Runtime}, errors.New("Skill 依赖需要用户确认")
 	}
 	if plan.Runtime == "" {
-		status := SkillEnvironmentStatus{Skill: plan.Skill, State: "ready", UpdatedAt: time.Now().Unix()}
-		return status, s.saveStatus(name, plan, status)
+		return SkillEnvironmentStatus{Skill: plan.Skill, State: "not-required"}, nil
 	}
 	if _, err := os.Stat(s.runtimeExecutable(plan.Runtime)); err != nil {
 		status := SkillEnvironmentStatus{Skill: plan.Skill, State: "failed", Runtime: plan.Runtime, Error: "内置运行时不可用", UpdatedAt: time.Now().Unix()}

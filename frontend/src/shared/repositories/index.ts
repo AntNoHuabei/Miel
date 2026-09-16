@@ -6,3 +6,4 @@ export { directoryRepository, permissionRepository, systemClipboardRepository, t
 export { settingsRepository, normalizeProviderInput } from './settings'
 export { skillRepository, normalizeSkillHubPage } from './skills'
 export { todoRepository } from './todos'
+export { vocabularyRepository } from './vocabulary'

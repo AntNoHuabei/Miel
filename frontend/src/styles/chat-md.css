@@ -245,7 +245,7 @@
   --bm-chat-surface: var(--bm-header-bg, #fff);
   --bm-chat-surface-2: var(--bm-inset-bg, #f6f8fa);
   --bm-chat-border: var(--bm-divider, #dfe3e8);
-  --bm-chat-sidebar: var(--bm-sidebar-bg, #fff);
+  --bm-chat-sidebar: var(--bm-header-bg, #fff);
   --bm-chat-hover: var(--bm-hover-bg, #f3f4f6);
   --bm-chat-selected: var(--bm-selected-bg, #e8edf3);
   --bm-chat-selected-text: var(--bm-selected-text, #172033);
@@ -931,7 +931,7 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--bm-chat-bg);
+  background: var(--bm-chat-sidebar) !important;
   transition: background-color 160ms ease;
 }
 
@@ -944,7 +944,7 @@
   min-width: 252px;
   padding: 18px 12px 12px;
   overflow: hidden;
-  border-right: 0.5px solid var(--bm-shell-hairline);
+  border-right: 0;
   background: var(--bm-chat-sidebar) !important;
   transition:
     width 180ms ease,
@@ -1256,6 +1256,9 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  border-top-left-radius: 18px;
+  background: var(--bm-chat-bg);
 }
 
 @media (max-width: 680px) {

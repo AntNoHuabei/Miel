@@ -23,7 +23,7 @@ func TestSkillServiceListsBuiltinsAndManagesImportedSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 4 || items[0].Source != "builtin" {
+	if len(items) != 5 || items[0].Source != "builtin" {
 		t.Fatalf("unexpected builtin skills: %#v", items)
 	}
 

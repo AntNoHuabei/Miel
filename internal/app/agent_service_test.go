@@ -22,7 +22,64 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
+	skilltool "trpc.group/trpc-go/trpc-agent-go/tool/skill"
 )
+
+func TestLoadedInstructionSkillReachesModelWithRoutingAndDocs(t *testing.T) {
+	manager := NewDirectoryManager(t.TempDir())
+	writeTestSkill(t, manager, "web-scraper", map[string]string{"SKILL.md": "---\nname: web-scraper\ndescription: scrape\n---\nOriginal cascade instructions", "README.md": "Original reference content"})
+	repo, err := newManagedSkillRepository(manager.Path(DirectorySkills))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &requestCaptureModel{}
+	opts := append([]llmagent.Option{llmagent.WithModel(capture)}, knowledgeOnlySkillOptions(repo)...)
+	a := llmagent.New("test", opts...)
+	sess := &session.Session{State: session.StateMap{}}
+	inv := agentcore.NewInvocation(agentcore.WithInvocationMessage(model.NewUserMessage("use web-scraper")), agentcore.WithInvocationSession(sess))
+	inv.AgentName = "test"
+	// Start the turn before loading: the framework clears previous-turn skill state.
+	initial, err := a.Run(context.Background(), inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range initial {
+		if event != nil && event.RequiresCompletion {
+			key := agentcore.GetAppendEventNoticeKey(event.ID)
+			_ = inv.AddNoticeChannel(context.Background(), key)
+			_ = inv.NotifyCompletion(context.Background(), key)
+		}
+	}
+	loader := skilltool.NewLoadTool(repo)
+	args := []byte(`{"skill":"web-scraper","docs":["README.md"]}`)
+	_, err = loader.Call(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range loader.StateDeltaForInvocation(inv, "load", args, nil) {
+		sess.State[k] = v
+	}
+	events, err := a.Run(context.Background(), inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event != nil && event.RequiresCompletion {
+			key := agentcore.GetAppendEventNoticeKey(event.ID)
+			_ = inv.AddNoticeChannel(context.Background(), key)
+			_ = inv.NotifyCompletion(context.Background(), key)
+		}
+	}
+	if capture.request == nil {
+		t.Fatal("no model request")
+	}
+	data, _ := json.Marshal(capture.request.Messages)
+	for _, want := range []string{"Original cascade instructions", "Original reference content", "kind=instruction", "不要调用 skill_run"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("missing %s in request: %s", want, data)
+		}
+	}
+}
 
 func TestBuildChatMetrics(t *testing.T) {
 	usage := &model.Usage{

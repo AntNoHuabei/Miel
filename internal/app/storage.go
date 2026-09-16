@@ -184,6 +184,21 @@ CREATE TABLE IF NOT EXISTS screenshots (
 	note       TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS vocabulary_words (
+	id             INTEGER PRIMARY KEY AUTOINCREMENT,
+	term           TEXT NOT NULL COLLATE NOCASE UNIQUE,
+	meaning        TEXT NOT NULL DEFAULT '',
+	example         TEXT NOT NULL DEFAULT '',
+	source          TEXT NOT NULL DEFAULT 'manual',
+	created_at      INTEGER NOT NULL,
+	updated_at      INTEGER NOT NULL,
+	review_count    INTEGER NOT NULL DEFAULT 0,
+	mastered_count  INTEGER NOT NULL DEFAULT 0,
+	again_count     INTEGER NOT NULL DEFAULT 0,
+	last_reviewed_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_vocabulary_words_updated_at ON vocabulary_words(updated_at DESC);
 `
 
 // migrate 执行建表(幂等)。

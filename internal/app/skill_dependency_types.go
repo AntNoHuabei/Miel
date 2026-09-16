@@ -26,6 +26,9 @@ type SkillDependencyPlan struct {
 	Network           bool     `json:"network"`
 	NeedsReview       bool     `json:"needsReview"`
 	Source            string   `json:"source"`
+	Kind              string   `json:"kind"`
+	CanRun            bool     `json:"canRun"`
+	Reason            string   `json:"reason,omitempty"`
 	legacy            bool
 }
 

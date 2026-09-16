@@ -25,10 +25,10 @@
 
 .bm-quick-titlebar {
   display: flex;
-  flex: 0 0 44px;
+  flex: 0 0 40px;
   align-items: center;
   padding-left: 14px;
-  border-bottom: 1px solid var(--bm-divider);
+  border-bottom: 0;
   background: var(--bm-header-bg);
   user-select: none;
 }
@@ -36,6 +36,16 @@
 .bm-quick-brand {
   font-size: 13px;
   font-weight: 650;
+}
+
+.bm-quick-brand-logo {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  border-radius: 7px;
+  object-fit: cover;
+  pointer-events: none;
 }
 
 .bm-quick-drag {
@@ -49,7 +59,7 @@
 .bm-quick-titlebar .ant-btn {
   display: grid;
   width: 40px;
-  height: 42px;
+  height: 38px;
   padding: 0;
   place-items: center;
   border: 0 !important;

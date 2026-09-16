@@ -41,6 +41,9 @@ declare module "@wailsio/runtime" {
             "time": string;
             "todo.source.changed": number;
             "todos.changed": string;
+            "vocabulary.capture.failed": string;
+            "vocabulary.captured": app$0.VocabularyWord;
+            "vocabulary.changed": app$0.VocabularyWord;
         }
     }
 }

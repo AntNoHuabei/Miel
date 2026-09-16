@@ -22,4 +22,12 @@ describe('feature page viewport', () => {
     expect(layerRule).toMatch(/inset:\s*0\s*;/)
     expect(layerRule).toMatch(/width:\s*auto\s*;/)
   })
+
+  it('keeps every feature page on the shared rounded main content surface', () => {
+    const layerRule = ruleFor('.bm-shell-feature-layer')
+    const headerRule = ruleFor('.bm-feature-header')
+
+    expect(layerRule).toMatch(/border-top-left-radius:\s*18px\s*;/)
+    expect(headerRule).toMatch(/background:\s*var\(--bm-content-bg,[^)]+\)\s*;/)
+  })
 })

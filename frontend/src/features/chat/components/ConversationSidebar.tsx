@@ -11,6 +11,7 @@ import {
   FileDoneOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
+  ReadOutlined,
   RightOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
@@ -55,6 +56,7 @@ export function ConversationSidebar({
     { key: 'milestones' as const, label: '里程碑', icon: <FlagOutlined />, count: 0 },
     { key: 'reminders' as const, label: '提醒中心', icon: <BellOutlined />, count: reminderCount },
     { key: 'artifacts' as const, label: '产物', icon: <FileDoneOutlined />, count: 0 },
+    { key: 'vocabulary' as const, label: '生词本', icon: <ReadOutlined />, count: 0 },
   ]
 
   return (

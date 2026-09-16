@@ -69,12 +69,13 @@ var ErrNotFound = errors.New("record not found")
 
 // 设置项 key 常量。
 const (
-	SettingTheme           = "theme"             // 皮肤 id
-	SettingCaptureHotkey   = "hotkey.capture"    // 截图全局热键,如 "ctrl+alt+s"
-	SettingRemindEnabled   = "remind.enabled"    // "1"/"0"
-	SettingRemindLeadHours = "remind.lead.hours" // 提前提醒小时数
-	SettingDefaultProvider = "provider.default"  // 默认 Provider 显示名(冗余 is_default)
-	SettingScreenshotDir   = "screenshot.dir"    // 截图保存目录(空 = 应用数据目录)
+	SettingTheme            = "theme"             // 皮肤 id
+	SettingCaptureHotkey    = "hotkey.capture"    // 截图全局热键,如 "ctrl+alt+s"
+	SettingRemindEnabled    = "remind.enabled"    // "1"/"0"
+	SettingRemindLeadHours  = "remind.lead.hours" // 提前提醒小时数
+	SettingDefaultProvider  = "provider.default"  // 默认 Provider 显示名(冗余 is_default)
+	SettingScreenshotDir    = "screenshot.dir"    // 截图保存目录(空 = 应用数据目录)
+	SettingVocabularyHotkey = "hotkey.vocabulary" // 生词快捷收藏热键
 )
 
 // HasProviders 返回是否已配置至少一个模型服务商(首启向导判定)。

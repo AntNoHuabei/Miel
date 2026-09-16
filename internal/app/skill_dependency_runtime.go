@@ -208,8 +208,13 @@ func (s *SkillDependencyService) ExecuteSkillContext(parent context.Context, nam
 			return nil, fmt.Errorf("自动确认 Skill 依赖计划失败: %w", err)
 		}
 	}
-	if plan.NeedsReview || plan.EntryCommand == "" {
-		return nil, errors.New("无法安全确定 Skill 依赖或可执行入口，已中断调用")
+	if plan.Kind == "instruction" {
+		logInfo(parent, "skill.run.route", "skill", skillName, "kind", plan.Kind, "status", "rejected", "code", "instruction_only")
+		return nil, errors.New("instruction_only: 该 Skill 是文档型 Skill，请按文档使用受控工具")
+	}
+	if plan.Kind == "unresolved" || plan.NeedsReview || plan.EntryCommand == "" {
+		logError(parent, "skill.run.route", errors.New(plan.Reason), "skill", skillName, "kind", plan.Kind, "code", "entry_unresolved")
+		return nil, errors.New("entry_unresolved: " + plan.Reason)
 	}
 	if plan.EntryCommand != plan.Runtime {
 		return nil, errors.New("Skill 入口必须使用声明的内置运行时")

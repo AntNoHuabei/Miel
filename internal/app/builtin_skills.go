@@ -13,7 +13,7 @@ var builtinSkills embed.FS
 // builtinSkills keeps the application-owned skills in sync with the
 // command contract shipped by the current Miel version.
 func ensureBuiltinSkills(skillsRoot string) {
-	for _, name := range []string{"todo", "reminder", "office", "websearch"} {
+	for _, name := range []string{"todo", "reminder", "office", "websearch", "vocabulary"} {
 		data, err := builtinSkills.ReadFile("skills/" + name + "/SKILL.md")
 		if err != nil {
 			log.Println("read builtin skill", name, ":", err)

@@ -78,6 +78,48 @@ func TestDetectSkillDependenciesRequiresProjectAndSourceEvidence(t *testing.T) {
 	}
 }
 
+func TestDetectSkillDependenciesTreatsDocumentationCodeBlocksAsInstruction(t *testing.T) {
+	manager := NewDirectoryManager(t.TempDir())
+	dir := writeTestSkill(t, manager, "web-scraper", map[string]string{
+		"SKILL.md":  "---\nname: web-scraper\ndescription: docs\n---\n```python\nprint('example')\n```\n",
+		"README.md": "Use the documented cascade.",
+	})
+	plan := detectSkillDependencies(dir, "web-scraper")
+	if plan.Kind != "instruction" || plan.CanRun || plan.Runtime != "" {
+		t.Fatalf("documentation skill was classified as executable: %#v", plan)
+	}
+}
+
+func TestDetectSkillDependenciesMarksAmbiguousExecutableAsUnresolved(t *testing.T) {
+	manager := NewDirectoryManager(t.TempDir())
+	dir := writeTestSkill(t, manager, "ambiguous", map[string]string{
+		"requirements.txt": "requests\n",
+		"first.py":         "print('one')\n",
+		"second.py":        "print('two')\n",
+	})
+	plan := detectSkillDependencies(dir, "ambiguous")
+	if plan.Kind != "unresolved" || plan.CanRun || plan.Reason == "" {
+		t.Fatalf("ambiguous skill was not rejected: %#v", plan)
+	}
+}
+
+func TestExecuteSkillRejectsInstructionWithoutStartingProcess(t *testing.T) {
+	manager := NewDirectoryManager(t.TempDir())
+	writeTestSkill(t, manager, "docs", map[string]string{"README.md": "instructions"})
+	service := NewSkillDependencyService(manager, nil)
+	called := false
+	service.run = func(context.Context, string, []string, string, []string) ([]byte, error) {
+		called = true
+		return nil, nil
+	}
+	if _, err := service.ExecuteSkillContext(context.Background(), "docs", nil); err == nil || !strings.Contains(err.Error(), "instruction_only") {
+		t.Fatalf("expected instruction_only error, got %v", err)
+	}
+	if called {
+		t.Fatal("instruction skill started a process")
+	}
+}
+
 func TestDetectSkillDependenciesInfersSingleDocumentedPythonEntry(t *testing.T) {
 	manager := NewDirectoryManager(t.TempDir())
 	dir := writeTestSkill(t, manager, "watermark", map[string]string{
@@ -176,6 +218,7 @@ func TestInitializePythonUsesBundledUVAndRefreshesRequirementsLock(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	plan.EntryCommand, plan.EntryArgs = "python", []string{"main.py"}
 	if _, err := service.ConfirmSkillDependencyPlan("python-skill", plan); err != nil {
 		t.Fatal(err)
 	}
@@ -333,6 +376,7 @@ func TestInitializeSkillCachesByContentHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	plan.EntryCommand, plan.EntryArgs = "node", []string{"main.js"}
 	if _, err := service.ConfirmSkillDependencyPlan("node-skill", plan); err != nil {
 		t.Fatal(err)
 	}

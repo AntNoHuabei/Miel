@@ -19,10 +19,10 @@
 
 .bm-window-titlebar {
   display: flex;
-  flex: 0 0 44px;
+  flex: 0 0 40px;
   box-sizing: border-box;
   align-items: stretch;
-  border-bottom: 0.5px solid var(--bm-shell-hairline);
+  border-bottom: 0;
   background: var(--bm-header-bg, #fff);
   user-select: none;
   transition:
@@ -45,7 +45,7 @@
 .bm-window-controls .ant-btn {
   display: grid;
   width: 42px;
-  height: 43px;
+  height: 39px;
   padding: 0;
   place-items: center;
   appearance: none;
@@ -161,6 +161,7 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
+  border-top-left-radius: 18px;
   color: var(--bm-text, #1f2329);
   background: var(--bm-content-bg, #f5f6f8);
   transition: left 180ms ease;
@@ -176,7 +177,7 @@
   align-items: center;
   padding: 0 22px;
   border-bottom: 1px solid var(--bm-divider, #dfe3e8);
-  background: var(--bm-header-bg, #fff);
+  background: var(--bm-content-bg, #f5f6f8);
 }
 
 .bm-feature-header .ant-typography {

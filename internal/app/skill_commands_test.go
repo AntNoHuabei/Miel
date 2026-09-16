@@ -306,7 +306,7 @@ func TestDeclaredSkillOutputPathsResolvesRelativePathWithinSkill(t *testing.T) {
 
 func TestBuiltinSkillsOverwriteStaleInstalledCopies(t *testing.T) {
 	root := t.TempDir()
-	for _, name := range []string{"todo", "reminder", "office", "websearch"} {
+	for _, name := range []string{"todo", "reminder", "office", "websearch", "vocabulary"} {
 		dir := filepath.Join(root, name)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -316,7 +316,7 @@ func TestBuiltinSkillsOverwriteStaleInstalledCopies(t *testing.T) {
 		}
 	}
 	ensureBuiltinSkills(root)
-	for _, name := range []string{"todo", "reminder", "office", "websearch"} {
+	for _, name := range []string{"todo", "reminder", "office", "websearch", "vocabulary"} {
 		content, err := os.ReadFile(filepath.Join(root, name, "SKILL.md"))
 		if err != nil {
 			t.Fatal(err)

@@ -72,6 +72,12 @@ func readSkillManifest(path string) (SkillDependencyPlan, bool, error) {
 		EntryCommand:      manifest.Entry.Command, EntryArgs: nonNilStrings(manifest.Entry.Args),
 		Network: manifest.Network, Source: "manifest", Confidence: "confirmed", AutoUpdate: runtimeName == "python", legacy: legacy,
 	}
+	plan.Kind = "executable"
+	plan.CanRun = runtimeName != "" && manifest.Entry.Command != "" && len(manifest.Entry.Args) > 0
+	if !plan.CanRun {
+		plan.Kind, plan.Reason = "unresolved", "manifest 缺少可执行入口"
+		plan.NeedsReview = true
+	}
 	if err := validateDependencyPlan(plan); err != nil {
 		return SkillDependencyPlan{}, false, err
 	}
@@ -86,8 +92,8 @@ func nonNilStrings(values []string) []string {
 }
 
 func detectSkillDependencies(dir, name string) SkillDependencyPlan {
-	plan := SkillDependencyPlan{SchemaVersion: skillManifestSchemaVersion, Skill: name, Source: "detected", Confidence: "none", Evidence: []string{}}
-	var nodeFiles, pythonFiles []string
+	plan := SkillDependencyPlan{SchemaVersion: skillManifestSchemaVersion, Skill: name, Source: "detected", Confidence: "none", Evidence: []string{}, Kind: "instruction", Reason: "仅包含 Skill 文档"}
+	var nodeFiles, pythonFiles, unsupportedFiles []string
 	_ = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry == nil {
 			return nil
@@ -114,6 +120,8 @@ func detectSkillDependencies(dir, name string) SkillDependencyPlan {
 			nodeFiles = append(nodeFiles, filepath.ToSlash(rel))
 		case ".py":
 			pythonFiles = append(pythonFiles, filepath.ToSlash(rel))
+		case ".sh", ".ps1", ".bat", ".cmd", ".exe", ".rb", ".pl":
+			unsupportedFiles = append(unsupportedFiles, filepath.ToSlash(rel))
 		}
 		return nil
 	})
@@ -145,12 +153,26 @@ func detectSkillDependencies(dir, name string) SkillDependencyPlan {
 		plan.Evidence = append(nodeFiles, pythonFiles...)
 		if len(plan.Evidence) > 0 {
 			plan.Confidence, plan.NeedsReview = "low", true
+			plan.Kind, plan.Reason = "unresolved", "发现脚本或依赖文件，但无法唯一确定执行入口"
 		}
 	}
 	if plan.Runtime != "" {
 		if entry := inferDocumentedSkillEntry(dir, plan.Runtime, plan.Evidence); entry != "" {
 			plan.EntryCommand, plan.EntryArgs = plan.Runtime, []string{entry}
 		}
+	}
+	if plan.Runtime != "" {
+		if plan.EntryCommand != "" && len(plan.EntryArgs) > 0 {
+			plan.Kind, plan.CanRun, plan.Reason = "executable", true, ""
+		} else {
+			plan.Kind, plan.CanRun = "unresolved", false
+			plan.Reason = "运行时存在但未找到可执行入口"
+		}
+	}
+	if len(unsupportedFiles) > 0 && plan.Kind == "instruction" {
+		plan.Kind, plan.NeedsReview, plan.Confidence = "unresolved", true, "low"
+		plan.Reason = "发现当前受管理运行时不支持的脚本或程序，需要检查入口"
+		plan.Evidence = append(plan.Evidence, unsupportedFiles...)
 	}
 	return plan
 }
@@ -160,15 +182,15 @@ func inferDocumentedSkillEntry(dir, runtimeName string, evidence []string) strin
 	if err != nil {
 		return ""
 	}
-	extension := ".py"
+	extensions := []string{".py"}
 	if runtimeName == "node" {
-		extension = ".js"
+		extensions = []string{".js", ".mjs", ".cjs"}
 	}
 	content := strings.ReplaceAll(strings.ToLower(string(document)), "\\", "/")
 	candidates := make([]string, 0, 2)
 	for _, relative := range evidence {
 		normalized := filepath.ToSlash(relative)
-		if strings.EqualFold(filepath.Ext(normalized), extension) && strings.Contains(content, strings.ToLower(normalized)) {
+		if hasExtension([]string{normalized}, extensions...) && strings.Contains(content, strings.ToLower(normalized)) {
 			candidates = append(candidates, normalized)
 		}
 	}

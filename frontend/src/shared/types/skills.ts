@@ -5,6 +5,9 @@ export interface SkillLite {
   enabled: boolean;
   path: string;
   updatedAt: number;
+  kind: "builtin" | "instruction" | "executable" | "unresolved" | string;
+  canRun: boolean;
+  capabilityReason?: string;
 }
 export interface SkillHubSkillLite {
   slug: string;
@@ -47,6 +50,9 @@ export interface SkillDependencyPlanLite {
   network: boolean;
   needsReview: boolean;
   source: string;
+  kind: "instruction" | "executable" | "unresolved" | string;
+  canRun: boolean;
+  reason?: string;
 }
 export interface SkillEnvironmentStatusLite {
   skill: string;

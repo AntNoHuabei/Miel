@@ -10,6 +10,9 @@ vi.mock('./TodosView', () => ({ default: () => <div>todos page</div> }))
 vi.mock('./MilestonesView', () => ({ default: () => <div>milestones page</div> }))
 vi.mock('./RemindersView', () => ({ default: () => <div>reminders page</div> }))
 vi.mock('../components/ScreenshotModal', () => ({ default: () => null }))
+vi.mock('../features/artifacts/components/ArtifactsPage', () => ({ ArtifactsPage: () => <div>artifacts page</div> }))
+vi.mock('../features/artifacts/components/ArtifactPreviewPanel', () => ({ ArtifactPreviewPanel: () => null }))
+vi.mock('./VocabularyView', () => ({ default: () => <div>vocabulary page</div> }))
 
 import AppShell from './MainLayout'
 
@@ -24,6 +27,8 @@ describe('AppShell navigation', () => {
       ['todos', 'todos page'],
       ['milestones', 'milestones page'],
       ['reminders', 'reminders page'],
+      ['artifacts', 'artifacts page'],
+      ['vocabulary', 'vocabulary page'],
       ['settings', 'settings page'],
     ] as const
 

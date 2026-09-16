@@ -140,6 +140,7 @@ export default function QuickAssistantWindow({
   return (
     <div className="bm-quick-window">
       <header className="bm-quick-titlebar">
+        <img className="bm-quick-brand-logo" src="/appicon.png" alt="" aria-hidden="true" />
         <div className="bm-quick-brand">Miel</div>
         <div className="bm-quick-drag" />
         <Tooltip title="新建会话"><Button type="text" icon={<PlusOutlined />} disabled={runtime.sending} onClick={newConversation} /></Tooltip>

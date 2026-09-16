@@ -82,6 +82,18 @@ func executeSkillCommandWithWebSearch(ctx context.Context, t *TodoService, sourc
 		if commandName != "run" {
 			return failedSkillRun(2, "invalid_command", "外部 Skill 仅支持 run 命令"), nil
 		}
+		plan, inspectErr := skillDependencySvc.InspectSkillDependencies(skillName)
+		if inspectErr != nil {
+			return skillRunResponse{}, inspectErr
+		}
+		if plan.Kind == "instruction" || plan.Kind == "unresolved" {
+			code := "entry_unresolved"
+			if plan.Kind == "instruction" {
+				code = "instruction_only"
+			}
+			logInfo(ctx, "skill.run.rejected", "skill", skillName, "kind", plan.Kind, "code", code)
+			return failedSkillRun(2, code, skillRoute(plan)), nil
+		}
 		// command already carries the external Skill action. Some models still
 		// repeat it as the first argv item; never pass that control value through
 		// to the declared Python/Node entry.
@@ -236,9 +248,225 @@ func newBuiltinSkillCommand(skillName string, t *TodoService, source *todoToolSo
 		return newOfficeCommand(t), commandSet("weekly", "document", "table", "export-todos")
 	case "websearch":
 		return newWebSearchCommand(search), commandSet("search", "fetch")
+	case "vocabulary":
+		return newVocabularyCommand(vocabularySvc), commandSet("add", "add-many", "list", "get", "update", "delete", "random", "review", "sentence", "grade", "stats")
 	default:
 		return nil, nil
 	}
+}
+
+func newVocabularyCommand(service *VocabularyService) *cobra.Command {
+	root := &cobra.Command{Use: "vocabulary"}
+
+	var term, meaning, example string
+	add := &cobra.Command{Use: "add", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		word, err := service.AddWord(VocabularyWordInput{Term: term, Meaning: meaning, Example: example, Source: "chat"})
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, word)
+	}}
+	add.Flags().StringVar(&term, "term", "", "word or phrase")
+	add.Flags().StringVar(&meaning, "meaning", "", "optional meaning")
+	add.Flags().StringVar(&example, "example", "", "optional example sentence")
+
+	var itemsJSON string
+	addMany := &cobra.Command{Use: "add-many", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		if strings.TrimSpace(itemsJSON) == "" {
+			return usageErrorf("--items 不能为空")
+		}
+		var items []VocabularyWordInput
+		if err := json.Unmarshal([]byte(itemsJSON), &items); err != nil {
+			return usageErrorf("--items 必须是生词对象的 JSON 数组: %v", err)
+		}
+		for index := range items {
+			items[index].ID = 0
+			items[index].Source = "chat"
+		}
+		words, err := service.AddWords(items)
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, words)
+	}}
+	addMany.Flags().StringVar(&itemsJSON, "items", "", "JSON array of term, meaning, and example objects")
+
+	var query string
+	list := &cobra.Command{Use: "list", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		words, err := service.ListWords(query)
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, words)
+	}}
+	list.Flags().StringVar(&query, "query", "", "search term, meaning, or example")
+
+	var getID int64
+	get := &cobra.Command{Use: "get", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		word, err := service.GetWord(getID)
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, word)
+	}}
+	get.Flags().Int64Var(&getID, "id", 0, "word id")
+
+	var updateID int64
+	var updateTerm, updateMeaning, updateExample string
+	update := &cobra.Command{Use: "update", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		if updateID <= 0 {
+			return usageErrorf("--id 必须大于 0")
+		}
+		current, err := service.GetWord(updateID)
+		if err != nil {
+			return err
+		}
+		if cmd.Flags().Changed("term") {
+			current.Term = updateTerm
+		}
+		if cmd.Flags().Changed("meaning") {
+			current.Meaning = updateMeaning
+		}
+		if cmd.Flags().Changed("example") {
+			current.Example = updateExample
+		}
+		word, err := service.UpdateWord(VocabularyWordInput{ID: current.ID, Term: current.Term, Meaning: current.Meaning, Example: current.Example})
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, word)
+	}}
+	update.Flags().Int64Var(&updateID, "id", 0, "word id")
+	update.Flags().StringVar(&updateTerm, "term", "", "replacement word or phrase")
+	update.Flags().StringVar(&updateMeaning, "meaning", "", "replacement meaning")
+	update.Flags().StringVar(&updateExample, "example", "", "replacement example sentence")
+
+	var deleteID int64
+	deleteCommand := &cobra.Command{Use: "delete", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		if deleteID <= 0 {
+			return usageErrorf("--id 必须大于 0")
+		}
+		if err := service.DeleteWord(deleteID); err != nil {
+			return err
+		}
+		return writeSkillData(cmd, map[string]any{"deleted": true, "id": deleteID})
+	}}
+	deleteCommand.Flags().Int64Var(&deleteID, "id", 0, "word id")
+
+	var randomCount int
+	random := &cobra.Command{Use: "random", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		words, err := service.RandomWords(randomCount)
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, words)
+	}}
+	random.Flags().IntVar(&randomCount, "count", 1, "random terms from 1 to 50")
+
+	var reviewCount int
+	review := &cobra.Command{Use: "review", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		result, err := service.CreateReview(reviewCount)
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, result)
+	}}
+	review.Flags().IntVar(&reviewCount, "count", 3, "random terms from 1 to 8")
+
+	var sentenceIDs string
+	sentence := &cobra.Command{Use: "sentence", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		ids, err := parseVocabularyIDs(sentenceIDs)
+		if err != nil {
+			return err
+		}
+		value, err := service.GenerateSentence(ids)
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, map[string]any{"sentence": value, "ids": ids})
+	}}
+	sentence.Flags().StringVar(&sentenceIDs, "ids", "", "comma-separated word ids")
+
+	var gradeIDs, gradeResult string
+	grade := &cobra.Command{Use: "grade", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		ids, err := parseVocabularyIDs(gradeIDs)
+		if err != nil {
+			return err
+		}
+		if gradeResult != "mastered" && gradeResult != "again" {
+			return usageErrorf("--result 必须是 mastered 或 again")
+		}
+		if err := service.RecordReview(ids, gradeResult == "mastered"); err != nil {
+			return err
+		}
+		return writeSkillData(cmd, map[string]any{"recorded": true, "ids": ids, "result": gradeResult})
+	}}
+	grade.Flags().StringVar(&gradeIDs, "ids", "", "comma-separated word ids")
+	grade.Flags().StringVar(&gradeResult, "result", "", "mastered or again")
+
+	stats := &cobra.Command{Use: "stats", Args: noCommandArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if service == nil {
+			return errors.New("生词服务未初始化")
+		}
+		value, err := service.Stats()
+		if err != nil {
+			return err
+		}
+		return writeSkillData(cmd, value)
+	}}
+
+	root.AddCommand(add, addMany, list, get, update, deleteCommand, random, review, sentence, grade, stats)
+	return root
+}
+
+func parseVocabularyIDs(raw string) ([]int64, error) {
+	parts := strings.Split(raw, ",")
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, usageErrorf("--ids 必须是逗号分隔的正整数")
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, usageErrorf("--ids 不能为空")
+	}
+	return ids, nil
 }
 
 func newWebSearchCommand(service *WebSearchService) *cobra.Command {

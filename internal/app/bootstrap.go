@@ -21,6 +21,7 @@ type Services struct {
 	Skills            *SkillService
 	SkillDependencies *SkillDependencyService
 	Artifacts         *ArtifactService
+	Vocabulary        *VocabularyService
 }
 
 // Bootstrap 初始化存储与内置 skills,构造并装配各业务服务
@@ -67,6 +68,8 @@ func Bootstrap() (*Services, error) {
 	}
 	shot := NewScreenshotService(store, settings, memoryRuntime)
 	clipboard := NewClipboardService(todo, settings, memoryRuntime)
+	vocabulary := NewVocabularyService(store)
+	vocabularySvc = vocabulary
 	rem := NewReminderService(store)
 	skills := NewSkillService(appDirectories)
 	skillDependencies := NewSkillDependencyService(appDirectories, settings)
@@ -85,6 +88,7 @@ func Bootstrap() (*Services, error) {
 	memoryRuntime.setNotify(notify)
 	shot.SetNotify(notify)
 	artifacts.notify = notify
+	vocabulary.Notify = notify
 	skillDependencies.setNotify(notify)
 
 	rem.Start(context.Background())
@@ -102,5 +106,6 @@ func Bootstrap() (*Services, error) {
 		Skills:            skills,
 		SkillDependencies: skillDependencies,
 		Artifacts:         artifacts,
+		Vocabulary:        vocabulary,
 	}, nil
 }

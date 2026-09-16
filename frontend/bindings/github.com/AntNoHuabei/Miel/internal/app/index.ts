@@ -13,6 +13,7 @@ import * as SettingsService from "./settingsservice.js";
 import * as SkillDependencyService from "./skilldependencyservice.js";
 import * as SkillService from "./skillservice.js";
 import * as TodoService from "./todoservice.js";
+import * as VocabularyService from "./vocabularyservice.js";
 import * as WindowThemeService from "./windowthemeservice.js";
 export {
     AgentService,
@@ -27,6 +28,7 @@ export {
     SkillDependencyService,
     SkillService,
     TodoService,
+    VocabularyService,
     WindowThemeService
 };
 
@@ -86,5 +88,9 @@ export type {
     TodoInput,
     TodoSource,
     TodoStats,
+    VocabularyReview,
+    VocabularyStats,
+    VocabularyWord,
+    VocabularyWordInput,
     Workspace
 } from "./models.js";

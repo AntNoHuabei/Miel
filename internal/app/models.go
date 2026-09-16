@@ -232,6 +232,42 @@ type Screenshot struct {
 	CreatedAt int64  `json:"createdAt"`
 }
 
+// VocabularyWord is one saved term plus lightweight spaced-review progress.
+type VocabularyWord struct {
+	ID             int64  `json:"id"`
+	Term           string `json:"term"`
+	Meaning        string `json:"meaning"`
+	Example        string `json:"example"`
+	Source         string `json:"source"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
+	ReviewCount    int64  `json:"reviewCount"`
+	MasteredCount  int64  `json:"masteredCount"`
+	AgainCount     int64  `json:"againCount"`
+	LastReviewedAt int64  `json:"lastReviewedAt"`
+}
+
+type VocabularyWordInput struct {
+	ID      int64  `json:"id"`
+	Term    string `json:"term"`
+	Meaning string `json:"meaning"`
+	Example string `json:"example"`
+	Source  string `json:"source"`
+}
+
+type VocabularyReview struct {
+	Words []VocabularyWord `json:"words"`
+	Seed  int64            `json:"seed"`
+}
+
+type VocabularyStats struct {
+	Total       int64 `json:"total"`
+	Unreviewed  int64 `json:"unreviewed"`
+	Practising  int64 `json:"practising"`
+	Mastered    int64 `json:"mastered"`
+	ReviewCount int64 `json:"reviewCount"`
+}
+
 // 待办状态常量。
 const (
 	TodoStatusPending = "pending"

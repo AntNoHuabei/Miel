@@ -66,6 +66,8 @@ export function normalizeSkillDependencyPlan(
 ): SkillDependencyPlanLite {
   return {
     ...plan,
+    kind: plan.kind || (plan.runtime ? "unresolved" : "instruction"),
+    canRun: Boolean(plan.canRun),
     evidence: normalizeList(plan.evidence),
     dependencySources: normalizeList(plan.dependencySources),
     entryArgs: normalizeList(plan.entryArgs),

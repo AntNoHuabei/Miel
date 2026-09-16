@@ -494,6 +494,9 @@ export interface Skill {
     "enabled": boolean;
     "path": string;
     "updatedAt": number;
+    "kind": string;
+    "canRun": boolean;
+    "capabilityReason"?: string;
 }
 
 /**
@@ -515,6 +518,9 @@ export interface SkillDependencyPlan {
     "network": boolean;
     "needsReview": boolean;
     "source": string;
+    "kind": string;
+    "canRun": boolean;
+    "reason"?: string;
 }
 
 export interface SkillEnvironmentStatus {
@@ -653,6 +659,44 @@ export interface TodoStats {
      * 24 小时内到期未完成
      */
     "dueSoon": number;
+}
+
+export interface VocabularyReview {
+    "words": VocabularyWord[] | null;
+    "seed": number;
+}
+
+export interface VocabularyStats {
+    "total": number;
+    "unreviewed": number;
+    "practising": number;
+    "mastered": number;
+    "reviewCount": number;
+}
+
+/**
+ * VocabularyWord is one saved term plus lightweight spaced-review progress.
+ */
+export interface VocabularyWord {
+    "id": number;
+    "term": string;
+    "meaning": string;
+    "example": string;
+    "source": string;
+    "createdAt": number;
+    "updatedAt": number;
+    "reviewCount": number;
+    "masteredCount": number;
+    "againCount": number;
+    "lastReviewedAt": number;
+}
+
+export interface VocabularyWordInput {
+    "id": number;
+    "term": string;
+    "meaning": string;
+    "example": string;
+    "source": string;
 }
 
 /**

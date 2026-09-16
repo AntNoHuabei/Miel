@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import type { MouseEvent } from 'react'
-import { Button, Tooltip } from 'antd'
+import { App as AntApp, Button, Tooltip } from 'antd'
 import { BorderOutlined, CloseOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { Window as WailsWindow } from '@wailsio/runtime'
 import SettingsView from './SettingsView'
@@ -15,10 +15,13 @@ import { useShellStore } from '../features/shell/shellStore'
 import type { ReminderItem, ViewKey } from '../features/shell/shellStore'
 import { ArtifactsPage } from '../features/artifacts/components/ArtifactsPage'
 import { ArtifactPreviewPanel } from '../features/artifacts/components/ArtifactPreviewPanel'
+import VocabularyView from './VocabularyView'
+import type { VocabularyWordLite } from '../shared/types/vocabulary'
 import '../styles/artifacts.css'
 
-const viewLabel: Record<ViewKey, string> = { chat: '对话', todos: '待办', milestones: '里程碑', reminders: '提醒中心', artifacts: '产物', settings: '设置' }
+const viewLabel: Record<ViewKey, string> = { chat: '对话', todos: '待办', milestones: '里程碑', reminders: '提醒中心', artifacts: '产物', vocabulary: '生词本', settings: '设置' }
 export default function AppShell() {
+  const { message } = AntApp.useApp()
   const view = useShellStore((state) => state.view)
   const sidebarOpen = useShellStore((state) => state.sidebarOpen)
   const reminders = useShellStore((state) => state.reminders)
@@ -40,6 +43,13 @@ export default function AppShell() {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('Miel 提醒', { body: reminder.text })
   }, [addReminder]))
   useWailsEvent('todos.changed', refreshTodosIfLoaded, [])
+  useWailsEvent<VocabularyWordLite>('vocabulary.captured', useCallback((word) => {
+    message.success(`已加入生词本：${word.term}`)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification('已加入生词本', { body: word.term })
+  }, [message]))
+  useWailsEvent<string>('vocabulary.capture.failed', useCallback((error) => {
+    message.warning(error)
+  }, [message]))
 
   const feature = view === 'todos'
     ? <TodosView onOpenConversation={openConversation} />
@@ -49,6 +59,8 @@ export default function AppShell() {
         ? <RemindersView items={reminders} onClear={clearReminders} />
         : view === 'artifacts'
           ? <ArtifactsPage />
+        : view === 'vocabulary'
+          ? <VocabularyView />
         : view === 'settings' ? <SettingsView /> : null
 
   return (

@@ -23,12 +23,15 @@ const maxSkillPackageBytes = 20 << 20
 
 // Skill is the user-visible metadata for one installed skill.
 type Skill struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Source      string `json:"source"` // builtin, local, or skillhub
-	Enabled     bool   `json:"enabled"`
-	Path        string `json:"path"`
-	UpdatedAt   int64  `json:"updatedAt"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	Source           string `json:"source"` // builtin, local, or skillhub
+	Enabled          bool   `json:"enabled"`
+	Path             string `json:"path"`
+	UpdatedAt        int64  `json:"updatedAt"`
+	Kind             string `json:"kind"`
+	CanRun           bool   `json:"canRun"`
+	CapabilityReason string `json:"capabilityReason,omitempty"`
 }
 
 // SkillHubSkill is a public catalog entry returned by SkillHub.
@@ -129,10 +132,9 @@ func (s *SkillService) ReconcileDependencyState() error {
 		if _, err := os.Stat(filepath.Join(dir, skillManifestFile)); err == nil {
 			continue
 		}
-		plan := detectSkillDependencies(dir, normalizeSkillName(entry.Name()))
-		enabled, recorded := state.Enabled[plan.Skill]
-		automatic := plan.Confidence == "high" && plan.EntryCommand != "" && len(plan.EntryArgs) > 0
-		if plan.Runtime != "" && !automatic && (!recorded || enabled) {
+		plan := resolveSkillCapability(dir, normalizeSkillName(entry.Name()))
+		_, recorded := state.Enabled[plan.Skill]
+		if plan.Kind == "unresolved" && !recorded {
 			state.Enabled[plan.Skill] = false
 			changed = true
 		}
@@ -258,8 +260,17 @@ func (s *SkillService) SetEnabled(name string, enabled bool) error {
 		if inspectErr != nil {
 			return inspectErr
 		}
+		if plan.Kind == "unresolved" {
+			return errors.New("Skill 执行入口无法确定: " + plan.Reason)
+		}
 		if plan.NeedsReview {
-			return errors.New("Skill 依赖需要确认后才能启用")
+			if plan.CanRun && plan.Confidence == "high" {
+				if _, err := s.dependencies.ConfirmSkillDependencyPlan(name, plan); err != nil {
+					return err
+				}
+			} else {
+				return errors.New("Skill 依赖需要确认后才能启用")
+			}
 		}
 		if plan.Runtime != "" {
 			if _, initErr := s.dependencies.InitializeSkill(name); initErr != nil {
@@ -364,14 +375,22 @@ func (s *SkillService) ImportFromSkillHub(url string) (Skill, error) {
 				payload.Content = payload.SkillMD
 			}
 			if payload.Content != "" {
-				return s.installMarkdown(payload.Name, payload.Description, payload.Content, "skillhub", url)
+				installed, err := s.installMarkdown(payload.Name, payload.Description, payload.Content, "skillhub", url)
+				if err != nil {
+					return Skill{}, err
+				}
+				return s.finalizeImportedSkill(installed)
 			}
 			if payload.DownloadURL != "" && payload.DownloadURL != url {
 				return s.ImportFromSkillHub(payload.DownloadURL)
 			}
 		}
 	}
-	return s.installMarkdown("", "", string(body), "skillhub", url)
+	installed, err := s.installMarkdown("", "", string(body), "skillhub", url)
+	if err != nil {
+		return Skill{}, err
+	}
+	return s.finalizeImportedSkill(installed)
 }
 
 func normalizeSkillHubDownloadURL(raw string) string {
@@ -408,23 +427,25 @@ func (s *SkillService) installDirectory(source, origin, sourceURL string) (Skill
 }
 
 func (s *SkillService) finalizeImportedSkill(installed Skill) (Skill, error) {
+	plan := resolveSkillCapability(installed.Path, installed.Name)
+	installed.Kind, installed.CanRun, installed.CapabilityReason = plan.Kind, plan.CanRun, plan.Reason
+	root, rootErr := s.skillsRoot()
+	if rootErr != nil {
+		return Skill{}, rootErr
+	}
+	state, stateErr := s.loadState(root)
+	if stateErr != nil {
+		return Skill{}, stateErr
+	}
+	if enabled, recorded := state.Enabled[installed.Name]; recorded {
+		installed.Enabled = enabled
+		return installed, nil
+	}
 	if s.dependencies == nil {
 		return installed, nil
 	}
-	plan, err := s.dependencies.InspectSkillDependencies(installed.Name)
-	if err != nil {
-		return Skill{}, err
-	}
-	if plan.Runtime == "" {
+	if plan.Kind == "instruction" {
 		return installed, nil
-	}
-	root, err := s.skillsRoot()
-	if err != nil {
-		return Skill{}, err
-	}
-	state, err := s.loadState(root)
-	if err != nil {
-		return Skill{}, err
 	}
 	state.Enabled[installed.Name] = false
 	if err := s.saveState(root, state); err != nil {
@@ -623,7 +644,8 @@ func readSkillDirectory(dir string) (Skill, bool, error) {
 	if info != nil {
 		updated = info.ModTime().Unix()
 	}
-	return Skill{Name: normalizeSkillName(name), Description: description, Source: source, Enabled: true, Path: dir, UpdatedAt: updated}, true, nil
+	plan := resolveSkillCapability(dir, normalizeSkillName(name))
+	return Skill{Name: normalizeSkillName(name), Description: description, Source: source, Enabled: true, Path: dir, UpdatedAt: updated, Kind: plan.Kind, CanRun: plan.CanRun, CapabilityReason: plan.Reason}, true, nil
 }
 
 func parseSkillDocument(content string) (name, description string) {
@@ -670,7 +692,7 @@ func normalizeSkillName(name string) string {
 
 func isBuiltinSkill(name string) bool {
 	switch normalizeSkillName(name) {
-	case "todo", "reminder", "office", "websearch":
+	case "todo", "reminder", "office", "websearch", "vocabulary":
 		return true
 	default:
 		return false
@@ -731,6 +753,15 @@ func (r *managedSkillRepository) Summaries() []agentskill.Summary {
 	filtered := make([]agentskill.Summary, 0, len(rows))
 	for _, row := range rows {
 		if r.isEnabled(row.Name) {
+			path, err := r.base.Path(row.Name)
+			if err != nil {
+				continue
+			}
+			plan := resolveSkillCapability(path, row.Name)
+			if plan.Kind == "unresolved" {
+				continue
+			}
+			row.Description += "\n" + skillRoute(plan)
 			filtered = append(filtered, row)
 		}
 	}
@@ -741,7 +772,22 @@ func (r *managedSkillRepository) Get(name string) (*agentskill.Skill, error) {
 	if !r.isEnabled(name) {
 		return nil, fmt.Errorf("skill %q is disabled", name)
 	}
-	return r.base.Get(name)
+	original, err := r.base.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	path, err := r.base.Path(name)
+	if err != nil {
+		return nil, err
+	}
+	plan := resolveSkillCapability(path, name)
+	if plan.Kind == "unresolved" {
+		return nil, fmt.Errorf("entry_unresolved: %s", plan.Reason)
+	}
+	copy := *original
+	copy.Body = skillRoute(plan) + "\n\n" + original.Body
+	copy.Summary.Description += "\n" + skillRoute(plan)
+	return &copy, nil
 }
 
 func (r *managedSkillRepository) Path(name string) (string, error) {

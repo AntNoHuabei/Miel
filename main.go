@@ -136,6 +136,9 @@ func init() {
 	application.RegisterEvent[string]("clipboard.todo.show")
 	application.RegisterEvent[string]("memory.changed")
 	application.RegisterEvent[string]("artifacts.changed")
+	application.RegisterEvent[app.VocabularyWord]("vocabulary.changed")
+	application.RegisterEvent[app.VocabularyWord]("vocabulary.captured")
+	application.RegisterEvent[string]("vocabulary.capture.failed")
 	application.RegisterEvent[app.SkillDependencyPlan]("skill.dependency.detected")
 	application.RegisterEvent[app.SkillDependencyPlan]("skill.dependency.confirmation-required")
 	application.RegisterEvent[app.SkillInstallProgress]("skill.dependency.progress")
@@ -197,6 +200,7 @@ func main() {
 		application.NewService(svcs.Skills),
 		application.NewService(svcs.SkillDependencies),
 		application.NewService(svcs.Artifacts),
+		application.NewService(svcs.Vocabulary),
 	} {
 		instance.RegisterService(service)
 	}
@@ -259,6 +263,12 @@ func main() {
 
 	setupSystemTray(instance, quickController)
 	setupQuickHotkeys(instance, quickController)
+	setupVocabularyHotkey(instance, svcs.Vocabulary, func() string {
+		if h, err := svcs.Settings.GetSetting(app.SettingVocabularyHotkey); err == nil && h != "" {
+			return h
+		}
+		return "alt+w"
+	})
 	setupGlobalHotkey(instance, quickController, svcs.Screenshot, func() string {
 		if h, err := svcs.Settings.GetSetting(app.SettingCaptureHotkey); err == nil && h != "" {
 			return h
