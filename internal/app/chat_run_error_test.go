@@ -16,6 +16,8 @@ func TestNormalizeChatRunError(t *testing.T) {
 		{name: "timeout", message: "context deadline exceeded", want: "timeout"},
 		{name: "cancelled", message: "context canceled", want: "cancelled"},
 		{name: "network", message: "dial tcp: connection refused", want: "network_error"},
+		{name: "tool iteration limit", message: "max tool iterations (20) exceeded", want: "tool_iteration_limit"},
+		{name: "conversation busy", message: errConversationBusy.Error(), want: "conversation_busy"},
 		{name: "fallback", message: "unexpected provider response", want: "unknown_error"},
 	}
 	for _, test := range tests {

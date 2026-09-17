@@ -10,6 +10,8 @@ describe('chat errors', () => {
     ['429', '请求过于频繁'],
     ['503', '模型服务暂时不可用'],
     ['network_error', '无法连接模型服务'],
+    ['conversation_busy', '当前会话仍在处理中'],
+    ['tool_iteration_limit', '任务步骤超过本轮上限'],
   ])('maps %s to a friendly title', (code, title) => {
     expect(friendlyChatError({ code, message: 'raw detail' }).title).toBe(title)
   })

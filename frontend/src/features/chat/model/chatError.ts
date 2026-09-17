@@ -65,5 +65,11 @@ export function friendlyChatError(error: AgentRunError): FriendlyChatError {
   if (error.code === 'cancelled') {
     return { title: '请求已取消', description: '本次对话请求未完成。' }
   }
+  if (error.code === 'conversation_busy' || raw.includes('conversation_busy')) {
+    return { title: '当前会话仍在处理中', description: '请等待本轮完成后再发送；需要并行处理时可新建会话。' }
+  }
+  if (error.code === 'tool_iteration_limit' || raw.includes('max tool iterations')) {
+    return { title: '任务步骤超过本轮上限', description: '已保留当前进度，请发送“继续”完成剩余步骤。' }
+  }
   return { title: '对话处理失败', description: '模型服务未能完成本次请求，请查看技术详情。' }
 }

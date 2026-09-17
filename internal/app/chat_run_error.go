@@ -25,6 +25,10 @@ func normalizeChatRunError(code, message string) ChatRunError {
 	if code == "" {
 		lower := strings.ToLower(message)
 		switch {
+		case strings.Contains(lower, "max tool iterations"):
+			code = "tool_iteration_limit"
+		case strings.Contains(lower, "conversation_busy"):
+			code = "conversation_busy"
 		case strings.Contains(lower, "deadline exceeded") || strings.Contains(lower, "timed out") || strings.Contains(lower, "timeout"):
 			code = "timeout"
 		case strings.Contains(lower, "context canceled") || strings.Contains(lower, "context cancelled") || strings.Contains(lower, "request canceled"):

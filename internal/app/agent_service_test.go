@@ -117,6 +117,23 @@ func TestBuildChatMetricsWithoutProviderUsageOnlyKeepsTiming(t *testing.T) {
 	}
 }
 
+func TestAgentServiceAllowsOnlyOneActiveRunPerConversation(t *testing.T) {
+	service := &AgentService{}
+	if !service.beginConversationRun(7) {
+		t.Fatal("first run should acquire the conversation")
+	}
+	if service.beginConversationRun(7) {
+		t.Fatal("overlapping run should be rejected")
+	}
+	if !service.beginConversationRun(8) {
+		t.Fatal("a different conversation should run concurrently")
+	}
+	service.finishConversationRun(7)
+	if !service.beginConversationRun(7) {
+		t.Fatal("conversation should be available after the active run finishes")
+	}
+}
+
 func TestInstructionWithContextDescribesWorkspacePathRules(t *testing.T) {
 	workspace := filepath.Clean(t.TempDir())
 	instruction := instructionWithContext(workspace)

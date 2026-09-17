@@ -36,7 +36,9 @@ var (
 	todoSvc     *TodoService
 )
 
-const maxAgentToolIterations = 20
+const maxAgentToolIterations = 40
+
+var errConversationBusy = errors.New("conversation_busy: 当前会话仍在处理中，请等待本轮完成后再发送")
 
 // AgentService 是基于 trpc-agent-go 的对话 Agent 服务:
 //   - 每次 Chat 按“默认 Provider”动态构建 LLMAgent,会话可并行
@@ -55,8 +57,35 @@ type AgentService struct {
 	webSearch   *WebSearchService
 	artifacts   *ArtifactService
 	historyMu   sync.Mutex
+	activeRunMu sync.Mutex
+	activeRuns  map[int64]struct{}
 	closeOnce   sync.Once
 	closeErr    error
+}
+
+func (s *AgentService) beginConversationRun(conversationID int64) bool {
+	if conversationID <= 0 {
+		return false
+	}
+	s.activeRunMu.Lock()
+	defer s.activeRunMu.Unlock()
+	if s.activeRuns == nil {
+		s.activeRuns = make(map[int64]struct{})
+	}
+	if _, running := s.activeRuns[conversationID]; running {
+		return false
+	}
+	s.activeRuns[conversationID] = struct{}{}
+	return true
+}
+
+func (s *AgentService) finishConversationRun(conversationID int64) {
+	if conversationID <= 0 {
+		return
+	}
+	s.activeRunMu.Lock()
+	delete(s.activeRuns, conversationID)
+	s.activeRunMu.Unlock()
 }
 
 // SetNotify 注入事件广播回调(main 装配时设置)。
@@ -214,6 +243,7 @@ type ChatResult struct {
 func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	msg := strings.TrimSpace(req.Message)
 	convID := req.ConversationID
+	lockedConversationID := int64(0)
 	chatStartedAt := time.Now()
 	logCtx := withLogContext(context.Background(), convID, req.RequestID)
 	logInfo(logCtx, "chat.start", "has_text", msg != "", "attachment_count", len(req.AttachmentIDs))
@@ -241,6 +271,13 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	}
 	if store == nil {
 		return ChatResult{}, errors.New("存储未初始化")
+	}
+	if convID > 0 {
+		if !s.beginConversationRun(convID) {
+			return ChatResult{}, errConversationBusy
+		}
+		lockedConversationID = convID
+		defer func() { s.finishConversationRun(lockedConversationID) }()
 	}
 	workspacePath := ""
 	if settingsSvc != nil {
@@ -283,6 +320,13 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	convID, userMessageID, err = s.saveUserMessage(convID, msg, req.AttachmentIDs)
 	if err != nil {
 		return ChatResult{}, err
+	}
+	if lockedConversationID == 0 {
+		if !s.beginConversationRun(convID) {
+			return ChatResult{}, errConversationBusy
+		}
+		lockedConversationID = convID
+		defer func() { s.finishConversationRun(lockedConversationID) }()
 	}
 	logCtx = withLogContext(logCtx, convID, req.RequestID)
 	logInfo(logCtx, "chat.input.saved", "message_id", userMessageID)
