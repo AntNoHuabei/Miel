@@ -1,3 +1,8 @@
+param(
+    [ValidateSet('Display', 'Numeric')]
+    [string]$Format = 'Display'
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repository = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -8,9 +13,18 @@ if ($LASTEXITCODE -ne 0) {
 
 foreach ($tag in $tags) {
     if ($tag -match '^release\/(v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$') {
-        Write-Output $Matches[1]
+        $version = $Matches[1]
+        if ($Format -eq 'Numeric' -and $version -match '^v(\d+\.\d+\.\d+)') {
+            Write-Output $Matches[1]
+        } else {
+            Write-Output $version
+        }
         exit 0
     }
 }
 
-Write-Output 'dev'
+if ($Format -eq 'Numeric') {
+    Write-Output '0.0.0'
+} else {
+    Write-Output 'dev'
+}

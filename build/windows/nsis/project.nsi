@@ -1,123 +1,176 @@
 Unicode true
 
-####
-## Please note: Template replacements don't work in this file. They are provided with default defines like
-## mentioned underneath.
-## If the keyword is not defined, "wails_tools.nsh" will populate them.
-## If they are defined here, "wails_tools.nsh" will not touch them. This allows you to use this project.nsi manually
-## from outside of Wails for debugging and development of the installer.
-## 
-## For development first make a wails nsis build to populate the "wails_tools.nsh":
-## > wails build --target windows/amd64 --nsis
-## Then you can call makensis on this file with specifying the path to your binary:
-## For a AMD64 only installer:
-## > makensis -DARG_WAILS_AMD64_BINARY=..\..\bin\app.exe
-## For a ARM64 only installer:
-## > makensis -DARG_WAILS_ARM64_BINARY=..\..\bin\app.exe
-## For a installer with both architectures:
-## > makensis -DARG_WAILS_AMD64_BINARY=..\..\bin\app-amd64.exe -DARG_WAILS_ARM64_BINARY=..\..\bin\app-arm64.exe
-####
-## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
-####
-## !define INFO_PROJECTNAME    "my-project" # Default "miel"
-## !define INFO_COMPANYNAME    "My Company" # Default "My Company"
-## !define INFO_PRODUCTNAME    "My Product Name" # Default "My Product"
-## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.0"
-## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "© 2026, My Company"
-###
-## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
-## !define UNINST_KEY_NAME     "UninstKeyInRegistry"  # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"
-####
-## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
-## !define WAILS_INSTALL_SCOPE     "user"             # Default "machine" - set to "user" for per-user install ($LOCALAPPDATA) without UAC prompt
-####
-## Include the wails tools
-####
+!define WAILS_WIN10_REQUIRED "$(WindowsVersionError)"
+!define WAILS_ARCHITECTURE_NOT_SUPPORTED "$(ArchitectureError)"
+!define WAILS_INSTALL_WEBVIEW_DETAILPRINT "$(InstallingWebView)"
 !include "wails_tools.nsh"
 
-# The version information for this two must consist of 4 parts
+!define PRODUCT_WEBSITE "https://github.com/AntNoHuabei/Miel"
+
 VIProductVersion "${INFO_PRODUCTVERSION}.0"
-VIFileVersion    "${INFO_PRODUCTVERSION}.0"
-
-VIAddVersionKey "CompanyName"     "${INFO_COMPANYNAME}"
+VIFileVersion "${INFO_PRODUCTVERSION}.0"
+VIAddVersionKey "CompanyName" "${INFO_COMPANYNAME}"
 VIAddVersionKey "FileDescription" "${INFO_PRODUCTNAME} Installer"
-VIAddVersionKey "ProductVersion"  "${INFO_PRODUCTVERSION}"
-VIAddVersionKey "FileVersion"     "${INFO_PRODUCTVERSION}"
-VIAddVersionKey "LegalCopyright"  "${INFO_COPYRIGHT}"
-VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
+VIAddVersionKey "ProductVersion" "${INFO_PRODUCTVERSION}"
+VIAddVersionKey "FileVersion" "${INFO_PRODUCTVERSION}"
+VIAddVersionKey "LegalCopyright" "${INFO_COPYRIGHT}"
+VIAddVersionKey "ProductName" "${INFO_PRODUCTNAME}"
 
-# Enable HiDPI support. https://nsis.sourceforge.io/Reference/ManifestDPIAware
 ManifestDPIAware true
+SetCompressor /SOLID lzma
+SetCompressorDictSize 32
+BrandingText "Miel"
+XPStyle on
+ShowInstDetails hide
+ShowUninstDetails hide
 
-!include "MUI.nsh"
+!include "MUI2.nsh"
 
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
-# !define MUI_WELCOMEFINISHPAGE_BITMAP "resources\leftimage.bmp" #Include this to add a bitmap on the left side of the Welcome Page. Must be a size of 164x314
-!define MUI_FINISHPAGE_NOAUTOCLOSE # Wait on the INSTFILES page so the user can take a look into the details of the installation steps
-!define MUI_ABORTWARNING # This will warn the user if they exit from the installer.
+!define MUI_ABORTWARNING
+!define MUI_UNABORTWARNING
+!define MUI_FINISHPAGE_NOAUTOCLOSE
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_TEXT "$(FinishRun)"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchApplication
+!define MUI_FINISHPAGE_LINK "$(ProjectWebsite)"
+!define MUI_FINISHPAGE_LINK_LOCATION "${PRODUCT_WEBSITE}"
 
-!insertmacro MUI_PAGE_WELCOME # Welcome to the installer page.
-# !insertmacro MUI_PAGE_LICENSE "resources\eula.txt" # Adds a EULA page to the installer
-!insertmacro MUI_PAGE_DIRECTORY # In which folder install page.
-!insertmacro MUI_PAGE_INSTFILES # Installing page.
-!insertmacro MUI_PAGE_FINISH # Finished installation page.
+!if "${WAILS_INSTALL_SCOPE}" == "user"
+    !define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
+!else
+    !define MUI_LANGDLL_REGISTRY_ROOT "HKLM"
+!endif
+!define MUI_LANGDLL_REGISTRY_KEY "${UNINST_KEY}"
+!define MUI_LANGDLL_REGISTRY_VALUENAME "InstallerLanguage"
 
-!insertmacro MUI_UNPAGE_INSTFILES # Uninstalling page
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_COMPONENTS
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
 
-!insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
+!insertmacro MUI_UNPAGE_WELCOME
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_UNPAGE_FINISH
 
-## The following two statements can be used to sign the installer and the uninstaller. The path to the binaries are provided in %1
-#!uninstfinalize 'signtool --file "%1"'
-#!finalize 'signtool --file "%1"'
+!insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
+!insertmacro MUI_RESERVEFILE_LANGDLL
+
+LangString SectionCore ${LANG_ENGLISH} "Miel application files"
+LangString SectionCore ${LANG_SIMPCHINESE} "Miel 应用程序文件"
+LangString SectionDesktop ${LANG_ENGLISH} "Desktop shortcut"
+LangString SectionDesktop ${LANG_SIMPCHINESE} "桌面快捷方式"
+LangString SectionCoreDescription ${LANG_ENGLISH} "Install Miel and its required local runtimes."
+LangString SectionCoreDescription ${LANG_SIMPCHINESE} "安装 Miel 及其所需的本地运行环境。"
+LangString SectionDesktopDescription ${LANG_ENGLISH} "Create a shortcut to Miel on the desktop."
+LangString SectionDesktopDescription ${LANG_SIMPCHINESE} "在桌面创建 Miel 快捷方式。"
+LangString FinishRun ${LANG_ENGLISH} "Launch Miel"
+LangString FinishRun ${LANG_SIMPCHINESE} "立即启动 Miel"
+LangString ProjectWebsite ${LANG_ENGLISH} "Visit the Miel project page"
+LangString ProjectWebsite ${LANG_SIMPCHINESE} "访问 Miel 项目主页"
+LangString UninstallShortcut ${LANG_ENGLISH} "Uninstall Miel"
+LangString UninstallShortcut ${LANG_SIMPCHINESE} "卸载 Miel"
+LangString WindowsVersionError ${LANG_ENGLISH} "Miel requires Windows 10 or later."
+LangString WindowsVersionError ${LANG_SIMPCHINESE} "Miel 需要 Windows 10 或更高版本。"
+LangString ArchitectureError ${LANG_ENGLISH} "This installer does not support the current Windows architecture."
+LangString ArchitectureError ${LANG_SIMPCHINESE} "此安装程序不支持当前的 Windows 系统架构。"
+LangString InstallingWebView ${LANG_ENGLISH} "Installing Microsoft Edge WebView2 Runtime"
+LangString InstallingWebView ${LANG_SIMPCHINESE} "正在安装 Microsoft Edge WebView2 运行时"
 
 Name "${INFO_PRODUCTNAME}"
-OutFile "..\..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
+OutFile "..\..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe"
 !if "${WAILS_INSTALL_SCOPE}" == "user"
     InstallDir "$LOCALAPPDATA\Programs\${INFO_PRODUCTNAME}"
+    InstallDirRegKey HKCU "${UNINST_KEY}" "InstallLocation"
 !else
     InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
+    InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
 !endif
-ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
-   !insertmacro wails.checkArchitecture
+    !insertmacro MUI_LANGDLL_DISPLAY
+    !insertmacro wails.checkArchitecture
 FunctionEnd
 
-Section
-    !insertmacro wails.setShellContext
+Function un.onInit
+    !insertmacro MUI_UNGETLANGUAGE
+FunctionEnd
 
+Function LaunchApplication
+!if "${REQUEST_EXECUTION_LEVEL}" == "admin"
+    ExecShell "" "$WINDIR\explorer.exe" '"$INSTDIR\${PRODUCT_EXECUTABLE}"'
+!else
+    Exec '"$INSTDIR\${PRODUCT_EXECUTABLE}"'
+!endif
+FunctionEnd
+
+Section "$(SectionCore)" SecCore
+    SectionIn RO
+    !insertmacro wails.setShellContext
     !insertmacro wails.webview2runtime
 
-    SetOutPath $INSTDIR
-    
+    SetOutPath "$INSTDIR"
+    SetOverwrite on
     !insertmacro wails.files
 
     SetOutPath "$INSTDIR\runtime"
     File /r "..\runtime-stage\*.*"
-    SetOutPath $INSTDIR
-
-    CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
-    CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    SetOutPath "$INSTDIR"
 
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
-    
     !insertmacro wails.writeUninstaller
-SectionEnd
-
-Section "uninstall" 
-    !insertmacro wails.setShellContext
-
-    RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
-
-    RMDir /r $INSTDIR
 
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
+    CreateDirectory "$SMPROGRAMS\${INFO_PRODUCTNAME}"
+    CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}\Uninstall ${INFO_PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}\卸载 ${INFO_PRODUCTNAME}.lnk"
+    CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}\$(UninstallShortcut).lnk" "$INSTDIR\uninstall.exe"
+
+!if "${WAILS_INSTALL_SCOPE}" == "user"
+    WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKCU "${UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEBSITE}"
+    WriteRegStr HKCU "${UNINST_KEY}" "HelpLink" "${PRODUCT_WEBSITE}/issues"
+    WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
+    WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
+!else
+    WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKLM "${UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEBSITE}"
+    WriteRegStr HKLM "${UNINST_KEY}" "HelpLink" "${PRODUCT_WEBSITE}/issues"
+    WriteRegDWORD HKLM "${UNINST_KEY}" "NoModify" 1
+    WriteRegDWORD HKLM "${UNINST_KEY}" "NoRepair" 1
+!endif
+SectionEnd
+
+Section "$(SectionDesktop)" SecDesktop
+    !insertmacro wails.setShellContext
+    CreateShortcut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+SectionEnd
+
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "$(SectionCoreDescription)"
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "$(SectionDesktopDescription)"
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
+
+Section "Uninstall"
+    !insertmacro wails.setShellContext
+
     Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}\${INFO_PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}\Uninstall ${INFO_PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}\卸载 ${INFO_PRODUCTNAME}.lnk"
+    RMDir "$SMPROGRAMS\${INFO_PRODUCTNAME}"
 
     !insertmacro wails.unassociateFiles
     !insertmacro wails.unassociateCustomProtocols
-
     !insertmacro wails.deleteUninstaller
+
+    RMDir /r "$AppData\${PRODUCT_EXECUTABLE}"
+    RMDir /r "$INSTDIR"
 SectionEnd
