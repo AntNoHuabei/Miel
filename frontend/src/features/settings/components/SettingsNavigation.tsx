@@ -1,14 +1,15 @@
 import { Button } from 'antd'
 import type { ReactNode } from 'react'
-import { AppstoreOutlined, BgColorsOutlined, BulbOutlined, CloudServerOutlined, FolderOpenOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, BgColorsOutlined, BulbOutlined, CloudServerOutlined, FolderOpenOutlined, InfoCircleOutlined } from '@ant-design/icons'
 
-export type SettingsSection = 'models' | 'skills' | 'memory' | 'appearance' | 'data'
+export type SettingsSection = 'models' | 'skills' | 'memory' | 'appearance' | 'data' | 'about'
 const items = [
   { key: 'models', icon: <CloudServerOutlined />, label: '模型服务商' },
   { key: 'skills', icon: <AppstoreOutlined />, label: '技能管理' },
   { key: 'memory', icon: <BulbOutlined />, label: '记忆' },
   { key: 'appearance', icon: <BgColorsOutlined />, label: '外观与皮肤' },
   { key: 'data', icon: <FolderOpenOutlined />, label: '数据与导出' },
+  { key: 'about', icon: <InfoCircleOutlined />, label: '关于' },
 ] satisfies Array<{ key: SettingsSection; icon: ReactNode; label: string }>
 
 export function SettingsNavigation({ active, onChange }: { active: SettingsSection; onChange: (section: SettingsSection) => void }) {

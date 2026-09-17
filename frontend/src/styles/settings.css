@@ -460,6 +460,54 @@
   font-size: 11px;
 }
 
+.bm-settings-about-band {
+  display: grid;
+  min-height: 148px;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid var(--bm-divider);
+}
+
+.bm-settings-about-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.bm-settings-about-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bm-settings-about-copy h4.ant-typography {
+  margin: 0;
+  color: var(--bm-text);
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.bm-settings-about-version {
+  display: flex;
+  min-width: 112px;
+  align-self: stretch;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding-left: 22px;
+  border-left: 1px solid var(--bm-divider);
+}
+
+.bm-settings-about-version code {
+  color: var(--bm-text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 .bm-skills-panel {
   container-name: skills-main;
   container-type: inline-size;
@@ -907,6 +955,18 @@
     grid-column: 2;
     justify-self: start;
     margin: 0 18px 20px;
+  }
+
+  .bm-settings-about-band {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .bm-settings-about-version {
+    grid-column: 1 / -1;
+    min-height: 66px;
+    padding-left: 0;
+    border-top: 1px solid var(--bm-divider);
+    border-left: 0;
   }
 }
 

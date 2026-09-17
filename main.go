@@ -187,6 +187,7 @@ func main() {
 	}
 	windowTheme := app.NewWindowThemeService()
 	for _, service := range []application.Service{
+		application.NewService(svcs.Application),
 		application.NewService(svcs.Directories),
 		application.NewService(svcs.Settings),
 		application.NewService(svcs.Permissions),

@@ -1,6 +1,8 @@
 import { Clipboard as WailsClipboard } from '@wailsio/runtime'
 import { Services } from './bindings'
 
+export const appRepository = { version: () => Services.ApplicationService.Version() }
+
 export const directoryRepository = {
   paths: () => Services.DirectoryService.Paths(),
   openDataDir: () => Services.DirectoryService.OpenDataDir(),

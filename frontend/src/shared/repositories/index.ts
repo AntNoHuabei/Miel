@@ -2,7 +2,7 @@ export { attachmentRepository, clipboardRepository, screenshotRepository } from 
 export { artifactRepository } from './artifacts'
 export { chatRepository } from './chat'
 export { memoryRepository } from './memory'
-export { directoryRepository, permissionRepository, systemClipboardRepository, themeRepository } from './platform'
+export { appRepository, directoryRepository, permissionRepository, systemClipboardRepository, themeRepository } from './platform'
 export { settingsRepository, normalizeProviderInput } from './settings'
 export { skillRepository, normalizeSkillHubPage } from './skills'
 export { todoRepository } from './todos'

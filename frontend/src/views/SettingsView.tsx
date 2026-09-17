@@ -3,6 +3,7 @@ import MemorySettingsPanel from '../components/MemorySettingsPanel'
 import { SettingsNavigation } from '../features/settings/components/SettingsNavigation'
 import type { SettingsSection } from '../features/settings/components/SettingsNavigation'
 import { AppearanceSettingsPage } from '../features/settings/pages/AppearanceSettingsPage'
+import { AboutSettingsPage } from '../features/settings/pages/AboutSettingsPage'
 import { DataSettingsPage } from '../features/settings/pages/DataSettingsPage'
 import { ModelsSettingsPage } from '../features/settings/pages/ModelsSettingsPage'
 import { SkillsSettingsPage } from '../features/settings/pages/SkillsSettingsPage'
@@ -19,6 +20,7 @@ export default function SettingsView() {
         {section === 'memory' && <MemorySettingsPanel />}
         {section === 'appearance' && <AppearanceSettingsPage />}
         {section === 'data' && <DataSettingsPage />}
+        {section === 'about' && <AboutSettingsPage />}
       </main>
     </div>
   )

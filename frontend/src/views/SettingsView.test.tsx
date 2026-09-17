@@ -15,9 +15,11 @@ const repositories = vi.hoisted(() => ({
   confirmDependencyPlan: vi.fn(),
   initialize: vi.fn(),
   pickLocal: vi.fn(),
+  version: vi.fn(),
 }));
 
 vi.mock("../shared/repositories", () => ({
+  appRepository: { version: repositories.version },
   settingsRepository: {
     listProviders: repositories.listProviders,
     modelCatalog: repositories.modelCatalog,
@@ -88,6 +90,7 @@ describe("SettingsView loading boundaries", () => {
       state: "ready",
       updatedAt: 1,
     });
+    repositories.version.mockReset().mockResolvedValue("v0.0.1");
   });
 
   it("loads only the active section", async () => {
@@ -107,6 +110,13 @@ describe("SettingsView loading boundaries", () => {
       expect(repositories.listSkills).toHaveBeenCalledTimes(1),
     );
     expect(repositories.listHub).not.toHaveBeenCalled();
+  });
+
+  it("shows the version embedded in the application binary", async () => {
+    render(<App><SettingsView /></App>);
+    await userEvent.click(screen.getByRole("button", { name: /关于/ }));
+    expect(await screen.findByText("v0.0.1")).toBeInTheDocument();
+    expect(repositories.version).toHaveBeenCalledTimes(1);
   });
 
   it("loads instruction skills without environment actions or initialization", async () => {

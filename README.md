@@ -46,6 +46,8 @@ wails3 task build     # 构建 Windows 应用到 bin/miel.exe
 wails3 task package   # 生成 NSIS 安装包，可切换为 MSIX
 ```
 
+在当前提交创建 `release/v0.0.1` 形式的 tag 后执行构建，版本号会在编译时注入应用并显示在“设置 → 关于”；未命中 release tag 的构建显示为 `dev`。
+
 长期记忆依赖 `github.com/mattn/go-sqlite3`，因此 Go 测试和 Windows 构建必须启用 CGO。
 
 ```powershell

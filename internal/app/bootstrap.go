@@ -8,6 +8,7 @@ var Emit = func(_ string, _ any) {}
 
 // Services 是装配产物,供 main 注册为 wails 服务。
 type Services struct {
+	Application       *ApplicationService
 	Directories       *DirectoryService
 	Settings          *SettingsService
 	Permissions       *PermissionService
@@ -93,6 +94,7 @@ func Bootstrap() (*Services, error) {
 
 	rem.Start(context.Background())
 	return &Services{
+		Application:       NewApplicationService(),
 		Directories:       NewDirectoryService(appDirectories),
 		Settings:          settings,
 		Permissions:       permissions,
