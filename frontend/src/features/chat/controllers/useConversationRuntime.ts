@@ -276,7 +276,11 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const stop = useCallback(async () => { cancelActiveRequest(true) }, [cancelActiveRequest])
 
   const runPlanAction = useCallback(async (action: 'revise' | 'execute', plan: PlanLite, instruction = '') => {
-    if (sendingRef.current || options.enabled === false || conversationRef.current <= 0) return
+    if (sendingRef.current) return
+    if (action === 'revise' && options.enabled === false) {
+      message.error('当前模型尚未就绪，请稍后重试')
+      return
+    }
     const version = sessionVersionRef.current
     const requestConversationId = conversationRef.current
     const id = requestId(`plan-${action}`)

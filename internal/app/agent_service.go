@@ -443,13 +443,6 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 		if profile == "" {
 			profile = AgentProfileWork
 		}
-		selected, selectErr := profileModelForConversation(convID, profile)
-		if selectErr != nil {
-			return ChatResult{}, selectErr
-		}
-		if _, selectErr = store.Exec(`UPDATE conversations SET agent_profile = ?, provider_id = ?, model = ?, updated_at = ? WHERE id = ?`, profile, selected.ProviderID, selected.Model, now(), convID); selectErr != nil {
-			return ChatResult{}, selectErr
-		}
 	} else if mode == "plan" && req.PlanID > 0 {
 		if _, err := loadPlanExecution(convID, req.PlanID, req.PlanRevision); err != nil {
 			return ChatResult{}, err

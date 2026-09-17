@@ -182,6 +182,20 @@ describe('useConversationRuntime', () => {
     expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ planId: 9, revision: 1, workspacePath: 'D:/repo' }))
   })
 
+  it('executes an approved plan before the current profile model has loaded', async () => {
+    mocks.executePlan.mockResolvedValue({ conversationId: 4 })
+    mocks.messagesSnapshot.mockResolvedValue({ type: 'CONVERSATION_SNAPSHOT', timeline: [] })
+    const store = createConversationStore('runtime-plan-not-ready')
+    store.getState().setConversation(4)
+    const { result } = renderHook(() => useConversationRuntime({ ...runtimeOptions(store), enabled: false }))
+
+    await act(async () => {
+      await result.current.runPlanAction('execute', { id: 9, messageId: 'plan-9', revision: 1, currentRevision: 1, status: 'pending', content: '# Plan', generatedModel: 'model-a', createdAt: 1 })
+    })
+
+    expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ planId: 9, revision: 1 }))
+  })
+
   it('only follows output while the viewport remains near the bottom', async () => {
     const store = createConversationStore('runtime-scroll-follow')
     const { result } = renderHook(() => useConversationRuntime(runtimeOptions(store)))

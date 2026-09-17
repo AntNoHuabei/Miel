@@ -548,6 +548,8 @@
 
 .bm-plan-preview-body { justify-content: flex-start; background: var(--bm-header-bg, #fff); }
 .bm-plan-preview-markdown { width: 100%; }
+.bm-plan-run-output { width: 100%; min-width: 0; }
+.bm-plan-run-output .bm-agent-process { margin-top: 0; }
 .bm-preview-footer .bm-plan-actions,
 .bm-preview-footer .bm-plan-revise { margin-top: 0; }
 

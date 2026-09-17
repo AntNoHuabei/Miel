@@ -51,6 +51,15 @@ export function useChatControls(conversationId = 0) {
   const [profileDefaults, setProfileDefaults] = useState<AgentProfileDefaultsLite | null>(null)
   const [loadedConversationId, setLoadedConversationId] = useState(0)
   const reasoningPreferencesRef = useRef<Record<string, string>>({})
+  const conversationRef = useRef(conversationId)
+  const profileLoadVersionRef = useRef(0)
+  const pendingProfileRef = useRef<{ conversationId: number; profile: AgentProfile } | null>(null)
+
+  useEffect(() => {
+    conversationRef.current = conversationId
+    profileLoadVersionRef.current += 1
+    pendingProfileRef.current = null
+  }, [conversationId])
 
   const defaultProvider = providers.find((provider) => provider.isDefault) ?? providers[0]
   const profileModel = conversationId > 0 ? profileModels[agentProfile] : profileDefaults?.[agentProfile]
@@ -128,7 +137,10 @@ export function useChatControls(conversationId = 0) {
     try { setWorkspaces(await settingsRepository.listWorkspaces()) } catch { /* Keep the last valid workspaces. */ }
   }, [])
   const reloadConversationModel = useCallback(async () => {
+    const targetConversationId = conversationId
+    const loadVersion = ++profileLoadVersionRef.current
     if (conversationId <= 0) {
+      if (conversationRef.current !== targetConversationId || profileLoadVersionRef.current !== loadVersion) return
       setAgentProfile('work')
       setProfileModels({})
       setLoadedConversationId(0)
@@ -136,11 +148,17 @@ export function useChatControls(conversationId = 0) {
     }
     try {
       const conversations = await chatRepository.listConversations()
-      const current = conversations.find((item) => item.id === conversationId)
+      if (conversationRef.current !== targetConversationId || profileLoadVersionRef.current !== loadVersion) return
+      const current = conversations.find((item) => item.id === targetConversationId)
       if (current) {
-        setAgentProfile(current.agentProfile === 'coding' ? 'coding' : 'work')
+        const loadedProfile = current.agentProfile === 'coding' ? 'coding' : 'work'
+        const pending = pendingProfileRef.current
+        if (!pending || pending.conversationId !== targetConversationId || pending.profile === loadedProfile) {
+          setAgentProfile(loadedProfile)
+          if (pending?.conversationId === targetConversationId) pendingProfileRef.current = null
+        }
         setProfileModels(current.profileModels ?? {})
-        setLoadedConversationId(conversationId)
+        setLoadedConversationId(targetConversationId)
       }
     } catch { /* Keep the last known model while the conversation list reloads. */ }
   }, [conversationId])
@@ -206,12 +224,21 @@ export function useChatControls(conversationId = 0) {
   }, [agentProfile, conversationId, message, reloadModelOptions, reloadProviders])
 
   const switchProfile = useCallback(async (profile: AgentProfile) => {
+    const targetConversationId = conversationId
     try {
-      if (conversationId > 0) await chatRepository.setConversationProfile({ conversationId, profile })
+      if (targetConversationId > 0) {
+        pendingProfileRef.current = { conversationId: targetConversationId, profile }
+        profileLoadVersionRef.current += 1
+        await chatRepository.setConversationProfile({ conversationId: targetConversationId, profile })
+      }
       setAgentProfile(profile)
       message.success(profile === 'coding' ? '已切换到 Coding' : '已切换到 Work')
       return true
-    } catch (error) { message.error(`切换模式失败:${String(error)}`); return false }
+    } catch (error) {
+      if (pendingProfileRef.current?.conversationId === targetConversationId) pendingProfileRef.current = null
+      message.error(`切换模式失败:${String(error)}`)
+      return false
+    }
   }, [conversationId, message])
 
   const resetProfile = useCallback(() => setAgentProfile('work'), [])
