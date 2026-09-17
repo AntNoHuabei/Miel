@@ -9,11 +9,13 @@ import { useWailsEvent } from '../../../shared/wails/events'
 import type { AgentEnvelope } from '../model/agentRun'
 import type { SkillInstallProgressLite } from '../../../api'
 import type { ConversationState } from '../model/conversationStore'
+import type { PlanLite } from '../../../shared/types/chat'
 
 interface RequestContext {
   reasoning: string
   workspacePath: string
   permissionSessionId: string
+  mode?: 'chat' | 'plan'
 }
 
 interface ConversationRuntimeOptions {
@@ -59,6 +61,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const activeRequestRef = useRef('')
   const inputSavedRef = useRef(false)
   const inputSavedConversationRef = useRef(0)
+  const consumeAttachmentsOnSaveRef = useRef(false)
   const sessionVersionRef = useRef(0)
   const messageLoadVersionRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -123,7 +126,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     targetRef.current = payload.conversationId
     setConversation(payload.conversationId)
     dispatchRun({ type: 'input-saved', payload })
-    options.consumeAttachments()
+    if (consumeAttachmentsOnSaveRef.current) options.consumeAttachments()
   }, [dispatchRun, options.consumeAttachments, setConversation]))
 
   const reset = useCallback(() => {
@@ -135,6 +138,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     targetRef.current = 0
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
+    consumeAttachmentsOnSaveRef.current = false
     conversationRef.current = 0
     followOutputRef.current = true
     setConversation(0)
@@ -153,6 +157,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     activeRequestRef.current = ''
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
+    consumeAttachmentsOnSaveRef.current = false
     conversationRef.current = id
     followOutputRef.current = true
     targetRef.current = id
@@ -179,6 +184,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     followOutputRef.current = true
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
+    consumeAttachmentsOnSaveRef.current = true
     activeRequestRef.current = id
     targetRef.current = requestConversationId
     setInput('')
@@ -198,6 +204,9 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         attachmentIds: sentAttachments.map((item) => item.id),
         workspacePath: context.workspacePath,
         permissionSessionId: context.permissionSessionId,
+        mode: context.mode ?? 'chat',
+        planId: 0,
+        planRevision: 0,
       })
       if (sessionVersionRef.current !== version) return
       options.consumeAttachments()
@@ -229,5 +238,77 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     }
   }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setMessages])
 
-  return { conversationId, dispatchRun, input, loadMessages, messages, onMessagesScroll, openConversation, reset, run, scrollRef, send, sending, setInput }
+  const runPlanAction = useCallback(async (action: 'revise' | 'execute', plan: PlanLite, instruction = '') => {
+    if (sendingRef.current || options.enabled === false || conversationRef.current <= 0) return
+    const version = sessionVersionRef.current
+    const requestConversationId = conversationRef.current
+    const id = requestId(`plan-${action}`)
+    followOutputRef.current = true
+    inputSavedRef.current = false
+    inputSavedConversationRef.current = 0
+    consumeAttachmentsOnSaveRef.current = false
+    activeRequestRef.current = id
+    targetRef.current = requestConversationId
+    sendingRef.current = true
+    setSending(true)
+    dispatchRun({ type: 'start', requestId: id, conversationId: requestConversationId })
+    let failed = false
+    try {
+      const context = await options.getRequestContext()
+      if (sessionVersionRef.current !== version) return
+      const request = {
+        planId: plan.id,
+        revision: plan.revision,
+        instruction,
+        reasoning: context.reasoning,
+        requestId: id,
+        workspacePath: context.workspacePath,
+        permissionSessionId: context.permissionSessionId,
+      }
+      const result = action === 'execute'
+        ? await chatRepository.executePlan(request)
+        : await chatRepository.revisePlan(request)
+      if (sessionVersionRef.current !== version) return
+      conversationRef.current = result.conversationId
+      targetRef.current = result.conversationId
+      setConversation(result.conversationId)
+      await loadMessages(result.conversationId)
+      if (sessionVersionRef.current !== version) return
+      dispatchRun({ type: 'complete', conversationId: result.conversationId })
+      await options.onConversationCompleted?.(result.conversationId)
+    } catch (error) {
+      if (sessionVersionRef.current !== version) return
+      failed = true
+      dispatchRun({ type: 'fail', error: String(error) })
+      await loadMessages(requestConversationId)
+      if (sessionVersionRef.current === version) await options.onConversationCompleted?.(requestConversationId)
+    } finally {
+      if (sessionVersionRef.current === version) {
+        sendingRef.current = false
+        setSending(false)
+        if (!failed) dispatchRun({ type: 'reset' })
+      }
+    }
+  }, [dispatchRun, loadMessages, options, setConversation])
+
+  const abandonPlan = useCallback(async (plan: PlanLite) => {
+    if (sendingRef.current || conversationRef.current <= 0) return
+    try {
+      await chatRepository.abandonPlan({
+        planId: plan.id,
+        revision: plan.revision,
+        instruction: '',
+        reasoning: '',
+        requestId: requestId('plan-abandon'),
+        workspacePath: '',
+        permissionSessionId: '',
+      })
+      await loadMessages(conversationRef.current)
+      await options.onConversationCompleted?.(conversationRef.current)
+    } catch (error) {
+      message.error(`废弃计划失败：${String(error)}`)
+    }
+  }, [loadMessages, message, options])
+
+  return { abandonPlan, conversationId, dispatchRun, input, loadMessages, messages, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput }
 }

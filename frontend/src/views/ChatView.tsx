@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { App as AntApp, Flex } from 'antd'
+import { useStore } from 'zustand'
 import { chatRepository } from '../shared/repositories'
 import { useWailsEvent } from '../shared/wails/events'
 import { useChatAttachments } from '../components/ChatAttachments'
@@ -22,7 +23,9 @@ const QUICK_PROMPTS = [
 
 export default function ChatView() {
   const { message } = AntApp.useApp()
-  const controls = useChatControls()
+  const activeConversationId = useStore(mainConversationStore, (state) => state.conversationId)
+  const controls = useChatControls(activeConversationId)
+  const [mode, setMode] = useState<'chat' | 'plan'>('chat')
   const sidebarOpen = useShellStore((state) => state.sidebarOpen)
   const newChatRequest = useShellStore((state) => state.newChatVersion)
   const openConversationRequest = useShellStore((state) => state.openConversationRequest)
@@ -52,6 +55,7 @@ export default function ChatView() {
       reasoning: controls.effectiveReasoning,
       workspacePath: controls.currentWorkspace?.path ?? '',
       permissionSessionId: permissions.sessionId,
+      mode,
     }),
     onConversationCompleted: reloadConversations,
   })
@@ -61,7 +65,10 @@ export default function ChatView() {
   useWailsEvent<string>('conversations.changed', useCallback(() => void reloadConversations(), [reloadConversations]))
 
   useEffect(() => {
-    if (newChatRequest > 0) runtime.reset()
+    if (newChatRequest > 0) {
+      runtime.reset()
+      setMode('chat')
+    }
     // The shell version makes repeated new-chat requests imperative.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newChatRequest])
@@ -89,9 +96,13 @@ export default function ChatView() {
 
   const openConversation = (id: number) => {
     runtime.openConversation(id)
+    setMode('chat')
     navigate('chat')
   }
-  const newChat = () => runtime.reset()
+  const newChat = () => {
+    runtime.reset()
+    setMode('chat')
+  }
   const showWorkspaceControl = runtime.conversationId === 0 && runtime.messages.length === 0
 
   return (
@@ -126,6 +137,9 @@ export default function ChatView() {
             onScroll={runtime.onMessagesScroll}
             quickPrompts={QUICK_PROMPTS}
             onResolveApproval={permissions.resolveApproval}
+            onExecutePlan={(plan) => runtime.runPlanAction('execute', plan)}
+            onRevisePlan={(plan, instruction) => runtime.runPlanAction('revise', plan, instruction)}
+            onAbandonPlan={runtime.abandonPlan}
             onQuickPrompt={(prompt) => {
               runtime.setInput(prompt)
               void (document.querySelector('#bm-chat-input') as HTMLTextAreaElement | null)?.focus()
@@ -133,6 +147,7 @@ export default function ChatView() {
           />
           <ConversationComposer
             input={runtime.input}
+            mode={mode}
             sending={runtime.sending}
             attachments={attachments.attachments}
             supportsImages={controls.supportsImages}
@@ -152,6 +167,7 @@ export default function ChatView() {
             showCompatibleModelNote={controls.showCompatibleModelNote}
             onAddWorkspace={controls.addWorkspace}
             onChangeInput={runtime.setInput}
+            onChangeMode={setMode}
             onChangePermissionMode={permissions.changeMode}
             onChangeReasoning={controls.changeReasoning}
             onChooseWorkspace={controls.chooseWorkspace}

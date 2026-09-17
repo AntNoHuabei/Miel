@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../components/ChatAttachments', () => ({
@@ -14,12 +15,12 @@ const attachment = { id: 'image-1', name: 'image.png', mimeType: 'image/png', si
 
 function props() {
   return {
-    input: '', sending: false, attachments: [attachment], supportsImages: false, permissionMode: 'ask' as const,
+    input: '', mode: 'chat' as const, sending: false, attachments: [attachment], supportsImages: false, permissionMode: 'ask' as const,
     showWorkspaceControl: false, workspaces: [], currentWorkspace: undefined, selectedModel: '1::model',
     modelOptions: [{ label: 'Provider', options: [{ value: '1::model', label: 'Model' }] }], activeModelLabel: 'Model',
     reasoningPillLabel: '关闭', reasoningStatus: '关闭', reasoningSteps: ['', 'low'], reasoningIndex: 0,
     reasoningMarks: { 0: '关闭', 1: '低' }, reasoningLocked: false, showCompatibleModelNote: false,
-    onAddWorkspace: vi.fn(), onChangeInput: vi.fn(), onChangePermissionMode: vi.fn(), onChangeReasoning: vi.fn(),
+    onAddWorkspace: vi.fn(), onChangeInput: vi.fn(), onChangeMode: vi.fn(), onChangePermissionMode: vi.fn(), onChangeReasoning: vi.fn(),
     onChooseWorkspace: vi.fn(), onPaste: vi.fn(), onPickImages: vi.fn(), onRemoveAttachment: vi.fn(),
     onRemoveWorkspace: vi.fn(), onSend: vi.fn(), onSwitchModel: vi.fn(),
   }
@@ -34,5 +35,12 @@ describe('ConversationComposer', () => {
 
     view.rerender(<ConversationComposer {...props()} showWorkspaceControl currentWorkspace={{ name: 'BlankMind', path: 'D:/code/BlankMind', isCurrent: true }} />)
     expect(screen.getByText('BlankMind')).toBeInTheDocument()
+  })
+
+  it('switches explicitly between Chat and Plan', async () => {
+    const values = props()
+    render(<ConversationComposer {...values} attachments={[]} supportsImages />)
+    await userEvent.click(screen.getByText('Plan'))
+    expect(values.onChangeMode).toHaveBeenCalledWith('plan')
   })
 })

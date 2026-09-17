@@ -4,6 +4,42 @@ import { describe, expect, it, vi } from 'vitest'
 import { ConversationViewport } from './ConversationViewport'
 
 describe('ConversationViewport', () => {
+  it('renders a persisted plan card and exposes confirm and revise actions', async () => {
+    const execute = vi.fn()
+    const revise = vi.fn()
+    render(
+      <ConversationViewport
+        conversationId={7}
+        messages={[{ id: 'plan-1', role: 'assistant', content: '# Delivery plan', plan: { id: 3, revision: 2, currentRevision: 2, status: 'pending', generatedModel: 'model-a' } }]}
+        streaming=""
+        sending={false}
+        phase="idle"
+        process={[]}
+        tools={[]}
+        artifacts={[]}
+        error={null}
+        pendingApproval={null}
+        resolvingApproval={false}
+        scrollRef={{ current: null }}
+        quickPrompts={[]}
+        onQuickPrompt={vi.fn()}
+        onResolveApproval={vi.fn()}
+        onExecutePlan={execute}
+        onRevisePlan={revise}
+        onAbandonPlan={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Plan v2')).toBeVisible()
+    expect(screen.getByText('待确认')).toBeVisible()
+    expect(screen.getByText('model-a')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: /确认执行/ }))
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: 3, revision: 2 }))
+    await userEvent.click(screen.getByRole('button', { name: /Revise/ }))
+    await userEvent.type(screen.getByPlaceholderText('说明要调整的目标、范围或约束'), 'add migration coverage')
+    await userEvent.click(screen.getByRole('button', { name: '生成新版本' }))
+    expect(revise).toHaveBeenCalledWith(expect.objectContaining({ id: 3, revision: 2 }), 'add migration coverage')
+  })
+
   it('renders assistant text and tools in event order', () => {
     const { container } = render(
       <ConversationViewport

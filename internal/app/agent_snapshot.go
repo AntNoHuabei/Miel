@@ -141,6 +141,9 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 		return nil, err
 	}
 	attachMessageMetrics(result, metrics)
+	if err := attachPlanSnapshot(result, conversationID); err != nil {
+		return nil, err
+	}
 	if err := s.attachSnapshotAttachments(result, history); err != nil {
 		return nil, err
 	}
@@ -151,6 +154,109 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 	}
 	redactAGUIBinaryContent(result)
 	return result, nil
+}
+
+type snapshotMessageMeta struct {
+	MessageID     int64
+	AGUIMessageID string
+	MessageType   string
+}
+
+func attachPlanSnapshot(snapshot map[string]any, conversationID int64) error {
+	rows, err := store.Query(`
+		SELECT m.id, COALESCE(mm.agui_message_id, ''), m.message_type
+		FROM messages m LEFT JOIN message_metrics mm ON mm.message_id = m.id
+		WHERE m.conversation_id = ? AND m.message_type <> 'chat'`, conversationID)
+	if err != nil {
+		return fmt.Errorf("load message types: %w", err)
+	}
+	messageMeta := make(map[string]snapshotMessageMeta)
+	for rows.Next() {
+		var item snapshotMessageMeta
+		if err := rows.Scan(&item.MessageID, &item.AGUIMessageID, &item.MessageType); err != nil {
+			rows.Close()
+			return err
+		}
+		messageMeta["m"+strconv.FormatInt(item.MessageID, 10)] = item
+		if item.AGUIMessageID != "" {
+			messageMeta[item.AGUIMessageID] = item
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	type planMeta struct {
+		MessageID       int64
+		AGUIMessageID   string
+		PlanID          int64
+		Revision        int
+		CurrentRevision int
+		Status          string
+		GeneratedModel  string
+		ExecutionModel  string
+	}
+	planRows, err := store.Query(`
+		SELECT r.assistant_message_id, COALESCE(mm.agui_message_id, ''), r.plan_id,
+			r.revision, p.current_revision, p.status, r.model,
+			COALESCE((SELECT pr.model FROM plan_runs pr
+				WHERE pr.plan_id = r.plan_id AND pr.revision = r.revision
+				ORDER BY pr.id DESC LIMIT 1), '')
+		FROM plan_revisions r
+		JOIN plans p ON p.id = r.plan_id
+		LEFT JOIN message_metrics mm ON mm.message_id = r.assistant_message_id
+		WHERE p.conversation_id = ? ORDER BY r.plan_id, r.revision`, conversationID)
+	if err != nil {
+		return fmt.Errorf("load plan snapshot: %w", err)
+	}
+	plans := make(map[string]map[string]any)
+	for planRows.Next() {
+		var item planMeta
+		if err := planRows.Scan(
+			&item.MessageID, &item.AGUIMessageID, &item.PlanID, &item.Revision,
+			&item.CurrentRevision, &item.Status, &item.GeneratedModel, &item.ExecutionModel,
+		); err != nil {
+			planRows.Close()
+			return err
+		}
+		status := item.Status
+		if item.Revision < item.CurrentRevision {
+			status = "revised"
+		}
+		meta := map[string]any{
+			"id": item.PlanID, "revision": item.Revision, "currentRevision": item.CurrentRevision,
+			"status": status, "generatedModel": item.GeneratedModel,
+		}
+		if item.ExecutionModel != "" {
+			meta["executionModel"] = item.ExecutionModel
+		}
+		plans["m"+strconv.FormatInt(item.MessageID, 10)] = meta
+		if item.AGUIMessageID != "" {
+			plans[item.AGUIMessageID] = meta
+		}
+	}
+	if err := planRows.Close(); err != nil {
+		return err
+	}
+
+	messages, ok := snapshot["messages"].([]any)
+	if !ok {
+		return nil
+	}
+	for _, raw := range messages {
+		message, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		messageID, _ := message["id"].(string)
+		if item, exists := messageMeta[messageID]; exists {
+			message["messageType"] = item.MessageType
+		}
+		if plan, exists := plans[messageID]; exists {
+			message["plan"] = plan
+		}
+	}
+	return nil
 }
 
 func mergePersistedRunErrors(snapshot map[string]any, runErrors []ChatRunError) {

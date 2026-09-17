@@ -8,7 +8,7 @@ func approvesAutomatically(mode PermissionMode, request ApprovalRequest) bool {
 		return false
 	}
 	switch request.Tool {
-	case "list_directory", "read_file", "write_file", "execute_command":
+	case "list_directory", "read_file", "search_workspace", "git_inspect", "write_file", "execute_command":
 		return true
 	default:
 		return false

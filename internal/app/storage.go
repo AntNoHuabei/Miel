@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS conversations (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	title      TEXT NOT NULL DEFAULT '',
+	provider_id INTEGER NOT NULL DEFAULT 0,
+	model      TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
@@ -124,8 +126,50 @@ CREATE TABLE IF NOT EXISTS messages (
 	conversation_id INTEGER NOT NULL,
 	role            TEXT NOT NULL,
 	content         TEXT NOT NULL DEFAULT '',
+	message_type    TEXT NOT NULL DEFAULT 'chat',
 	created_at      INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS plans (
+	id               INTEGER PRIMARY KEY AUTOINCREMENT,
+	conversation_id  INTEGER NOT NULL,
+	status           TEXT NOT NULL DEFAULT 'pending',
+	current_revision INTEGER NOT NULL DEFAULT 0,
+	approved_revision INTEGER NOT NULL DEFAULT 0,
+	created_at       INTEGER NOT NULL,
+	updated_at       INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plans_active_conversation
+	ON plans(conversation_id)
+	WHERE status IN ('pending', 'executing', 'failed', 'interrupted');
+CREATE INDEX IF NOT EXISTS idx_plans_conversation ON plans(conversation_id, id);
+
+CREATE TABLE IF NOT EXISTS plan_revisions (
+	id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+	plan_id              INTEGER NOT NULL,
+	revision             INTEGER NOT NULL,
+	content              TEXT NOT NULL,
+	user_message_id      INTEGER NOT NULL,
+	assistant_message_id INTEGER NOT NULL,
+	provider_id          INTEGER NOT NULL,
+	model                TEXT NOT NULL,
+	created_at           INTEGER NOT NULL,
+	UNIQUE(plan_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS plan_runs (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	plan_id       INTEGER NOT NULL,
+	revision      INTEGER NOT NULL,
+	request_id    TEXT NOT NULL DEFAULT '',
+	provider_id   INTEGER NOT NULL,
+	model         TEXT NOT NULL,
+	status        TEXT NOT NULL,
+	error         TEXT NOT NULL DEFAULT '',
+	started_at    INTEGER NOT NULL,
+	completed_at  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_plan_runs_plan ON plan_runs(plan_id, id);
 
 CREATE TABLE IF NOT EXISTS chat_run_errors (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +255,25 @@ func migrate(db *sql.DB) error {
 	}
 	if err := ensureColumn(db, "provider_models", "multimodal", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("migrate provider model multimodal: %w", err)
+	}
+	if err := ensureColumn(db, "conversations", "provider_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("migrate conversation provider: %w", err)
+	}
+	if err := ensureColumn(db, "conversations", "model", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("migrate conversation model: %w", err)
+	}
+	if err := ensureColumn(db, "messages", "message_type", "TEXT NOT NULL DEFAULT 'chat'"); err != nil {
+		return fmt.Errorf("migrate message type: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE plans SET status = 'interrupted', updated_at = ?
+		WHERE status = 'executing'`, now()); err != nil {
+		return fmt.Errorf("recover interrupted plans: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE plan_runs SET status = 'interrupted', completed_at = ?
+		WHERE status = 'executing'`, now()); err != nil {
+		return fmt.Errorf("recover interrupted plan runs: %w", err)
 	}
 	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_todos_source_id ON todos(source_id)"); err != nil {
 		return fmt.Errorf("index todos source: %w", err)

@@ -3,7 +3,7 @@
 
 /**
  * AgentService 是基于 trpc-agent-go 的对话 Agent 服务:
- *   - 每次 Chat 按“默认 Provider”动态构建 LLMAgent,会话可并行
+ *   - 每次 Chat 按会话所选 Provider/Model 动态构建 LLMAgent,会话可并行
  *   - 办公能力(待办/统计/日志)以 function calling 暴露
  *   - <数据目录>/skills 下的 SKILL.md 由框架加载,新增即插即用
  * 
@@ -20,6 +20,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AbandonPlan closes an active plan without changing conversation history.
+ */
+export function AbandonPlan(req: $models.PlanActionRequest): $CancellablePromise<void> {
+    return $Call.ByID(3253605054, req);
+}
+
+/**
  * Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
  */
 export function Chat(req: $models.ChatRequest): $CancellablePromise<$models.ChatResult> {
@@ -31,6 +38,13 @@ export function Chat(req: $models.ChatRequest): $CancellablePromise<$models.Chat
  */
 export function DeleteConversation(conversationID: number): $CancellablePromise<void> {
     return $Call.ByID(1677379224, conversationID);
+}
+
+/**
+ * ExecutePlan immediately executes the exact approved revision.
+ */
+export function ExecutePlan(req: $models.PlanActionRequest): $CancellablePromise<$models.ChatResult> {
+    return $Call.ByID(3504225524, req);
 }
 
 /**
@@ -46,4 +60,18 @@ export function ListConversations(): $CancellablePromise<$models.Conversation[] 
  */
 export function MessagesSnapshot(conversationID: number): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(3734322460, conversationID);
+}
+
+/**
+ * RevisePlan creates a complete new revision using the conversation's currently selected model.
+ */
+export function RevisePlan(req: $models.PlanActionRequest): $CancellablePromise<$models.ChatResult> {
+    return $Call.ByID(1232929119, req);
+}
+
+/**
+ * SetConversationModel changes only the selected conversation. New conversations still inherit the global default.
+ */
+export function SetConversationModel(req: $models.SetConversationModelRequest): $CancellablePromise<void> {
+    return $Call.ByID(2043989792, req);
 }

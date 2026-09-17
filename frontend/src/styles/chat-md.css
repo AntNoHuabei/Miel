@@ -445,6 +445,77 @@
   margin: 6px 0 14px;
 }
 
+.bm-plan-message {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--bm-chat-border);
+  border-left: 3px solid var(--bm-chat-signal);
+  border-radius: var(--bm-chat-radius);
+  background: var(--bm-chat-surface);
+}
+
+.bm-plan-message.is-completed,
+.bm-plan-message.is-revised,
+.bm-plan-message.is-abandoned {
+  border-left-color: var(--bm-chat-muted);
+}
+
+.bm-plan-message-header,
+.bm-plan-message-header > div,
+.bm-plan-actions,
+.bm-plan-execution-event {
+  display: flex;
+  align-items: center;
+}
+
+.bm-plan-message-header {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.bm-plan-message-header > div {
+  gap: 9px;
+}
+
+.bm-plan-message-header > .ant-typography {
+  max-width: 48%;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-plan-status {
+  color: var(--bm-chat-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bm-plan-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.bm-plan-revise {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.bm-plan-execution-event {
+  gap: 7px;
+  margin: 5px 0 10px;
+  color: var(--bm-chat-muted);
+  font-size: 12px;
+}
+
 .bm-chat-response-meta {
   display: flex;
   min-height: 30px;
@@ -680,6 +751,16 @@
 
 .bm-chat-composer-actions-right {
   margin-left: auto;
+}
+
+.bm-chat-mode-switch {
+  width: 108px;
+  flex: 0 0 108px;
+}
+
+.bm-chat-mode-switch .ant-segmented-item {
+  min-width: 50px;
+  text-align: center;
 }
 
 .bm-chat-workspace-trigger.ant-btn {
@@ -1296,5 +1377,32 @@
 
   .bm-chat-model-trigger.ant-btn {
     max-width: 44vw;
+  }
+
+  .bm-chat-mode-switch {
+    width: 96px;
+    flex-basis: 96px;
+  }
+
+  .bm-chat-mode-switch .ant-segmented-item {
+    min-width: 44px;
+  }
+
+  .bm-plan-message {
+    padding: 12px;
+  }
+
+  .bm-plan-message-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .bm-plan-message-header > .ant-typography {
+    max-width: 100%;
+  }
+
+  .bm-chat-composer-actions-right {
+    width: 100%;
+    justify-content: flex-end;
   }
 }

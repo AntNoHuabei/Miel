@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App as AntApp } from 'antd'
 import type { CatalogProviderLite, DiscoveredModelLite, ModelOptionLite, ProviderLite, ReasoningSpecLite, WorkspaceLite } from '../../../api'
-import { settingsRepository } from '../../../shared/repositories'
+import { chatRepository, settingsRepository } from '../../../shared/repositories'
 import { useWailsEvent } from '../../../shared/wails/events'
 
 const REASONING_STORAGE_KEY = 'chat.reasoning.v1'
@@ -35,7 +35,7 @@ export function reasoningStepsFor(
   return []
 }
 
-export function useChatControls() {
+export function useChatControls(conversationId = 0) {
   const { message } = AntApp.useApp()
   const [providers, setProviders] = useState<ProviderLite[]>([])
   const [modelOptions, setModelOptions] = useState<ModelOptionLite[]>([])
@@ -44,9 +44,14 @@ export function useChatControls() {
   const [workspaces, setWorkspaces] = useState<WorkspaceLite[]>([])
   const [reasoning, setReasoning] = useState('')
   const [reasoningPreferences, setReasoningPreferences] = useState<Record<string, string>>({})
+  const [conversationModel, setConversationModel] = useState<{ providerId: number; model: string } | null>(null)
   const reasoningPreferencesRef = useRef<Record<string, string>>({})
 
   const defaultProvider = providers.find((provider) => provider.isDefault) ?? providers[0]
+  const activeProvider = conversationId > 0 && conversationModel
+    ? providers.find((provider) => provider.id === conversationModel.providerId)
+    : defaultProvider
+  const activeProviderModel = conversationId > 0 && conversationModel?.model ? conversationModel.model : activeProvider?.model
   const optionGroups = useMemo(() => {
     const groups = new Map<string, Array<{ value: string; label: string }>>()
     for (const option of modelOptions) {
@@ -60,22 +65,22 @@ export function useChatControls() {
     return Array.from(groups, ([label, options]) => ({ label, options }))
   }, [discoveredModels, modelOptions])
 
-  const catalogProvider = catalog.find((provider) => provider.kind.toLowerCase() === defaultProvider?.kind.toLowerCase())
-  const catalogModel = catalogProvider?.models.find((model) => model.id.toLowerCase() === defaultProvider?.model.toLowerCase())
-  const discoveredModel = defaultProvider
-    ? discoveredModels[defaultProvider.id]?.find((model) => model.id.toLowerCase() === defaultProvider.model.toLowerCase())
+  const catalogProvider = catalog.find((provider) => provider.kind.toLowerCase() === activeProvider?.kind.toLowerCase())
+  const catalogModel = catalogProvider?.models.find((model) => model.id.toLowerCase() === activeProviderModel?.toLowerCase())
+  const discoveredModel = activeProvider
+    ? discoveredModels[activeProvider.id]?.find((model) => model.id.toLowerCase() === activeProviderModel?.toLowerCase())
     : undefined
   const reasoningSpec = discoveredModel?.reasoning ?? catalogModel?.reasoning
   const supportsImages = discoveredModel?.multimodal ?? catalogModel?.multimodal ?? defaultProvider?.multimodal ?? false
   const specType = reasoningSpec?.type ?? 'none'
-  const customGateway = defaultProvider?.kind === 'custom'
-  const herdsman = defaultProvider?.kind === 'herdsman'
-  const openRouter = defaultProvider?.kind === 'openrouter'
-  const volcenginePlan = defaultProvider?.kind === 'volcengine-plan'
+  const customGateway = activeProvider?.kind === 'custom'
+  const herdsman = activeProvider?.kind === 'herdsman'
+  const openRouter = activeProvider?.kind === 'openrouter'
+  const volcenginePlan = activeProvider?.kind === 'volcengine-plan'
   const compatibleGateway = customGateway || herdsman || openRouter || volcenginePlan
   const reasoningSteps = useMemo(() => {
-    return reasoningStepsFor(reasoningSpec, defaultProvider?.kind)
-  }, [reasoningSpec, defaultProvider?.kind])
+    return reasoningStepsFor(reasoningSpec, activeProvider?.kind)
+  }, [reasoningSpec, activeProvider?.kind])
   const reasoningLocked = reasoningSteps.length <= 1
   const effectiveReasoning = reasoningSteps.includes(reasoning) ? reasoning : (reasoningSteps[0] ?? '')
   const reasoningIndex = Math.max(reasoningSteps.indexOf(effectiveReasoning), 0)
@@ -89,11 +94,11 @@ export function useChatControls() {
     })
     return marks
   }, [reasoningSteps, compatibleGateway])
-  const activeModel = modelOptions.find((option) => option.providerId === defaultProvider?.id && option.model === defaultProvider?.model)
-  const activeModelLabel = activeModel ? chatModelLabel(activeModel, discoveredModel) : defaultProvider?.model || '未配置模型'
+  const activeModel = modelOptions.find((option) => option.providerId === activeProvider?.id && option.model === activeProviderModel)
+  const activeModelLabel = activeModel ? chatModelLabel(activeModel, discoveredModel) : activeProviderModel || '未配置模型'
   const reasoningStatus = reasoningLocked ? (specType === 'always' ? '思考常开' : specType === 'none' ? '不支持思考' : '不可调节') : reasoningMarks[reasoningIndex] ?? '关闭'
   const reasoningPillLabel = reasoningLocked ? (specType === 'always' ? '常开' : '') : reasoningMarks[reasoningIndex] ?? '关闭'
-  const reasoningPreferenceKey = defaultProvider ? `${defaultProvider.id}::${defaultProvider.model}` : ''
+  const reasoningPreferenceKey = activeProvider && activeProviderModel ? `${activeProvider.id}::${activeProviderModel}` : ''
   const currentWorkspace = workspaces.find((workspace) => workspace.isCurrent)
 
   const reloadProviders = useCallback(async () => {
@@ -114,6 +119,17 @@ export function useChatControls() {
   const reloadWorkspaces = useCallback(async () => {
     try { setWorkspaces(await settingsRepository.listWorkspaces()) } catch { /* Keep the last valid workspaces. */ }
   }, [])
+  const reloadConversationModel = useCallback(async () => {
+    if (conversationId <= 0) {
+      setConversationModel(null)
+      return
+    }
+    try {
+      const conversations = await chatRepository.listConversations()
+      const current = conversations.find((item) => item.id === conversationId)
+      setConversationModel(current && current.providerId > 0 && current.model ? { providerId: current.providerId, model: current.model } : null)
+    } catch { /* Keep the last known model while the conversation list reloads. */ }
+  }, [conversationId])
 
   useEffect(() => {
     void reloadProviders()
@@ -131,12 +147,17 @@ export function useChatControls() {
     }).catch(() => undefined)
   }, [reloadModelOptions, reloadProviders, reloadWorkspaces])
 
+  useEffect(() => { void reloadConversationModel() }, [reloadConversationModel])
+
   useWailsEvent<string>('models.changed', useCallback(() => {
     void reloadProviders()
     void reloadModelOptions()
   }, [reloadProviders, reloadModelOptions]))
+  useWailsEvent<string>('conversations.changed', useCallback(() => {
+    void reloadConversationModel()
+  }, [reloadConversationModel]))
 
-  const modelKey = `${defaultProvider?.kind ?? ''}:${defaultProvider?.model ?? ''}`
+  const modelKey = `${activeProvider?.kind ?? ''}:${activeProviderModel ?? ''}`
   useEffect(() => {
     const saved = reasoningPreferenceKey ? reasoningPreferences[reasoningPreferenceKey] : undefined
     setReasoning(saved !== undefined && reasoningSteps.includes(saved) ? saved : (reasoningSteps[0] ?? ''))
@@ -156,11 +177,16 @@ export function useChatControls() {
   }, [message, reloadWorkspaces])
   const switchModel = useCallback(async (providerId: number, model: string) => {
     try {
-      await settingsRepository.setProviderModel(providerId, model)
+      if (conversationId > 0) {
+        await chatRepository.setConversationModel({ conversationId, providerId, model })
+        setConversationModel({ providerId, model })
+      } else {
+        await settingsRepository.setProviderModel(providerId, model)
+      }
       message.success(`已切换到 ${model}`)
       await Promise.all([reloadProviders(), reloadModelOptions()])
     } catch (error) { message.error(`切换失败:${String(error)}`) }
-  }, [message, reloadModelOptions, reloadProviders])
+  }, [conversationId, message, reloadModelOptions, reloadProviders])
   const changeReasoning = useCallback((value: string) => {
     setReasoning(value)
     if (!reasoningPreferenceKey) return
@@ -185,7 +211,7 @@ export function useChatControls() {
     reasoningStatus,
     reasoningSteps,
     removeWorkspace,
-    selectedModel: defaultProvider ? `${defaultProvider.id}::${defaultProvider.model}` : undefined,
+    selectedModel: activeProvider && activeProviderModel ? `${activeProvider.id}::${activeProviderModel}` : undefined,
     showCompatibleModelNote: customGateway && !reasoningSpec,
     supportsImages,
     switchModel,

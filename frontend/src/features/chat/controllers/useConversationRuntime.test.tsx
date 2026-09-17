@@ -5,6 +5,9 @@ import { createConversationStore } from '../model/conversationStore'
 
 const mocks = vi.hoisted(() => ({
   chat: vi.fn(),
+  executePlan: vi.fn(),
+  revisePlan: vi.fn(),
+  abandonPlan: vi.fn(),
   messagesSnapshot: vi.fn(),
   error: vi.fn(),
 }))
@@ -13,6 +16,9 @@ vi.mock('antd', () => ({ App: { useApp: () => ({ message: { error: mocks.error }
 vi.mock('../../../shared/repositories', () => ({
   chatRepository: {
     chat: mocks.chat,
+    executePlan: mocks.executePlan,
+    revisePlan: mocks.revisePlan,
+    abandonPlan: mocks.abandonPlan,
     messagesSnapshot: mocks.messagesSnapshot,
   },
 }))
@@ -43,6 +49,9 @@ describe('useConversationRuntime', () => {
   beforeEach(() => {
     window.localStorage.clear()
     mocks.chat.mockReset()
+    mocks.executePlan.mockReset()
+    mocks.revisePlan.mockReset()
+    mocks.abandonPlan.mockReset()
     mocks.messagesSnapshot.mockReset()
     mocks.error.mockReset()
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
@@ -105,6 +114,25 @@ describe('useConversationRuntime', () => {
       phase: 'error',
       error: { code: '429', message: 'Error: 429 Too Many Requests' },
     })
+  })
+
+  it('sends the selected Plan mode and executes a plan through the same runtime', async () => {
+    mocks.chat.mockResolvedValue({ conversationId: 4 })
+    mocks.executePlan.mockResolvedValue({ conversationId: 4 })
+    mocks.messagesSnapshot.mockResolvedValue({ type: 'MESSAGES_SNAPSHOT', messages: [] })
+    const store = createConversationStore('runtime-plan')
+    store.getState().setInput('design it')
+    const options = runtimeOptions(store)
+    options.getRequestContext.mockResolvedValue({ reasoning: 'high', workspacePath: 'D:/repo', permissionSessionId: 'permission', mode: 'plan' })
+    const { result } = renderHook(() => useConversationRuntime(options))
+
+    await act(async () => { await result.current.send() })
+    expect(mocks.chat).toHaveBeenCalledWith(expect.objectContaining({ mode: 'plan', planId: 0, planRevision: 0 }))
+
+    await act(async () => {
+      await result.current.runPlanAction('execute', { id: 9, revision: 1, currentRevision: 1, status: 'pending', generatedModel: 'model-a' })
+    })
+    expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ planId: 9, revision: 1, workspacePath: 'D:/repo' }))
   })
 
   it('only follows output while the viewport remains near the bottom', async () => {

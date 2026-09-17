@@ -8,6 +8,7 @@ import { PermissionApprovalModal } from '../../../components/permissions'
 import type { AgentPhase, AgentProcessStep, AgentToolCall } from '../model/agentRun'
 import type { AgentRunError } from '../model/chatError'
 import type { ArtifactRefLite } from '../../../shared/types/artifacts'
+import type { PlanLite } from '../../../shared/types/chat'
 import { AgentProcess, ChatRunErrorMessage, isPersistedTailError, renderMarkdown, SnapshotMessage } from './ConversationMessages'
 import { ArtifactItems } from '../../artifacts/components/ArtifactItems'
 
@@ -31,6 +32,9 @@ interface ConversationViewportProps {
   quickPrompts: string[]
   onQuickPrompt: (prompt: string) => void
   onResolveApproval: (decision: ApprovalDecision) => void | Promise<void>
+  onExecutePlan?: (plan: PlanLite) => void | Promise<void>
+  onRevisePlan?: (plan: PlanLite, instruction: string) => void | Promise<void>
+  onAbandonPlan?: (plan: PlanLite) => void | Promise<void>
 }
 
 export function ConversationViewport({
@@ -51,6 +55,9 @@ export function ConversationViewport({
   quickPrompts,
   onQuickPrompt,
   onResolveApproval,
+  onExecutePlan,
+  onRevisePlan,
+  onAbandonPlan,
 }: ConversationViewportProps) {
   const showProcess = sending || process.length > 0 || tools.length > 0 || skillProgress !== null
   const hasTimelineText = process.some((step) => step.type === 'text')
@@ -78,7 +85,7 @@ export function ConversationViewport({
         {messages.map((message, index) => (
           <Fragment key={message.id || index}>
             {index === processBeforeIndex && <AgentProcess phase={phase} process={process} tools={tools} skillProgress={skillProgress} />}
-            <SnapshotMessage message={message} conversationId={conversationId} toolName={message.toolCallId ? toolNames.get(message.toolCallId) : undefined} />
+            <SnapshotMessage message={message} conversationId={conversationId} sending={sending} toolName={message.toolCallId ? toolNames.get(message.toolCallId) : undefined} onExecutePlan={onExecutePlan} onRevisePlan={onRevisePlan} onAbandonPlan={onAbandonPlan} />
           </Fragment>
         ))}
         {showProcess && processBeforeIndex < 0 && <AgentProcess phase={phase} process={process} tools={tools} skillProgress={skillProgress} />}

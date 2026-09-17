@@ -122,6 +122,13 @@ export interface ChatRequest {
     "attachmentIds": string[] | null;
     "workspacePath": string;
     "permissionSessionId": string;
+
+    /**
+     * chat | plan；execute 仅供 ExecutePlan 内部使用
+     */
+    "mode": string;
+    "planId": number;
+    "planRevision": number;
 }
 
 /**
@@ -161,6 +168,8 @@ export interface ConfirmExtractedReq {
 export interface Conversation {
     "id": number;
     "title": string;
+    "providerId": number;
+    "model": string;
     "createdAt": number;
     "updatedAt": number;
 }
@@ -342,6 +351,16 @@ export interface PingResult {
     "latencyMs": number;
 }
 
+export interface PlanActionRequest {
+    "planId": number;
+    "revision": number;
+    "instruction": string;
+    "reasoning": string;
+    "requestId": string;
+    "workspacePath": string;
+    "permissionSessionId": string;
+}
+
 /**
  * Provider 模型服务商配置。
  * Kind 对应 trpc-agent-go 的 provider 体系:
@@ -470,6 +489,12 @@ export interface ScreenshotResult {
     "width": number;
     "height": number;
     "createdAt": number;
+}
+
+export interface SetConversationModelRequest {
+    "conversationId": number;
+    "providerId": number;
+    "model": string;
 }
 
 /**

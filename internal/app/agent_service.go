@@ -41,7 +41,7 @@ const maxAgentToolIterations = 40
 var errConversationBusy = errors.New("conversation_busy: 当前会话仍在处理中，请等待本轮完成后再发送")
 
 // AgentService 是基于 trpc-agent-go 的对话 Agent 服务:
-//   - 每次 Chat 按“默认 Provider”动态构建 LLMAgent,会话可并行
+//   - 每次 Chat 按会话所选 Provider/Model 动态构建 LLMAgent,会话可并行
 //   - 办公能力(待办/统计/日志)以 function calling 暴露
 //   - <数据目录>/skills 下的 SKILL.md 由框架加载,新增即插即用
 //
@@ -125,6 +125,21 @@ const plainChatInstruction = `你是 Miel。当前模型不支持工具调用，
 3. 不要声称已经读取或修改待办、记忆、文件、工作区或其它本地数据。
 4. 当用户要求执行本地操作时，明确说明当前模型仅支持纯聊天，并建议切换到支持 Agent 工具的模型。`
 
+const planInstruction = `你是 Miel 的计划代理。你的任务是根据用户目标和工作区事实制定可执行计划，而不是实施计划。规则:
+1. 使用与用户相同的语言，只输出完整的 Markdown 计划。
+2. 必须先通过可用的只读工具核对仓库事实；没有工作区或无需检查时可直接规划。
+3. 不得声称已经修改文件、运行实现命令、提交、推送或执行任何有副作用的操作。
+4. 计划至少包含：目标摘要、实现变更、公开接口或数据变化、测试与验收、明确假设。
+5. 当前请求若是对已有计划的修改意见，输出替代旧版本的完整计划，不要只输出差异。
+6. 保持计划决策完整且紧凑，让执行代理无需再次选择实现方向。`
+
+const executionInstruction = `你是 Miel 的执行代理。用户已经明确批准一个计划。规则:
+1. 严格完成运行上下文中的已批准计划，并持续工作到验证结束。
+2. 批准计划不等于工具授权；所有工具仍须遵守当前权限模式。
+3. 普通实现细节可按仓库实际情况调整。若必须改变需求范围、公开行为、数据结构或外部副作用，先调用 request_plan_revision，随后在最终回复中给出完整替代计划并停止继续修改。
+4. 已经完成的工作不要回滚；如需修订，清楚说明当前现场状态。
+5. 使用与用户相同的语言，最终简洁说明改动、验证和任何剩余风险。`
+
 // ChatRequest 一次对话入参。
 type ChatRequest struct {
 	ConversationID      int64    `json:"conversationId"` // 0 = 新建会话
@@ -134,6 +149,9 @@ type ChatRequest struct {
 	AttachmentIDs       []string `json:"attachmentIds"`
 	WorkspacePath       string   `json:"workspacePath"`
 	PermissionSessionID string   `json:"permissionSessionId"`
+	Mode                string   `json:"mode"` // chat | plan；execute 仅供 ExecutePlan 内部使用
+	PlanID              int64    `json:"planId"`
+	PlanRevision        int      `json:"planRevision"`
 }
 
 // applyReasoning 把思考档位映射到 GenerationConfig。
@@ -243,7 +261,13 @@ type ChatResult struct {
 func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	msg := strings.TrimSpace(req.Message)
 	convID := req.ConversationID
+	mode := normalizeChatMode(req.Mode)
+	if mode == "" {
+		return ChatResult{}, errors.New("不支持的聊天模式")
+	}
 	lockedConversationID := int64(0)
+	var execution *planExecutionContext
+	var executionRunID int64
 	chatStartedAt := time.Now()
 	logCtx := withLogContext(context.Background(), convID, req.RequestID)
 	logInfo(logCtx, "chat.start", "has_text", msg != "", "attachment_count", len(req.AttachmentIDs))
@@ -251,6 +275,11 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	runErrorForwarded := false
 	runErrorPersisted := false
 	defer func() {
+		if retErr != nil && executionRunID > 0 {
+			if err := finishPlanRun(executionRunID, execution.Plan.ID, "failed", retErr.Error()); err != nil {
+				log.Println("finish failed plan run:", err)
+			}
+		}
 		if retErr == nil {
 			logInfo(logCtx, "chat.finish", "status", "done", "duration_ms", time.Since(chatStartedAt).Milliseconds())
 			return
@@ -279,17 +308,34 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		lockedConversationID = convID
 		defer func() { s.finishConversationRun(lockedConversationID) }()
 	}
+	if mode == "execute" {
+		if convID <= 0 {
+			return ChatResult{}, errors.New("执行计划需要已有会话")
+		}
+		var err error
+		execution, err = loadPlanExecution(convID, req.PlanID, req.PlanRevision)
+		if err != nil {
+			return ChatResult{}, err
+		}
+	} else if mode == "plan" && req.PlanID > 0 {
+		if _, err := loadPlanExecution(convID, req.PlanID, req.PlanRevision); err != nil {
+			return ChatResult{}, err
+		}
+	}
 	workspacePath := ""
 	if settingsSvc != nil {
 		workspacePath = settingsSvc.agentWorkspacePath(req.WorkspacePath)
 	}
-	p, err := settingsSvc.DefaultProvider()
+	p, err := providerForConversation(convID)
 	if err != nil {
-		return ChatResult{}, errors.New("尚未配置模型服务商,请先在设置中配置后重试")
+		return ChatResult{}, err
 	}
 	toolsEnabled := true
 	if supported, known := settingsSvc.providerSupportsTools(p); known {
 		toolsEnabled = supported
+	}
+	if mode == "execute" && !toolsEnabled {
+		return ChatResult{}, errors.New("当前对话模型不支持工具调用，请切换模型后重试")
 	}
 	if len(req.AttachmentIDs) > 0 {
 		if s.attachments == nil {
@@ -311,13 +357,19 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	if s.memory != nil && settingsSvc != nil {
 		if cfg, cfgErr := settingsSvc.memoryConfig(); cfgErr == nil {
 			memoryConfig = cfg
-			memoryEnabled = cfg.Enabled && toolsEnabled
+			memoryEnabled = cfg.Enabled && toolsEnabled && mode != "plan"
 		} else {
 			log.Println("load memory config:", cfgErr)
 		}
 	}
 
-	convID, userMessageID, err = s.saveUserMessage(convID, msg, req.AttachmentIDs)
+	messageType := "chat"
+	if mode == "plan" {
+		messageType = "plan_request"
+	} else if mode == "execute" {
+		messageType = "plan_execution"
+	}
+	convID, userMessageID, err = s.saveUserMessageWithMeta(convID, msg, req.AttachmentIDs, messageType, p)
 	if err != nil {
 		return ChatResult{}, err
 	}
@@ -327,6 +379,12 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 		lockedConversationID = convID
 		defer func() { s.finishConversationRun(lockedConversationID) }()
+	}
+	if mode == "execute" {
+		executionRunID, err = beginPlanRun(execution.Plan.ID, execution.Revision.Revision, req.RequestID, p)
+		if err != nil {
+			return ChatResult{}, err
+		}
 	}
 	logCtx = withLogContext(logCtx, convID, req.RequestID)
 	logInfo(logCtx, "chat.input.saved", "message_id", userMessageID)
@@ -357,14 +415,22 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		Kind: "conversation", TextContent: msg, ConversationID: convID, MessageID: userMessageID,
 	}}
 	var agentTools []tool.Tool
+	deviation := &planRevisionSignal{}
 	publisher := &runArtifactService{ArtifactService: s.artifacts, scope: artifactScope{ConversationID: convID, RequestID: req.RequestID, UserMessageID: userMessageID}}
 	if toolsEnabled {
-		agentTools = chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID, s.webSearch)
-		if memoryEnabled {
-			agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID, s.webSearch)
+		if mode == "plan" {
+			agentTools = planAgentTools(s.permissions, workspacePath, req.PermissionSessionID)
+		} else {
+			agentTools = chatAgentTools(sourceContext, nil, s.permissions, workspacePath, req.PermissionSessionID, s.webSearch)
+			if memoryEnabled {
+				agentTools = chatAgentTools(sourceContext, s.memory.Tools(), s.permissions, workspacePath, req.PermissionSessionID, s.webSearch)
+			}
+			if mode == "execute" {
+				agentTools = append(agentTools, newPlanRevisionTool(deviation))
+			}
 		}
 	}
-	if toolsEnabled && s.artifacts != nil {
+	if toolsEnabled && mode != "plan" && s.artifacts != nil {
 		for index, candidate := range agentTools {
 			if callable, ok := candidate.(tool.CallableTool); ok && candidate.Declaration().Name == "skill_run" {
 				agentTools[index] = &artifactTool{CallableTool: callable, publication: publisher}
@@ -376,7 +442,11 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 	}
 	instruction := instructionWithContext(workspacePath)
-	if !toolsEnabled {
+	if mode == "plan" {
+		instruction = planInstructionWithContext(workspacePath)
+	} else if mode == "execute" {
+		instruction = executionInstructionWithContext(workspacePath)
+	} else if !toolsEnabled {
 		instruction = plainChatInstruction
 	}
 	opts := []llmagent.Option{
@@ -387,7 +457,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	}
 	var skillRepo skill.Repository
 	// skills/<name>/SKILL.md 即插即用。纯聊天模型不注册任何 Skill 工具。
-	if toolsEnabled {
+	if toolsEnabled && mode != "plan" {
 		if repo, err := newManagedSkillRepository(skillsDir()); err == nil {
 			skillRepo = repo
 		} else {
@@ -431,7 +501,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		aguirunner.WithRunOptionResolver(func(context.Context, *adapter.RunAgentInput) ([]agentcore.RunOption, error) {
 			runOpts := []agentcore.RunOption{
 				agentcore.WithExecutionTraceEnabled(true),
-				agentcore.WithLateContextMessages(lateContextMessages(time.Now())),
+				agentcore.WithLateContextMessages(runLateContextMessages(time.Now(), execution)),
 			}
 			if fields := modelRequestCacheFields(p, convID); len(fields) > 0 {
 				runOpts = append(runOpts, agentcore.WithModelRequestExtraFields(fields))
@@ -528,11 +598,18 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 	}
 	out := strings.TrimSpace(answer.String())
+	deviationRequested, deviationReason := deviation.snapshot()
 	var metrics *ChatMetrics
+	var assistantMessageID int64
 	if out != "" {
 		built := buildChatMetrics(p.Model, traceUsage, time.Since(startedAt))
 		metrics = &built
-		if _, err := s.saveMessage(convID, "assistant", out, answerMessageID, metrics); err != nil {
+		messageType := "chat"
+		if mode == "plan" || (mode == "execute" && deviationRequested) {
+			messageType = "plan_response"
+		}
+		assistantMessageID, err = s.saveMessageWithType(convID, "assistant", out, messageType, answerMessageID, metrics)
+		if err != nil {
 			return ChatResult{}, err
 		}
 	}
@@ -554,13 +631,31 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 		return ChatResult{}, err
 	}
+	if mode == "plan" {
+		if _, err := savePlanRevision(convID, req.PlanID, req.PlanRevision, userMessageID, assistantMessageID, out, p); err != nil {
+			return ChatResult{}, err
+		}
+	}
+	if mode == "execute" {
+		if deviationRequested {
+			if _, err := savePlanRevision(convID, execution.Plan.ID, execution.Revision.Revision, userMessageID, assistantMessageID, out, p); err != nil {
+				return ChatResult{}, err
+			}
+			if err := finishPlanRun(executionRunID, execution.Plan.ID, "paused", deviationReason); err != nil {
+				return ChatResult{}, err
+			}
+		} else if err := finishPlanRun(executionRunID, execution.Plan.ID, "completed", ""); err != nil {
+			return ChatResult{}, err
+		}
+		executionRunID = 0
+	}
 	if s.artifacts != nil {
 		_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
 	}
 	s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
 	logInfo(ctx, "model.run.finish", "status", "done", "tool_calls_observed", toolCallsObserved, "duration_ms", time.Since(startedAt).Milliseconds())
 	s.emit("conversations.changed", "updated")
-	if memoryEnabled && memoryConfig.AutoExtract && msg != "" {
+	if mode == "chat" && memoryEnabled && memoryConfig.AutoExtract && msg != "" {
 		if err := s.memory.enqueue(m, memoryConfig, msg, out); err != nil {
 			log.Println("enqueue memory extraction:", err)
 		}
@@ -645,10 +740,40 @@ func instructionWithContext(workspace string) string {
 		"\n文件工具的相对路径和命令的相对 workdir 均以该工作区为基准；操作工作区内容时优先使用相对路径。"
 }
 
+func planInstructionWithContext(workspace string) string {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return planInstruction + "\n当前未选择工作区，只能依据会话上下文制定计划。"
+	}
+	return planInstruction + "\n当前工作区的完整绝对路径:" + workspace +
+		"\n只读文件工具的相对路径均以该工作区为基准。"
+}
+
+func executionInstructionWithContext(workspace string) string {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return executionInstruction + "\n当前未选择工作区；相对文件路径和相对命令 workdir 不可用。"
+	}
+	return executionInstruction + "\n当前工作区的完整绝对路径:" + workspace +
+		"\n文件工具的相对路径和命令的相对 workdir 均以该工作区为基准。"
+}
+
 func lateContextMessages(current time.Time) []model.Message {
 	return []model.Message{
 		model.NewUserMessage("[运行上下文]\n当前本地时间:" + current.Format("2006-01-02 15:04:05 -07:00")),
 	}
+}
+
+func runLateContextMessages(current time.Time, execution *planExecutionContext) []model.Message {
+	messages := lateContextMessages(current)
+	if execution == nil {
+		return messages
+	}
+	messages = append(messages, model.NewUserMessage(fmt.Sprintf(
+		"[已批准计划 v%d｜必须严格执行]\n%s",
+		execution.Revision.Revision, execution.Revision.Content,
+	)))
+	return messages
 }
 
 func modelRequestCacheFields(provider Provider, conversationID int64) map[string]any {
@@ -733,18 +858,23 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 	if r := []rune(title); len(r) > 24 {
 		title = string(r[:24]) + "…"
 	}
+	provider, _ := providerForConversation(0)
 	res, err := store.Exec(
-		"INSERT INTO conversations (title, created_at, updated_at) VALUES (?, ?, ?)",
-		title, now(), now())
+		"INSERT INTO conversations (title, provider_id, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		title, provider.ID, provider.Model, now(), now())
 	if err != nil {
 		return Conversation{}, err
 	}
 	id, _ := res.LastInsertId()
 	s.emit("conversations.changed", "created")
-	return Conversation{ID: id, Title: title, CreatedAt: now(), UpdatedAt: now()}, nil
+	return Conversation{ID: id, Title: title, ProviderID: provider.ID, Model: provider.Model, CreatedAt: now(), UpdatedAt: now()}, nil
 }
 
 func (s *AgentService) saveUserMessage(conversationID int64, content string, attachmentIDs []string) (int64, int64, error) {
+	return s.saveUserMessageWithMeta(conversationID, content, attachmentIDs, "chat", Provider{})
+}
+
+func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider) (int64, int64, error) {
 	tx, err := store.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -760,8 +890,8 @@ func (s *AgentService) saveUserMessage(conversationID int64, content string, att
 			title = string(r[:24]) + "…"
 		}
 		result, err := tx.Exec(
-			"INSERT INTO conversations (title, created_at, updated_at) VALUES (?, ?, ?)",
-			title, now(), now())
+			"INSERT INTO conversations (title, provider_id, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+			title, provider.ID, provider.Model, now(), now())
 		if err != nil {
 			return 0, 0, err
 		}
@@ -771,8 +901,8 @@ func (s *AgentService) saveUserMessage(conversationID int64, content string, att
 		}
 	}
 	result, err := tx.Exec(`
-		INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, 'user', ?, ?)`,
-		conversationID, content, now())
+		INSERT INTO messages (conversation_id, role, content, message_type, created_at) VALUES (?, 'user', ?, ?, ?)`,
+		conversationID, content, messageType, now())
 	if err != nil {
 		return 0, 0, err
 	}
@@ -804,14 +934,18 @@ func (s *AgentService) saveUserMessage(conversationID int64, content string, att
 
 // saveMessage 追加消息并更新时间戳。
 func (s *AgentService) saveMessage(convID int64, role, content, aguiMessageID string, metrics *ChatMetrics) (int64, error) {
+	return s.saveMessageWithType(convID, role, content, "chat", aguiMessageID, metrics)
+}
+
+func (s *AgentService) saveMessageWithType(convID int64, role, content, messageType, aguiMessageID string, metrics *ChatMetrics) (int64, error) {
 	tx, err := store.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
 	res, err := tx.Exec(`
-		INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)`,
-		convID, role, content, now())
+		INSERT INTO messages (conversation_id, role, content, message_type, created_at) VALUES (?, ?, ?, ?, ?)`,
+		convID, role, content, messageType, now())
 	if err != nil {
 		return 0, err
 	}
@@ -845,7 +979,7 @@ func (s *AgentService) saveMessage(convID int64, role, content, aguiMessageID st
 // loadMessages 读取会话消息(正序)。
 func (s *AgentService) loadMessages(convID int64) ([]ChatMessage, error) {
 	rows, err := store.Query(`
-		SELECT id, conversation_id, role, content, created_at FROM messages
+		SELECT id, conversation_id, role, content, message_type, created_at FROM messages
 		WHERE conversation_id = ? ORDER BY id ASC`, convID)
 	if err != nil {
 		return nil, err
@@ -854,7 +988,7 @@ func (s *AgentService) loadMessages(convID int64) ([]ChatMessage, error) {
 	var items []ChatMessage
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.MessageType, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, m)
@@ -939,7 +1073,7 @@ func (s *AgentService) ListConversations() ([]Conversation, error) {
 		return []Conversation{}, nil
 	}
 	rows, err := store.Query(
-		"SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC")
+		"SELECT id, title, provider_id, model, created_at, updated_at FROM conversations ORDER BY updated_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -947,7 +1081,7 @@ func (s *AgentService) ListConversations() ([]Conversation, error) {
 	var items []Conversation
 	for rows.Next() {
 		var c Conversation
-		if err := rows.Scan(&c.ID, &c.Title, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.ProviderID, &c.Model, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, c)
@@ -966,6 +1100,15 @@ func (s *AgentService) DeleteConversation(conversationID int64) error {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.Exec(`DELETE FROM plan_runs WHERE plan_id IN (SELECT id FROM plans WHERE conversation_id = ?)`, conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM plan_revisions WHERE plan_id IN (SELECT id FROM plans WHERE conversation_id = ?)`, conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM plans WHERE conversation_id = ?", conversationID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec("DELETE FROM chat_run_errors WHERE conversation_id = ?", conversationID); err != nil {
 		return err
 	}

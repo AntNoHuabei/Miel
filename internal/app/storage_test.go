@@ -7,6 +7,39 @@ import (
 	"time"
 )
 
+func TestMigrateRecoversInterruptedPlanRuns(t *testing.T) {
+	dsn := fmt.Sprintf("file:plan-recovery-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO plans (id, conversation_id, status, current_revision, created_at, updated_at)
+		VALUES (1, 1, 'executing', 1, 1, 1);
+		INSERT INTO plan_runs (id, plan_id, revision, provider_id, model, status, started_at)
+		VALUES (1, 1, 1, 1, 'model', 'executing', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	var planStatus, runStatus string
+	if err := db.QueryRow("SELECT status FROM plans WHERE id = 1").Scan(&planStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT status FROM plan_runs WHERE id = 1").Scan(&runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if planStatus != planStatusInterrupted || runStatus != planStatusInterrupted {
+		t.Fatalf("recovered statuses = %q, %q", planStatus, runStatus)
+	}
+}
+
 func TestMigrateKeepsOnlyDeepSeekFlash(t *testing.T) {
 	dsn := fmt.Sprintf("file:storage-test-%d?mode=memory&cache=shared", time.Now().UnixNano())
 	db, err := sql.Open("sqlite", dsn)
