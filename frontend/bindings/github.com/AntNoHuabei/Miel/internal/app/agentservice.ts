@@ -27,6 +27,13 @@ export function AbandonPlan(req: $models.PlanActionRequest): $CancellablePromise
 }
 
 /**
+ * CancelChat stops the active request identified by the client-generated request ID.
+ */
+export function CancelChat(req: $models.ChatCancelRequest): $CancellablePromise<boolean> {
+    return $Call.ByID(3465020896, req);
+}
+
+/**
  * Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
  */
 export function Chat(req: $models.ChatRequest): $CancellablePromise<$models.ChatResult> {

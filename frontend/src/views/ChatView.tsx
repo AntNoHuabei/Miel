@@ -208,6 +208,7 @@ export default function ChatView() {
             onRemoveAttachment={attachments.removeAttachment}
             onRemoveWorkspace={controls.removeWorkspace}
             onSend={runtime.send}
+            onStop={runtime.stop}
             onSwitchModel={controls.switchModel}
           />
         </Flex>

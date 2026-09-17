@@ -167,7 +167,7 @@ func (s *AgentService) SetConversationModel(req SetConversationModelRequest) err
 }
 
 // RevisePlan creates a complete new revision using the conversation's currently selected model.
-func (s *AgentService) RevisePlan(req PlanActionRequest) (ChatResult, error) {
+func (s *AgentService) RevisePlan(ctx context.Context, req PlanActionRequest) (ChatResult, error) {
 	if strings.TrimSpace(req.Instruction) == "" {
 		return ChatResult{}, errors.New("请输入计划修改意见")
 	}
@@ -175,7 +175,7 @@ func (s *AgentService) RevisePlan(req PlanActionRequest) (ChatResult, error) {
 	if err != nil {
 		return ChatResult{}, err
 	}
-	return s.Chat(ChatRequest{
+	return s.Chat(ctx, ChatRequest{
 		ConversationID: execution.Plan.ConversationID, Message: req.Instruction,
 		Reasoning: req.Reasoning, RequestID: req.RequestID, WorkspacePath: req.WorkspacePath,
 		PermissionSessionID: req.PermissionSessionID, Mode: "plan",
@@ -185,12 +185,12 @@ func (s *AgentService) RevisePlan(req PlanActionRequest) (ChatResult, error) {
 }
 
 // ExecutePlan immediately executes the exact approved revision.
-func (s *AgentService) ExecutePlan(req PlanActionRequest) (ChatResult, error) {
+func (s *AgentService) ExecutePlan(ctx context.Context, req PlanActionRequest) (ChatResult, error) {
 	execution, err := loadPlanExecution(0, req.PlanID, req.Revision)
 	if err != nil {
 		return ChatResult{}, err
 	}
-	return s.Chat(ChatRequest{
+	return s.Chat(ctx, ChatRequest{
 		ConversationID: execution.Plan.ConversationID,
 		Message:        fmt.Sprintf("执行已批准计划 v%d", req.Revision),
 		Reasoning:      req.Reasoning, RequestID: req.RequestID, WorkspacePath: req.WorkspacePath,

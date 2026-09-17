@@ -14,6 +14,7 @@ import {
   RightOutlined,
   SearchOutlined,
   SendOutlined,
+  StopOutlined,
 } from '@ant-design/icons'
 import type { ChatAttachmentDraftLite, WorkspaceLite } from '../../../api'
 import type { PermissionMode } from '../../../components/permissions'
@@ -60,6 +61,7 @@ interface ConversationComposerProps {
   onRemoveAttachment: (id: string) => void
   onRemoveWorkspace: (workspace: WorkspaceLite) => void | Promise<void>
   onSend: () => void | Promise<void>
+  onStop: () => void | Promise<void>
   onSwitchModel: (providerId: number, model: string) => void | Promise<void>
 }
 
@@ -158,8 +160,17 @@ export function ConversationComposer(props: ConversationComposerProps) {
               </div>}>
                 <Button type="text" className="bm-chat-model-trigger" disabled={props.sending || !props.profileReady}><span className="bm-chat-model-trigger-name">{props.activeModelLabel}</span>{props.reasoningPillLabel && <span className="bm-chat-model-trigger-reasoning">{props.reasoningPillLabel}</span>}<RightOutlined className="bm-chat-model-trigger-chevron" /></Button>
               </Popover>
-              <Tooltip title={!props.modelAvailable ? '请为当前模式选择模型' : props.attachments.length > 0 && !props.supportsImages ? '当前模型不支持图片输入' : props.sending ? '生成中…' : '发送'}>
-                <Button type="primary" shape="circle" size="large" icon={<SendOutlined />} loading={props.sending} disabled={sendDisabled} onClick={() => void props.onSend()} />
+              <Tooltip title={props.sending ? '停止生成' : !props.modelAvailable ? '请为当前模式选择模型' : props.attachments.length > 0 && !props.supportsImages ? '当前模型不支持图片输入' : '发送'}>
+                <Button
+                  type="primary"
+                  danger={props.sending}
+                  shape="circle"
+                  size="large"
+                  icon={props.sending ? <StopOutlined /> : <SendOutlined />}
+                  disabled={props.sending ? false : sendDisabled}
+                  aria-label={props.sending ? '停止生成' : '发送'}
+                  onClick={() => void (props.sending ? props.onStop() : props.onSend())}
+                />
               </Tooltip>
             </Space>
           </Flex>

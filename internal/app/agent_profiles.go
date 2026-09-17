@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"strings"
@@ -130,24 +131,30 @@ func providerForConversationProfile(conversationID int64, profile string) (Provi
 	return configuredProvider(selected.ProviderID, selected.Model)
 }
 
-func initializeConversationProfiles(tx *sql.Tx, conversationID int64, activeProfile string, active Provider) error {
+func initializeConversationProfiles(ctx context.Context, tx *sql.Tx, conversationID int64, activeProfile string, active Provider) error {
 	for _, profile := range []string{AgentProfileWork, AgentProfileCoding} {
 		selected := ProfileModel{ProviderID: active.ID, Model: active.Model}
-		if settingsSvc != nil {
-			var err error
-			selected, err = settingsSvc.profileDefault(profile)
-			if err != nil && active.ID == 0 {
-				return err
-			}
+		configured, err := profileDefaultInTransaction(ctx, tx, profile)
+		if err == nil {
+			selected = configured
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
 		}
 		if profile == activeProfile && active.ID > 0 {
 			selected = ProfileModel{ProviderID: active.ID, Model: active.Model}
 		}
-		if _, err := tx.Exec(`INSERT OR REPLACE INTO conversation_profile_models (conversation_id, profile, provider_id, model) VALUES (?, ?, ?, ?)`, conversationID, profile, selected.ProviderID, selected.Model); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO conversation_profile_models (conversation_id, profile, provider_id, model) VALUES (?, ?, ?, ?)`, conversationID, profile, selected.ProviderID, selected.Model); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func profileDefaultInTransaction(ctx context.Context, tx *sql.Tx, profile string) (ProfileModel, error) {
+	var result ProfileModel
+	err := tx.QueryRowContext(ctx, `SELECT provider_id, model FROM agent_profile_defaults WHERE profile = ?`, profile).
+		Scan(&result.ProviderID, &result.Model)
+	return result, err
 }
 
 func (s *AgentService) SetConversationProfile(req SetConversationProfileRequest) error {

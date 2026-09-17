@@ -583,8 +583,11 @@ type trackEventReader interface {
 
 // ensureAGUIHistory 仅为尚无 AG-UI track 的旧会话迁移原有纯文本消息。
 func (s *AgentService) ensureAGUIHistory(ctx context.Context, conversationID int64, history []ChatMessage) error {
-	s.historyMu.Lock()
-	defer s.historyMu.Unlock()
+	release, err := s.acquireHistoryGate(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	reader, ok := s.sessions.(trackEventReader)
 	if !ok {
@@ -643,4 +646,21 @@ func (s *AgentService) ensureAGUIHistory(ctx context.Context, conversationID int
 		}
 	}
 	return nil
+}
+
+// acquireHistoryGate serializes legacy history migration while allowing callers to stop waiting.
+func (s *AgentService) acquireHistoryGate(ctx context.Context) (func(), error) {
+	s.historyMu.Lock()
+	if s.historyGate == nil {
+		s.historyGate = make(chan struct{}, 1)
+		s.historyGate <- struct{}{}
+	}
+	gate := s.historyGate
+	s.historyMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-gate:
+		return func() { gate <- struct{}{} }, nil
+	}
 }

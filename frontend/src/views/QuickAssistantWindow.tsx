@@ -13,6 +13,7 @@ import {
   PictureOutlined,
   PlusOutlined,
   SendOutlined,
+  StopOutlined,
 } from '@ant-design/icons'
 import { Window as WailsWindow } from '@wailsio/runtime'
 import { clipboardRepository, settingsRepository } from '../shared/repositories'
@@ -217,14 +218,15 @@ export default function QuickAssistantWindow({
                 </Tooltip>
                 <Typography.Text type="secondary" ellipsis>{modelLabel || '当前模型'}</Typography.Text>
               </Flex>
-              <Tooltip title={attachments.length > 0 && !supportsImages ? '当前模型不支持图片输入' : '发送'}>
+              <Tooltip title={runtime.sending ? '停止生成' : attachments.length > 0 && !supportsImages ? '当前模型不支持图片输入' : '发送'}>
                 <Button
                   type="primary"
+                  danger={runtime.sending}
                   shape="circle"
-                  icon={<SendOutlined />}
-                  loading={runtime.sending}
-                  disabled={(!runtime.input.trim() && attachments.length === 0) || (attachments.length > 0 && !supportsImages)}
-                  onClick={() => void runtime.send()}
+                  icon={runtime.sending ? <StopOutlined /> : <SendOutlined />}
+                  aria-label={runtime.sending ? '停止生成' : '发送'}
+                  disabled={runtime.sending ? false : ((!runtime.input.trim() && attachments.length === 0) || (attachments.length > 0 && !supportsImages))}
+                  onClick={() => void (runtime.sending ? runtime.stop() : runtime.send())}
                 />
               </Tooltip>
             </Flex>

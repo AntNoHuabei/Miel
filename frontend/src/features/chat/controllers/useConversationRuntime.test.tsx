@@ -5,6 +5,7 @@ import { createConversationStore } from '../model/conversationStore'
 
 const mocks = vi.hoisted(() => ({
   chat: vi.fn(),
+  cancelChat: vi.fn(),
   executePlan: vi.fn(),
   revisePlan: vi.fn(),
   abandonPlan: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('antd', () => ({ App: { useApp: () => ({ message: { error: mocks.error }
 vi.mock('../../../shared/repositories', () => ({
   chatRepository: {
     chat: mocks.chat,
+    cancelChat: mocks.cancelChat,
     executePlan: mocks.executePlan,
     revisePlan: mocks.revisePlan,
     abandonPlan: mocks.abandonPlan,
@@ -30,6 +32,11 @@ function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => { resolve = done })
   return { promise, resolve }
+}
+
+function cancellableDeferred<T>() {
+  const result = deferred<T>()
+  return { ...result, cancel: vi.fn(), promise: Object.assign(result.promise, { cancel: vi.fn() }) }
 }
 
 function runtimeOptions(store: ReturnType<typeof createConversationStore>) {
@@ -49,6 +56,7 @@ describe('useConversationRuntime', () => {
   beforeEach(() => {
     window.localStorage.clear()
     mocks.chat.mockReset()
+    mocks.cancelChat.mockReset()
     mocks.executePlan.mockReset()
     mocks.revisePlan.mockReset()
     mocks.abandonPlan.mockReset()
@@ -98,6 +106,45 @@ describe('useConversationRuntime', () => {
     expect(result.current.conversationId).toBe(9)
     expect(result.current.sending).toBe(false)
     expect(result.current.timeline[0]?.kind === 'message' && result.current.timeline[0].message.id).toBe('selected')
+  })
+
+  it('cancels the active request without clearing its conversation', async () => {
+    const response = cancellableDeferred<{ conversationId: number }>()
+    mocks.chat.mockReturnValue(response.promise)
+    mocks.cancelChat.mockResolvedValue(true)
+    mocks.messagesSnapshot.mockResolvedValue({ type: 'CONVERSATION_SNAPSHOT', timeline: [] })
+    const store = createConversationStore('runtime-cancel')
+    store.getState().setInput('stop this')
+    const { result } = renderHook(() => useConversationRuntime(runtimeOptions(store)))
+
+    let sending!: Promise<void>
+    act(() => { sending = result.current.send() })
+    await waitFor(() => expect(mocks.chat).toHaveBeenCalledTimes(1))
+    await act(async () => { await result.current.stop() })
+
+    expect(mocks.cancelChat).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 0, requestId: expect.any(String) }))
+    expect(response.promise.cancel).toHaveBeenCalledTimes(1)
+    expect(result.current.sending).toBe(true)
+    response.resolve({ conversationId: 7 })
+    await act(async () => { await sending })
+    expect(result.current.sending).toBe(false)
+  })
+
+  it('stops an active request before opening another conversation', async () => {
+    const response = cancellableDeferred<{ conversationId: number }>()
+    mocks.chat.mockReturnValue(response.promise)
+    mocks.cancelChat.mockResolvedValue(true)
+    mocks.messagesSnapshot.mockResolvedValue({ type: 'CONVERSATION_SNAPSHOT', timeline: [] })
+    const store = createConversationStore('runtime-navigation-cancel')
+    store.getState().setInput('cancel before navigation')
+    const { result } = renderHook(() => useConversationRuntime(runtimeOptions(store)))
+
+    act(() => { void result.current.send() })
+    await waitFor(() => expect(mocks.chat).toHaveBeenCalledTimes(1))
+    act(() => result.current.openConversation(9))
+
+    expect(response.promise.cancel).toHaveBeenCalledTimes(1)
+    expect(mocks.cancelChat).toHaveBeenCalledWith(expect.objectContaining({ requestId: expect.any(String) }))
   })
 
   it('keeps chat failures inline without showing a toast', async () => {

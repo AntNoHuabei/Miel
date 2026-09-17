@@ -48,6 +48,7 @@ export type {
     CatalogModel,
     CatalogProvider,
     ChatAttachmentDraft,
+    ChatCancelRequest,
     ChatMetrics,
     ChatRequest,
     ChatResult,

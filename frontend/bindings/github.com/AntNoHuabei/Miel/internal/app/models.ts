@@ -95,6 +95,14 @@ export interface ChatAttachmentDraft {
 }
 
 /**
+ * ChatCancelRequest identifies the active request a user wants to stop.
+ */
+export interface ChatCancelRequest {
+    "conversationId": number;
+    "requestId": string;
+}
+
+/**
  * ChatMetrics records provider-reported token usage plus wall-clock timing for one assistant reply.
  */
 export interface ChatMetrics {

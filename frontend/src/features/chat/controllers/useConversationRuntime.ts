@@ -61,6 +61,8 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const targetRef = useRef(0)
   const sendingRef = useRef(false)
   const activeRequestRef = useRef('')
+  const activeCallRef = useRef<ReturnType<typeof chatRepository.chat> | null>(null)
+  const stopRequestedRef = useRef(false)
   const inputSavedRef = useRef(false)
   const inputSavedConversationRef = useRef(0)
   const consumeAttachmentsOnSaveRef = useRef(false)
@@ -131,12 +133,30 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     if (consumeAttachmentsOnSaveRef.current) options.consumeAttachments()
   }, [dispatchRun, options.consumeAttachments, setConversation]))
 
+  const cancelActiveRequest = useCallback((reportFailure: boolean) => {
+    const requestId = activeRequestRef.current
+    if (!sendingRef.current || !requestId) return
+    stopRequestedRef.current = true
+    void activeCallRef.current?.cancel?.()
+    void Promise.resolve(chatRepository.cancelChat({
+      conversationId: targetRef.current || conversationRef.current,
+      requestId,
+    })).then((accepted) => {
+      if (!accepted && reportFailure) message.error('请求未处于可取消状态')
+    }).catch((error) => {
+      if (reportFailure) message.error(`停止生成失败：${String(error)}`)
+    })
+  }, [message])
+
   const reset = useCallback(() => {
     void options.beforeConversationChange?.()
     options.discardAttachments()
+    cancelActiveRequest(false)
     sessionVersionRef.current += 1
     messageLoadVersionRef.current += 1
     activeRequestRef.current = ''
+    activeCallRef.current = null
+    stopRequestedRef.current = false
     targetRef.current = 0
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
@@ -149,14 +169,17 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     dispatchRun({ type: 'reset' })
     sendingRef.current = false
     setSending(false)
-  }, [dispatchRun, options.beforeConversationChange, options.discardAttachments, setConversation, setInput, setTimeline])
+  }, [cancelActiveRequest, dispatchRun, options.beforeConversationChange, options.discardAttachments, setConversation, setInput, setTimeline])
 
   const openConversation = useCallback((id: number) => {
     void options.beforeConversationChange?.()
     options.discardAttachments()
+    cancelActiveRequest(false)
     sessionVersionRef.current += 1
     messageLoadVersionRef.current += 1
     activeRequestRef.current = ''
+    activeCallRef.current = null
+    stopRequestedRef.current = false
     inputSavedRef.current = false
     inputSavedConversationRef.current = 0
     consumeAttachmentsOnSaveRef.current = false
@@ -169,7 +192,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     setTimeline([])
     dispatchRun({ type: 'reset' })
     void loadMessages(id)
-  }, [dispatchRun, loadMessages, options.beforeConversationChange, options.discardAttachments, setConversation, setTimeline])
+  }, [cancelActiveRequest, dispatchRun, loadMessages, options.beforeConversationChange, options.discardAttachments, setConversation, setTimeline])
 
   const send = useCallback(async () => {
     const text = input.trim()
@@ -188,6 +211,8 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     inputSavedConversationRef.current = 0
     consumeAttachmentsOnSaveRef.current = true
     activeRequestRef.current = id
+    activeCallRef.current = null
+    stopRequestedRef.current = false
     targetRef.current = requestConversationId
     setInput('')
     setTimeline((items) => [...items, { kind: 'message', sequence: items.length + 1, message: { id: pendingId, role: 'user', content: text, attachments: sentAttachments } }])
@@ -198,7 +223,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     try {
       const context = await options.getRequestContext()
       if (sessionVersionRef.current !== version) return
-      const result = await chatRepository.chat({
+      const call = chatRepository.chat({
         conversationId: requestConversationId,
         message: text,
         reasoning: context.reasoning,
@@ -211,6 +236,8 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         planId: 0,
         planRevision: 0,
       })
+      activeCallRef.current = call
+      const result = await call
       if (sessionVersionRef.current !== version) return
       options.consumeAttachments()
       conversationRef.current = result.conversationId
@@ -222,6 +249,10 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       await options.onConversationCompleted?.(result.conversationId)
     } catch (error) {
       if (sessionVersionRef.current !== version) return
+      if (stopRequestedRef.current && activeRequestRef.current === id) {
+        if (inputSavedConversationRef.current > 0) await loadMessages(inputSavedConversationRef.current)
+        return
+      }
       failed = true
       dispatchRun({ type: 'fail', error: String(error) })
       if (!inputSavedRef.current) {
@@ -234,12 +265,15 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       }
     } finally {
       if (sessionVersionRef.current === version) {
+        if (activeRequestRef.current === id) activeCallRef.current = null
         sendingRef.current = false
         setSending(false)
         if (!failed) dispatchRun({ type: 'reset' })
       }
     }
   }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setTimeline])
+
+  const stop = useCallback(async () => { cancelActiveRequest(true) }, [cancelActiveRequest])
 
   const runPlanAction = useCallback(async (action: 'revise' | 'execute', plan: PlanLite, instruction = '') => {
     if (sendingRef.current || options.enabled === false || conversationRef.current <= 0) return
@@ -251,6 +285,8 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     inputSavedConversationRef.current = 0
     consumeAttachmentsOnSaveRef.current = false
     activeRequestRef.current = id
+    activeCallRef.current = null
+    stopRequestedRef.current = false
     targetRef.current = requestConversationId
     sendingRef.current = true
     setSending(true)
@@ -288,9 +324,11 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         permissionSessionId: context.permissionSessionId,
         agentProfile: action === 'execute' ? (plan.agentProfile ?? context.agentProfile) : context.agentProfile,
       }
-      const result = action === 'execute'
-        ? await chatRepository.executePlan(request)
-        : await chatRepository.revisePlan(request)
+      const call = action === 'execute'
+        ? chatRepository.executePlan(request)
+        : chatRepository.revisePlan(request)
+      activeCallRef.current = call
+      const result = await call
       if (sessionVersionRef.current !== version) return
       conversationRef.current = result.conversationId
       targetRef.current = result.conversationId
@@ -301,12 +339,17 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       await options.onConversationCompleted?.(result.conversationId)
     } catch (error) {
       if (sessionVersionRef.current !== version) return
+      if (stopRequestedRef.current && activeRequestRef.current === id) {
+        await loadMessages(requestConversationId)
+        return
+      }
       failed = true
       dispatchRun({ type: 'fail', error: String(error) })
       await loadMessages(requestConversationId)
       if (sessionVersionRef.current === version) await options.onConversationCompleted?.(requestConversationId)
     } finally {
       if (sessionVersionRef.current === version) {
+        if (activeRequestRef.current === id) activeCallRef.current = null
         sendingRef.current = false
         setSending(false)
         if (!failed) dispatchRun({ type: 'reset' })
@@ -334,5 +377,5 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     }
   }, [loadMessages, message, options])
 
-  return { abandonPlan, conversationId, dispatchRun, input, loadMessages, timeline, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput }
+  return { abandonPlan, conversationId, dispatchRun, input, loadMessages, timeline, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput, stop }
 }

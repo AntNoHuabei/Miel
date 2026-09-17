@@ -22,7 +22,7 @@ function props() {
     reasoningMarks: { 0: '关闭', 1: '低' }, reasoningLocked: false, showCompatibleModelNote: false,
     onAddWorkspace: vi.fn(), onChangeInput: vi.fn(), onChangeMode: vi.fn(), onChangePermissionMode: vi.fn(), onChangeReasoning: vi.fn(),
     onChooseWorkspace: vi.fn(), onPaste: vi.fn(), onPickImages: vi.fn(), onRemoveAttachment: vi.fn(),
-    onRemoveWorkspace: vi.fn(), onSend: vi.fn(), onSwitchModel: vi.fn(),
+    onRemoveWorkspace: vi.fn(), onSend: vi.fn(), onStop: vi.fn(), onSwitchModel: vi.fn(),
   }
 }
 
@@ -31,7 +31,7 @@ describe('ConversationComposer', () => {
     const view = render(<ConversationComposer {...props()} />)
     expect(screen.queryByText('不在工作区')).not.toBeInTheDocument()
     expect(screen.getByText('当前模型不支持图片输入')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'send' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
 
     view.rerender(<ConversationComposer {...props()} showWorkspaceControl currentWorkspace={{ name: 'BlankMind', path: 'D:/code/BlankMind', isCurrent: true }} />)
     expect(screen.getByText('BlankMind')).toBeInTheDocument()
@@ -50,5 +50,13 @@ describe('ConversationComposer', () => {
     render(<ConversationComposer {...values} mode="plan" attachments={[]} supportsImages />)
     await userEvent.click(screen.getByRole('button', { name: '退出 Plan 模式' }))
     expect(values.onChangeMode).toHaveBeenCalledWith('chat')
+  })
+
+  it('replaces send with a stop control while generating', async () => {
+    const values = props()
+    render(<ConversationComposer {...values} attachments={[]} supportsImages sending />)
+
+    await userEvent.click(screen.getByRole('button', { name: '停止生成' }))
+    expect(values.onStop).toHaveBeenCalledTimes(1)
   })
 })

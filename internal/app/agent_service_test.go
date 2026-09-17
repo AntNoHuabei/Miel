@@ -134,6 +134,83 @@ func TestAgentServiceAllowsOnlyOneActiveRunPerConversation(t *testing.T) {
 	}
 }
 
+func TestCancelChatCancelsOnlyTheMatchingActiveRequest(t *testing.T) {
+	service := &AgentService{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service.beginChatRequest("request-1", cancel)
+	service.setChatRequestConversation("request-1", 42)
+
+	if service.CancelChat(ChatCancelRequest{ConversationID: 9, RequestID: "request-1"}) {
+		t.Fatal("cancelled a request from another conversation")
+	}
+	select {
+	case <-ctx.Done():
+		t.Fatal("mismatched cancellation stopped the request")
+	default:
+	}
+	if !service.CancelChat(ChatCancelRequest{ConversationID: 42, RequestID: "request-1"}) {
+		t.Fatal("matching cancellation was rejected")
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("matching cancellation did not cancel the request context")
+	}
+	service.finishChatRequest("request-1")
+	if service.CancelChat(ChatCancelRequest{ConversationID: 42, RequestID: "request-1"}) {
+		t.Fatal("finished request was still cancellable")
+	}
+}
+
+func TestSaveUserMessageHonorsCanceledContext(t *testing.T) {
+	db := newSettingsTestDB(t)
+	oldStore := store
+	store = db
+	t.Cleanup(func() { store = oldStore })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	service := &AgentService{}
+	if _, _, err := service.saveUserMessageWithMeta(ctx, 0, "cancelled", nil, "chat", Provider{}, AgentProfileWork, 0, 0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("saveUserMessageWithMeta() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestSaveUserMessageInitializesProfilesWithinItsTransaction(t *testing.T) {
+	db := newSettingsTestDB(t)
+	oldStore := store
+	store = db
+	t.Cleanup(func() { store = oldStore })
+	if _, err := db.Exec(`
+		INSERT INTO agent_profile_defaults (profile, provider_id, model) VALUES
+		('work', 1, 'model-a'), ('coding', 2, 'model-b')`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	service := &AgentService{}
+	conversationID, _, err := service.saveUserMessageWithMeta(ctx, 0, "new conversation", nil, "chat", Provider{ID: 1, Model: "model-a"}, AgentProfileWork, 0, 0)
+	if err != nil {
+		t.Fatalf("saveUserMessageWithMeta() error = %v", err)
+	}
+	var profiles int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM conversation_profile_models WHERE conversation_id = ?`, conversationID).Scan(&profiles); err != nil {
+		t.Fatal(err)
+	}
+	if profiles != 2 {
+		t.Fatalf("profile count = %d, want 2", profiles)
+	}
+}
+
+func TestAcquireHistoryGateHonorsCanceledContext(t *testing.T) {
+	service := &AgentService{historyGate: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.acquireHistoryGate(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("acquireHistoryGate() error = %v, want context.Canceled", err)
+	}
+}
+
 func TestInstructionWithContextDescribesWorkspacePathRules(t *testing.T) {
 	workspace := filepath.Clean(t.TempDir())
 	instruction := instructionWithContext(workspace)

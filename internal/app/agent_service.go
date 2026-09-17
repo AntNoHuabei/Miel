@@ -57,11 +57,18 @@ type AgentService struct {
 	webSearch      *WebSearchService
 	artifacts      *ArtifactService
 	historyMu      sync.Mutex
+	historyGate    chan struct{}
 	activeRunMu    sync.Mutex
 	activeRuns     map[int64]struct{}
+	activeRequests map[string]activeChatRequest
 	codingCommands *codingCommandManager
 	closeOnce      sync.Once
 	closeErr       error
+}
+
+type activeChatRequest struct {
+	conversationID int64
+	cancel         context.CancelFunc
 }
 
 func (s *AgentService) codingCommandManager() *codingCommandManager {
@@ -96,6 +103,63 @@ func (s *AgentService) finishConversationRun(conversationID int64) {
 	s.activeRunMu.Lock()
 	delete(s.activeRuns, conversationID)
 	s.activeRunMu.Unlock()
+}
+
+func (s *AgentService) beginChatRequest(requestID string, cancel context.CancelFunc) {
+	if strings.TrimSpace(requestID) == "" {
+		return
+	}
+	s.activeRunMu.Lock()
+	if s.activeRequests == nil {
+		s.activeRequests = make(map[string]activeChatRequest)
+	}
+	s.activeRequests[requestID] = activeChatRequest{cancel: cancel}
+	s.activeRunMu.Unlock()
+}
+
+func (s *AgentService) setChatRequestConversation(requestID string, conversationID int64) {
+	if strings.TrimSpace(requestID) == "" || conversationID <= 0 {
+		return
+	}
+	s.activeRunMu.Lock()
+	if active, ok := s.activeRequests[requestID]; ok {
+		active.conversationID = conversationID
+		s.activeRequests[requestID] = active
+	}
+	s.activeRunMu.Unlock()
+}
+
+func (s *AgentService) finishChatRequest(requestID string) {
+	if strings.TrimSpace(requestID) == "" {
+		return
+	}
+	s.activeRunMu.Lock()
+	delete(s.activeRequests, requestID)
+	s.activeRunMu.Unlock()
+}
+
+// CancelChat stops the active request identified by the client-generated request ID.
+func (s *AgentService) CancelChat(req ChatCancelRequest) bool {
+	if strings.TrimSpace(req.RequestID) == "" {
+		return false
+	}
+	s.activeRunMu.Lock()
+	active, ok := s.activeRequests[req.RequestID]
+	if ok && req.ConversationID > 0 && active.conversationID > 0 && active.conversationID != req.ConversationID {
+		ok = false
+	}
+	s.activeRunMu.Unlock()
+	if !ok {
+		logInfo(withLogContext(context.Background(), req.ConversationID, req.RequestID), "chat.cancel", "accepted", false)
+		return false
+	}
+	active.cancel()
+	conversationID := active.conversationID
+	if conversationID == 0 {
+		conversationID = req.ConversationID
+	}
+	logInfo(withLogContext(context.Background(), conversationID, req.RequestID), "chat.cancel", "accepted", true)
+	return true
 }
 
 // SetNotify 注入事件广播回调(main 装配时设置)。
@@ -179,6 +243,12 @@ type ChatRequest struct {
 	AgentProfile        string   `json:"agentProfile"` // work | coding
 	PlanID              int64    `json:"planId"`
 	PlanRevision        int      `json:"planRevision"`
+}
+
+// ChatCancelRequest identifies the active request a user wants to stop.
+type ChatCancelRequest struct {
+	ConversationID int64  `json:"conversationId"`
+	RequestID      string `json:"requestId"`
 }
 
 // applyReasoning 把思考档位映射到 GenerationConfig。
@@ -285,9 +355,19 @@ type ChatResult struct {
 }
 
 // Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
-func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
+func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result ChatResult, retErr error) {
 	msg := strings.TrimSpace(req.Message)
 	convID := req.ConversationID
+	if callCtx == nil {
+		callCtx = context.Background()
+	}
+	runCtx, cancelRun := context.WithCancel(callCtx)
+	s.beginChatRequest(req.RequestID, cancelRun)
+	defer func() {
+		s.finishChatRequest(req.RequestID)
+		cancelRun()
+	}()
+	wasStopped := func() bool { return errors.Is(runCtx.Err(), context.Canceled) }
 	mode := normalizeChatMode(req.Mode)
 	if mode == "" {
 		return ChatResult{}, errors.New("不支持的聊天模式")
@@ -300,12 +380,23 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	var execution *planExecutionContext
 	var executionRunID int64
 	chatStartedAt := time.Now()
-	logCtx := withLogContext(context.Background(), convID, req.RequestID)
+	logCtx := withLogContext(runCtx, convID, req.RequestID)
 	logInfo(logCtx, "chat.start", "has_text", msg != "", "attachment_count", len(req.AttachmentIDs))
 	var userMessageID int64
 	runErrorForwarded := false
 	runErrorPersisted := false
 	defer func() {
+		if wasStopped() {
+			if executionRunID > 0 {
+				if err := finishPlanRun(executionRunID, execution.Plan.ID, "interrupted", "用户已停止生成"); err != nil {
+					log.Println("finish interrupted plan run:", err)
+				}
+			}
+			logInfo(logCtx, "chat.finish", "status", "stopped", "duration_ms", time.Since(chatStartedAt).Milliseconds())
+			result = ChatResult{ConversationID: convID}
+			retErr = nil
+			return
+		}
 		if retErr != nil && executionRunID > 0 {
 			if err := finishPlanRun(executionRunID, execution.Plan.ID, "failed", retErr.Error()); err != nil {
 				log.Println("finish failed plan run:", err)
@@ -420,10 +511,14 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	} else if mode == "execute" {
 		messageType = "plan_execution"
 	}
-	convID, userMessageID, err = s.saveUserMessageWithMeta(convID, msg, req.AttachmentIDs, messageType, p, profile, req.PlanID, req.PlanRevision)
+	setupCtx, cancelSetup := context.WithTimeout(runCtx, 15*time.Second)
+	defer cancelSetup()
+	logInfo(logCtx, "chat.persist.start")
+	convID, userMessageID, err = s.saveUserMessageWithMeta(setupCtx, convID, msg, req.AttachmentIDs, messageType, p, profile, req.PlanID, req.PlanRevision)
 	if err != nil {
 		return ChatResult{}, err
 	}
+	s.setChatRequestConversation(req.RequestID, convID)
 	if lockedConversationID == 0 {
 		if !s.beginConversationRun(convID) {
 			return ChatResult{}, errConversationBusy
@@ -438,6 +533,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 	}
 	logCtx = withLogContext(logCtx, convID, req.RequestID)
+	logInfo(logCtx, "chat.persist.finish", "message_id", userMessageID)
 	logInfo(logCtx, "chat.input.saved", "message_id", userMessageID)
 	s.emit("agent.input.saved", map[string]any{
 		"conversationId": convID,
@@ -454,9 +550,10 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		return ChatResult{}, errors.New("AG-UI 会话存储未初始化")
 	}
 	// AG-UI 每轮会自行记录最新用户消息;这里只迁移此前的旧格式历史。
-	if err := s.ensureAGUIHistory(context.Background(), convID, hist[:len(hist)-1]); err != nil {
+	if err := s.ensureAGUIHistory(setupCtx, convID, hist[:len(hist)-1]); err != nil {
 		return ChatResult{}, err
 	}
+	cancelSetup()
 
 	// 思考档位:按服务商机制映射(布尔/对象式 thinking 或 reasoning_effort 级别)
 	gc := model.GenerationConfig{Stream: true}
@@ -574,7 +671,8 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}),
 	)
 
-	ctx := WithPermissionContext(logCtx, s.permissions, req.PermissionSessionID, workspacePath)
+	runLogCtx := withLogContext(runCtx, convID, req.RequestID)
+	ctx := WithPermissionContext(runLogCtx, s.permissions, req.PermissionSessionID, workspacePath)
 	threadID := "conv-" + strconv.FormatInt(convID, 10)
 	aguiMsgs := make([]aguitypes.Message, 0, len(hist))
 	for _, h := range hist {
@@ -593,6 +691,9 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	logInfo(ctx, "model.run.start", "provider", p.Kind, "model", p.Model, "max_tool_iterations", maxAgentToolIterations, "tools_enabled", toolsEnabled)
 	aguiEvents, err := aguiR.Run(ctx, input)
 	if err != nil {
+		if wasStopped() {
+			return ChatResult{ConversationID: convID}, nil
+		}
 		logError(ctx, "model.run.start_failed", err, "provider", p.Kind, "model", p.Model)
 		return ChatResult{}, err
 	}
@@ -665,7 +766,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	deviationRequested, deviationReason := deviation.snapshot()
 	var metrics *ChatMetrics
 	var assistantMessageID int64
-	if out != "" {
+	if out != "" && (!wasStopped() || mode == "chat") {
 		built := buildChatMetrics(p.Model, traceUsage, time.Since(startedAt))
 		metrics = &built
 		messageType := "chat"
@@ -677,7 +778,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 			return ChatResult{}, err
 		}
 	}
-	if runErr != nil {
+	if runErr != nil && !wasStopped() {
 		if s.artifacts != nil {
 			_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
 		}
@@ -688,6 +789,14 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		}
 		s.emit("conversations.changed", "updated")
 		return ChatResult{}, errors.New(runErr.Message)
+	}
+	if wasStopped() {
+		if s.artifacts != nil {
+			_ = s.artifacts.finishRun(publisher.scope, answerMessageID)
+		}
+		s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
+		s.emit("conversations.changed", "updated")
+		return ChatResult{ConversationID: convID, Answer: out, Metrics: metrics}, nil
 	}
 	if err := finalChatError(out, nil); err != nil {
 		if s.artifacts != nil {
@@ -946,7 +1055,7 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 		return Conversation{}, err
 	}
 	id, _ := res.LastInsertId()
-	if err := initializeConversationProfiles(tx, id, AgentProfileWork, provider); err != nil {
+	if err := initializeConversationProfiles(context.Background(), tx, id, AgentProfileWork, provider); err != nil {
 		return Conversation{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -958,11 +1067,11 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 }
 
 func (s *AgentService) saveUserMessage(conversationID int64, content string, attachmentIDs []string) (int64, int64, error) {
-	return s.saveUserMessageWithMeta(conversationID, content, attachmentIDs, "chat", Provider{}, AgentProfileWork, 0, 0)
+	return s.saveUserMessageWithMeta(context.Background(), conversationID, content, attachmentIDs, "chat", Provider{}, AgentProfileWork, 0, 0)
 }
 
-func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider, profile string, planID int64, planRevision int) (int64, int64, error) {
-	tx, err := store.Begin()
+func (s *AgentService) saveUserMessageWithMeta(ctx context.Context, conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider, profile string, planID int64, planRevision int) (int64, int64, error) {
+	tx, err := store.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -976,7 +1085,7 @@ func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content str
 		if r := []rune(title); len(r) > 24 {
 			title = string(r[:24]) + "…"
 		}
-		result, err := tx.Exec(
+		result, err := tx.ExecContext(ctx,
 			"INSERT INTO conversations (title, provider_id, model, agent_profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
 			title, provider.ID, provider.Model, profile, now(), now())
 		if err != nil {
@@ -986,11 +1095,11 @@ func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content str
 		if err != nil {
 			return 0, 0, err
 		}
-		if err := initializeConversationProfiles(tx, conversationID, profile, provider); err != nil {
+		if err := initializeConversationProfiles(ctx, tx, conversationID, profile, provider); err != nil {
 			return 0, 0, err
 		}
 	}
-	result, err := tx.Exec(`
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO messages (conversation_id, role, content, message_type, plan_id, plan_revision, agent_profile, created_at)
 		VALUES (?, 'user', ?, ?, ?, ?, ?, ?)`,
 		conversationID, content, messageType, planID, planRevision, profile, now())
@@ -1010,7 +1119,7 @@ func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content str
 	}
 	committed := false
 	defer func() { finalize(committed) }()
-	if _, err := tx.Exec("UPDATE conversations SET updated_at = ? WHERE id = ?", now(), conversationID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE conversations SET updated_at = ? WHERE id = ?", now(), conversationID); err != nil {
 		return 0, 0, err
 	}
 	if err := tx.Commit(); err != nil {
