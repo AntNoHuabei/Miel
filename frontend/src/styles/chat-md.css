@@ -795,15 +795,28 @@
   margin-left: auto;
 }
 
-.bm-chat-mode-switch {
-  width: 108px;
-  flex: 0 0 108px;
+.bm-chat-active-mode.ant-btn {
+  height: 32px;
+  gap: 6px;
+  padding-inline: 9px !important;
+  border-radius: 16px;
+  color: var(--bm-chat-muted) !important;
+  background: var(--bm-chat-hover) !important;
 }
 
-.bm-chat-mode-switch .ant-segmented-item {
-  min-width: 50px;
-  text-align: center;
+.bm-chat-active-mode-icon {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
 }
+
+.bm-chat-active-mode-icon .anticon { grid-area: 1 / 1; }
+.bm-chat-active-mode-icon .is-close { display: none; }
+.bm-chat-active-mode:hover .is-idle,
+.bm-chat-active-mode:focus-visible .is-idle { display: none; }
+.bm-chat-active-mode:hover .is-close,
+.bm-chat-active-mode:focus-visible .is-close { display: inline-flex; }
 
 .bm-chat-workspace-trigger.ant-btn {
   display: flex;
@@ -1094,6 +1107,38 @@
 .bm-chat-new-session {
   flex: 0 0 auto;
 }
+
+.bm-chat-profile-trigger.ant-btn {
+  display: flex;
+  width: fit-content;
+  min-width: 92px;
+  height: 44px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding-inline: 12px !important;
+  color: var(--bm-chat-text) !important;
+  font-size: 18px;
+  border-radius: 8px;
+}
+
+.bm-chat-profile-trigger:hover,
+.bm-chat-profile-trigger:focus-visible { background: var(--bm-chat-hover) !important; }
+
+.bm-chat-profile-option {
+  display: flex;
+  min-width: 230px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 4px 2px;
+}
+
+.bm-chat-profile-option > span:first-child { display: grid; gap: 2px; }
+.bm-chat-profile-option strong { color: var(--bm-chat-text); font-size: 14px; }
+.bm-chat-profile-option small { color: var(--bm-chat-muted); font-size: 12px; }
 
 .bm-chat-new-session:hover,
 .bm-chat-new-session:focus-visible {
@@ -1421,15 +1466,6 @@
 
   .bm-chat-model-trigger.ant-btn {
     max-width: 44vw;
-  }
-
-  .bm-chat-mode-switch {
-    width: 96px;
-    flex-basis: 96px;
-  }
-
-  .bm-chat-mode-switch .ant-segmented-item {
-    min-width: 44px;
   }
 
   .bm-plan-message {

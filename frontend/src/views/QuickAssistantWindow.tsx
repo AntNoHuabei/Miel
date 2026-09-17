@@ -88,7 +88,7 @@ export default function QuickAssistantWindow({
       const preferences = raw ? JSON.parse(raw) as Record<string, string> : {}
       reasoning = current ? preferences[`${current.id}::${current.model}`] ?? '' : ''
     } catch { /* Use the provider default when preferences are unavailable. */ }
-    return { reasoning, workspacePath: '', permissionSessionId: '' }
+      return { reasoning, workspacePath: '', permissionSessionId: '', agentProfile: 'work' as const }
   }, [])
 
   const runtime = useConversationRuntime({

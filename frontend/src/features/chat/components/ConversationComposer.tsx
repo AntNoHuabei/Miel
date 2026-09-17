@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { ClipboardEvent as ReactClipboardEvent } from 'react'
-import { Button, Dropdown, Flex, Input, Popover, Segmented, Select, Slider, Space, Tooltip, Typography } from 'antd'
+import { Button, Dropdown, Flex, Input, Popover, Select, Slider, Space, Tooltip, Typography } from 'antd'
 import {
   CameraOutlined,
+  BulbOutlined,
   CheckOutlined,
   CloseOutlined,
+  CloseCircleFilled,
   FolderAddOutlined,
   FolderOpenOutlined,
   PictureOutlined,
@@ -38,6 +40,8 @@ interface ConversationComposerProps {
   selectedModel?: string
   modelOptions: ModelOptionGroup[]
   activeModelLabel: string
+  modelAvailable: boolean
+  profileReady: boolean
   reasoningPillLabel: string
   reasoningStatus: string
   reasoningSteps: string[]
@@ -67,7 +71,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     if (!query) return props.workspaces
     return props.workspaces.filter((workspace) => workspace.name.toLowerCase().includes(query) || workspace.path.toLowerCase().includes(query))
   }, [props.workspaces, workspaceQuery])
-  const sendDisabled = (!props.input.trim() && props.attachments.length === 0) || (props.attachments.length > 0 && !props.supportsImages)
+  const sendDisabled = !props.modelAvailable || (!props.input.trim() && props.attachments.length === 0) || (props.attachments.length > 0 && !props.supportsImages)
 
   const chooseWorkspace = async (path: string) => {
     await props.onChooseWorkspace(path)
@@ -100,21 +104,15 @@ export function ConversationComposer(props: ConversationComposerProps) {
           />
           <Flex className="bm-chat-composer-actions" justify="space-between" align="center" wrap="wrap" style={{ padding: '4px 6px 6px' }} gap={6}>
             <Space size={2} wrap className="bm-chat-composer-actions-left">
-              <Segmented
-                className="bm-chat-mode-switch"
-                size="small"
-                value={props.mode}
-                disabled={props.sending}
-                options={[{ label: 'Chat', value: 'chat' }, { label: 'Plan', value: 'plan' }]}
-                onChange={(value) => props.onChangeMode(value as 'chat' | 'plan')}
-              />
               <Dropdown menu={{ items: [
+                { key: 'plan', icon: <BulbOutlined />, label: 'Plan', disabled: props.sending || !props.profileReady || props.mode === 'plan', onClick: () => props.onChangeMode('plan') },
                 { key: 'image', icon: <PictureOutlined />, label: '添加图片', disabled: props.sending, onClick: () => void props.onPickImages() },
                 { key: 'capture', icon: <CameraOutlined />, label: '截屏处理', onClick: () => window.dispatchEvent(new Event('blankmind:capture')) },
               ] }} trigger={['click']} placement="topLeft">
                 <Button type="text" icon={<PlusOutlined />} aria-label="添加内容" />
               </Dropdown>
               <PermissionModeSelector mode={props.permissionMode} onChange={props.onChangePermissionMode} disabled={props.sending} />
+              {props.mode === 'plan' && <Tooltip title="退出 Plan，回到普通对话"><Button type="text" className="bm-chat-active-mode" aria-label="退出 Plan 模式" onClick={() => props.onChangeMode('chat')} disabled={props.sending}><span className="bm-chat-active-mode-icon"><BulbOutlined className="is-idle" /><CloseCircleFilled className="is-close" /></span><span>Plan</span></Button></Tooltip>}
               {props.showWorkspaceControl && (
                 <Popover
                   trigger="click"
@@ -149,7 +147,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
             <Space size={6} className="bm-chat-composer-actions-right">
               <Popover trigger="click" placement="topRight" rootClassName="bm-chat-model-popover" content={<div className="bm-chat-model-panel">
                 <label className="bm-chat-model-panel-label" htmlFor="bm-chat-model-select">模型</label>
-                <Select id="bm-chat-model-select" className="bm-chat-model-select" value={props.selectedModel} disabled={props.sending} onChange={(value) => {
+                <Select id="bm-chat-model-select" className="bm-chat-model-select" value={props.selectedModel} disabled={props.sending || !props.profileReady} onChange={(value) => {
                   const [providerId, ...modelParts] = String(value).split('::')
                   void props.onSwitchModel(Number(providerId), modelParts.join('::'))
                 }} placeholder="未配置模型" popupMatchSelectWidth={false} options={props.modelOptions} getPopupContainer={(trigger) => trigger.parentElement ?? document.body} />
@@ -158,9 +156,9 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 <Slider className="bm-chat-reasoning-slider" min={0} max={Math.max(props.reasoningSteps.length - 1, 0)} step={1} value={props.reasoningIndex} disabled={props.reasoningLocked} onChange={(value) => props.onChangeReasoning(props.reasoningSteps[value as number] ?? '')} marks={props.reasoningMarks} tooltip={{ open: false }} />
                 {props.showCompatibleModelNote && <Text type="secondary" className="bm-chat-model-panel-note">OpenAI 兼容模型会透传 reasoning_effort。</Text>}
               </div>}>
-                <Button type="text" className="bm-chat-model-trigger" disabled={props.sending}><span className="bm-chat-model-trigger-name">{props.activeModelLabel}</span>{props.reasoningPillLabel && <span className="bm-chat-model-trigger-reasoning">{props.reasoningPillLabel}</span>}<RightOutlined className="bm-chat-model-trigger-chevron" /></Button>
+                <Button type="text" className="bm-chat-model-trigger" disabled={props.sending || !props.profileReady}><span className="bm-chat-model-trigger-name">{props.activeModelLabel}</span>{props.reasoningPillLabel && <span className="bm-chat-model-trigger-reasoning">{props.reasoningPillLabel}</span>}<RightOutlined className="bm-chat-model-trigger-chevron" /></Button>
               </Popover>
-              <Tooltip title={props.attachments.length > 0 && !props.supportsImages ? '当前模型不支持图片输入' : props.sending ? '生成中…' : '发送'}>
+              <Tooltip title={!props.modelAvailable ? '请为当前模式选择模型' : props.attachments.length > 0 && !props.supportsImages ? '当前模型不支持图片输入' : props.sending ? '生成中…' : '发送'}>
                 <Button type="primary" shape="circle" size="large" icon={<SendOutlined />} loading={props.sending} disabled={sendDisabled} onClick={() => void props.onSend()} />
               </Tooltip>
             </Space>

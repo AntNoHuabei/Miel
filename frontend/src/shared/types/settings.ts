@@ -10,3 +10,5 @@ export interface PingResultLite { ok: boolean; message: string; model: string; l
 export interface ReasoningSpecLite { type: 'toggle' | 'effort' | 'always' | 'none' | string; levels?: string[]; note?: string }
 export interface CatalogModelLite { id: string; label: string; reasoning: ReasoningSpecLite; multimodal: boolean }
 export interface CatalogProviderLite { kind: string; name: string; baseUrl: string; models: CatalogModelLite[] }
+export interface ProfileModelDefaultLite { providerId: number; model: string }
+export interface AgentProfileDefaultsLite { work: ProfileModelDefaultLite; coding: ProfileModelDefaultLite }

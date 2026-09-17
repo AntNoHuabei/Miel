@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Button, Flex, Popover, Tooltip, Typography } from 'antd'
+import { Button, Dropdown, Flex, Popover, Tooltip, Typography } from 'antd'
 import {
   BellOutlined,
   BgColorsOutlined,
   CheckOutlined,
   CheckSquareOutlined,
   DeleteOutlined,
+  DownOutlined,
   EditOutlined,
   FlagOutlined,
   FileDoneOutlined,
@@ -16,6 +17,7 @@ import {
   SettingOutlined,
 } from '@ant-design/icons'
 import type { WorkspaceLite } from '../../../api'
+import type { AgentProfile } from '../../../shared/types/chat'
 import type { ViewKey } from '../../shell/shellStore'
 import { BM_THEMES, useBMTheme } from '../../../theme/ThemeContext'
 
@@ -28,24 +30,32 @@ interface ConversationSummary {
 
 interface ConversationSidebarProps {
   activeView: ViewKey
+  agentProfile: AgentProfile
+  profileReady: boolean
+  sending: boolean
   conversations: ConversationSummary[]
   currentConversationId: number
   currentWorkspace?: WorkspaceLite
   reminderCount: number
   onDeleteCurrent: () => void | Promise<void>
   onNavigate: (view: ViewKey) => void
+  onChangeAgentProfile: (profile: AgentProfile) => void | Promise<unknown>
   onNewChat: () => void
   onOpenConversation: (id: number) => void
 }
 
 export function ConversationSidebar({
   activeView,
+  agentProfile,
+  profileReady,
+  sending,
   conversations,
   currentConversationId,
   currentWorkspace,
   reminderCount,
   onDeleteCurrent,
   onNavigate,
+  onChangeAgentProfile,
   onNewChat,
   onOpenConversation,
 }: ConversationSidebarProps) {
@@ -61,6 +71,20 @@ export function ConversationSidebar({
 
   return (
     <aside className="bm-chat-app-sidebar" aria-label="应用导航与会话">
+      <Dropdown
+        trigger={['click']}
+        placement="bottomLeft"
+        menu={{
+          selectedKeys: [agentProfile],
+          onClick: ({ key }) => void onChangeAgentProfile(key as AgentProfile),
+          items: [
+            { key: 'work', label: <span className="bm-chat-profile-option"><span><strong>Work</strong><small>待办、文档与日常工作</small></span>{agentProfile === 'work' && <CheckOutlined />}</span> },
+            { key: 'coding', label: <span className="bm-chat-profile-option"><span><strong>Coding</strong><small>构建、调试与代码修改</small></span>{agentProfile === 'coding' && <CheckOutlined />}</span> },
+          ],
+        }}
+      >
+        <Button type="text" className="bm-chat-profile-trigger" disabled={sending || !profileReady}><strong>{agentProfile === 'coding' ? 'Coding' : 'Work'}</strong><DownOutlined /></Button>
+      </Dropdown>
       <Button type="text" className="bm-chat-new-session" icon={<EditOutlined />} onClick={() => { onNewChat(); onNavigate('chat') }}>
         <span>新建对话</span>
       </Button>

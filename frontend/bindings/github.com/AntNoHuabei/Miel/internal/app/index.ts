@@ -40,6 +40,7 @@ export {
 } from "./models.js";
 
 export type {
+    AgentProfileDefaults,
     ApprovalRequest,
     ArtifactPreview,
     ArtifactRef,
@@ -70,6 +71,7 @@ export type {
     PermissionState,
     PingResult,
     PlanActionRequest,
+    ProfileModel,
     Provider,
     ProviderInput,
     ProviderModel,
@@ -79,7 +81,9 @@ export type {
     SaveMessageArtifactRequest,
     SaveShotReq,
     ScreenshotResult,
+    SetAgentProfileDefaultRequest,
     SetConversationModelRequest,
+    SetConversationProfileRequest,
     Setting,
     Skill,
     SkillDependencyPlan,

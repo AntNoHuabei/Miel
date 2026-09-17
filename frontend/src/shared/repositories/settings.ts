@@ -8,6 +8,7 @@ import type {
   ProviderModelLite,
   ProviderTemplateLite,
   WorkspaceLite,
+	AgentProfileDefaultsLite,
 } from '../types/settings'
 import { Services } from './bindings'
 import { normalizeList } from './helpers'
@@ -39,6 +40,8 @@ export const settingsRepository = {
   getSetting: (key: string) => Services.SettingsService.GetSetting(key),
   setSetting: (key: string, value: string) => Services.SettingsService.SetSetting(key, value),
   setProviderModel: (id: number, model: string) => Services.SettingsService.SetProviderModel(id, model),
+  agentProfileDefaults: async () => (await Services.SettingsService.GetAgentProfileDefaults()) as AgentProfileDefaultsLite,
+  setAgentProfileDefault: (profile: 'work' | 'coding', providerId: number, model: string) => Services.SettingsService.SetAgentProfileDefault({ profile, providerId, model }),
   enableModel: (id: number, model: string, label: string, custom: boolean) => Services.SettingsService.EnableModel(id, model, label, custom),
   disableModel: (id: number, model: string) => Services.SettingsService.DisableModel(id, model),
   deleteProvider: (id: number) => Services.SettingsService.DeleteProvider(id),

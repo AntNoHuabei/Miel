@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App as AntApp } from 'antd'
 import type { CatalogProviderLite, DiscoveredModelLite, ModelOptionLite, ProviderLite, ReasoningSpecLite, WorkspaceLite } from '../../../api'
+import type { AgentProfile, ProfileModelLite } from '../../../shared/types/chat'
+import type { AgentProfileDefaultsLite } from '../../../shared/types/settings'
 import { chatRepository, settingsRepository } from '../../../shared/repositories'
 import { useWailsEvent } from '../../../shared/wails/events'
 
@@ -44,14 +46,18 @@ export function useChatControls(conversationId = 0) {
   const [workspaces, setWorkspaces] = useState<WorkspaceLite[]>([])
   const [reasoning, setReasoning] = useState('')
   const [reasoningPreferences, setReasoningPreferences] = useState<Record<string, string>>({})
-  const [conversationModel, setConversationModel] = useState<{ providerId: number; model: string } | null>(null)
+  const [agentProfile, setAgentProfile] = useState<AgentProfile>('work')
+  const [profileModels, setProfileModels] = useState<Partial<Record<AgentProfile, ProfileModelLite>>>({})
+  const [profileDefaults, setProfileDefaults] = useState<AgentProfileDefaultsLite | null>(null)
+  const [loadedConversationId, setLoadedConversationId] = useState(0)
   const reasoningPreferencesRef = useRef<Record<string, string>>({})
 
   const defaultProvider = providers.find((provider) => provider.isDefault) ?? providers[0]
-  const activeProvider = conversationId > 0 && conversationModel
-    ? providers.find((provider) => provider.id === conversationModel.providerId)
+  const profileModel = conversationId > 0 ? profileModels[agentProfile] : profileDefaults?.[agentProfile]
+  const activeProvider = profileModel
+    ? providers.find((provider) => provider.id === profileModel.providerId)
     : defaultProvider
-  const activeProviderModel = conversationId > 0 && conversationModel?.model ? conversationModel.model : activeProvider?.model
+  const activeProviderModel = profileModel?.model || activeProvider?.model
   const optionGroups = useMemo(() => {
     const groups = new Map<string, Array<{ value: string; label: string }>>()
     for (const option of modelOptions) {
@@ -95,7 +101,9 @@ export function useChatControls(conversationId = 0) {
     return marks
   }, [reasoningSteps, compatibleGateway])
   const activeModel = modelOptions.find((option) => option.providerId === activeProvider?.id && option.model === activeProviderModel)
-  const activeModelLabel = activeModel ? chatModelLabel(activeModel, discoveredModel) : activeProviderModel || '未配置模型'
+  const profileReady = conversationId === 0 || loadedConversationId === conversationId
+  const modelAvailable = profileReady && !!activeProvider && !!activeProviderModel && !!activeModel
+  const activeModelLabel = activeModel ? chatModelLabel(activeModel, discoveredModel) : profileModel ? '需要重新选择模型' : activeProviderModel || '未配置模型'
   const reasoningStatus = reasoningLocked ? (specType === 'always' ? '思考常开' : specType === 'none' ? '不支持思考' : '不可调节') : reasoningMarks[reasoningIndex] ?? '关闭'
   const reasoningPillLabel = reasoningLocked ? (specType === 'always' ? '常开' : '') : reasoningMarks[reasoningIndex] ?? '关闭'
   const reasoningPreferenceKey = activeProvider && activeProviderModel ? `${activeProvider.id}::${activeProviderModel}` : ''
@@ -121,13 +129,19 @@ export function useChatControls(conversationId = 0) {
   }, [])
   const reloadConversationModel = useCallback(async () => {
     if (conversationId <= 0) {
-      setConversationModel(null)
+      setAgentProfile('work')
+      setProfileModels({})
+      setLoadedConversationId(0)
       return
     }
     try {
       const conversations = await chatRepository.listConversations()
       const current = conversations.find((item) => item.id === conversationId)
-      setConversationModel(current && current.providerId > 0 && current.model ? { providerId: current.providerId, model: current.model } : null)
+      if (current) {
+        setAgentProfile(current.agentProfile === 'coding' ? 'coding' : 'work')
+        setProfileModels(current.profileModels ?? {})
+        setLoadedConversationId(conversationId)
+      }
     } catch { /* Keep the last known model while the conversation list reloads. */ }
   }, [conversationId])
 
@@ -135,6 +149,7 @@ export function useChatControls(conversationId = 0) {
     void reloadProviders()
     void reloadModelOptions()
     void reloadWorkspaces()
+    settingsRepository.agentProfileDefaults().then(setProfileDefaults).catch(() => undefined)
     settingsRepository.modelCatalog().then(setCatalog).catch(() => undefined)
     settingsRepository.getSetting(REASONING_STORAGE_KEY).then((raw) => {
       if (!raw) return
@@ -152,6 +167,7 @@ export function useChatControls(conversationId = 0) {
   useWailsEvent<string>('models.changed', useCallback(() => {
     void reloadProviders()
     void reloadModelOptions()
+    settingsRepository.agentProfileDefaults().then(setProfileDefaults).catch(() => undefined)
   }, [reloadProviders, reloadModelOptions]))
   useWailsEvent<string>('conversations.changed', useCallback(() => {
     void reloadConversationModel()
@@ -178,15 +194,27 @@ export function useChatControls(conversationId = 0) {
   const switchModel = useCallback(async (providerId: number, model: string) => {
     try {
       if (conversationId > 0) {
-        await chatRepository.setConversationModel({ conversationId, providerId, model })
-        setConversationModel({ providerId, model })
+        await chatRepository.setConversationModel({ conversationId, profile: agentProfile, providerId, model })
+        setProfileModels((current) => ({ ...current, [agentProfile]: { providerId, model } }))
       } else {
-        await settingsRepository.setProviderModel(providerId, model)
+        await settingsRepository.setAgentProfileDefault(agentProfile, providerId, model)
+        setProfileDefaults((current) => current ? { ...current, [agentProfile]: { providerId, model } } : current)
       }
       message.success(`已切换到 ${model}`)
       await Promise.all([reloadProviders(), reloadModelOptions()])
     } catch (error) { message.error(`切换失败:${String(error)}`) }
-  }, [conversationId, message, reloadModelOptions, reloadProviders])
+  }, [agentProfile, conversationId, message, reloadModelOptions, reloadProviders])
+
+  const switchProfile = useCallback(async (profile: AgentProfile) => {
+    try {
+      if (conversationId > 0) await chatRepository.setConversationProfile({ conversationId, profile })
+      setAgentProfile(profile)
+      message.success(profile === 'coding' ? '已切换到 Coding' : '已切换到 Work')
+      return true
+    } catch (error) { message.error(`切换模式失败:${String(error)}`); return false }
+  }, [conversationId, message])
+
+  const resetProfile = useCallback(() => setAgentProfile('work'), [])
   const changeReasoning = useCallback((value: string) => {
     setReasoning(value)
     if (!reasoningPreferenceKey) return
@@ -197,6 +225,7 @@ export function useChatControls(conversationId = 0) {
   }, [message, reasoningPreferenceKey])
 
   return {
+    agentProfile,
     activeModelLabel,
     addWorkspace,
     changeReasoning,
@@ -211,10 +240,14 @@ export function useChatControls(conversationId = 0) {
     reasoningStatus,
     reasoningSteps,
     removeWorkspace,
-    selectedModel: activeProvider && activeProviderModel ? `${activeProvider.id}::${activeProviderModel}` : undefined,
+    modelAvailable,
+    profileReady,
+    selectedModel: modelAvailable ? `${activeProvider.id}::${activeProviderModel}` : undefined,
     showCompatibleModelNote: customGateway && !reasoningSpec,
-    supportsImages,
+    supportsImages: modelAvailable && supportsImages,
+    switchProfile,
     switchModel,
+    resetProfile,
     workspaces,
   }
 }

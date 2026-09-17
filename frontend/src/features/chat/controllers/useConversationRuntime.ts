@@ -10,12 +10,14 @@ import type { AgentEnvelope } from '../model/agentRun'
 import type { SkillInstallProgressLite } from '../../../api'
 import type { ConversationState } from '../model/conversationStore'
 import type { PlanLite } from '../../../shared/types/chat'
+import type { AgentProfile } from '../../../shared/types/chat'
 
 interface RequestContext {
   reasoning: string
   workspacePath: string
   permissionSessionId: string
   mode?: 'chat' | 'plan'
+  agentProfile: AgentProfile
 }
 
 interface ConversationRuntimeOptions {
@@ -205,6 +207,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         workspacePath: context.workspacePath,
         permissionSessionId: context.permissionSessionId,
         mode: context.mode ?? 'chat',
+        agentProfile: context.agentProfile,
         planId: 0,
         planRevision: 0,
       })
@@ -283,6 +286,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         requestId: id,
         workspacePath: context.workspacePath,
         permissionSessionId: context.permissionSessionId,
+        agentProfile: action === 'execute' ? (plan.agentProfile ?? context.agentProfile) : context.agentProfile,
       }
       const result = action === 'execute'
         ? await chatRepository.executePlan(request)
@@ -321,6 +325,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         requestId: requestId('plan-abandon'),
         workspacePath: '',
         permissionSessionId: '',
+        agentProfile: plan.agentProfile ?? 'work',
       })
       await loadMessages(conversationRef.current)
       await options.onConversationCompleted?.(conversationRef.current)

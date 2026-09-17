@@ -40,6 +40,7 @@ type PlanRevision struct {
 	AssistantMessageID int64  `json:"assistantMessageId"`
 	ProviderID         int64  `json:"providerId"`
 	Model              string `json:"model"`
+	AgentProfile       string `json:"agentProfile"`
 	CreatedAt          int64  `json:"createdAt"`
 }
 
@@ -51,10 +52,12 @@ type PlanActionRequest struct {
 	RequestID           string `json:"requestId"`
 	WorkspacePath       string `json:"workspacePath"`
 	PermissionSessionID string `json:"permissionSessionId"`
+	AgentProfile        string `json:"agentProfile"`
 }
 
 type SetConversationModelRequest struct {
 	ConversationID int64  `json:"conversationId"`
+	Profile        string `json:"profile"`
 	ProviderID     int64  `json:"providerId"`
 	Model          string `json:"model"`
 }
@@ -82,31 +85,16 @@ func providerForConversation(conversationID int64) (Provider, error) {
 		return Provider{}, errors.New("设置服务未初始化")
 	}
 	if conversationID <= 0 {
-		provider, err := settingsSvc.DefaultProvider()
-		if err != nil {
-			return Provider{}, errors.New("尚未配置模型服务商,请先在设置中配置后重试")
-		}
-		return provider, nil
+		return providerForConversationProfile(0, AgentProfileWork)
 	}
-	var providerID int64
-	var modelName string
-	if err := store.QueryRow("SELECT provider_id, model FROM conversations WHERE id = ?", conversationID).Scan(&providerID, &modelName); err != nil {
+	var profile string
+	if err := store.QueryRow("SELECT agent_profile FROM conversations WHERE id = ?", conversationID).Scan(&profile); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Provider{}, errors.New("会话不存在")
 		}
 		return Provider{}, err
 	}
-	if providerID <= 0 || strings.TrimSpace(modelName) == "" {
-		provider, err := settingsSvc.DefaultProvider()
-		if err != nil {
-			return Provider{}, errors.New("尚未配置模型服务商,请先在设置中配置后重试")
-		}
-		if _, err := store.Exec("UPDATE conversations SET provider_id = ?, model = ? WHERE id = ?", provider.ID, provider.Model, conversationID); err != nil {
-			return Provider{}, err
-		}
-		return provider, nil
-	}
-	return configuredProvider(providerID, modelName)
+	return providerForConversationProfile(conversationID, profile)
 }
 
 func configuredProvider(providerID int64, modelName string) (Provider, error) {
@@ -149,14 +137,30 @@ func (s *AgentService) SetConversationModel(req SetConversationModelRequest) err
 	if err != nil {
 		return err
 	}
-	result, err := store.Exec(`
-		UPDATE conversations SET provider_id = ?, model = ?, updated_at = ? WHERE id = ?`,
-		provider.ID, provider.Model, now(), req.ConversationID)
+	profile := normalizeAgentProfile(req.Profile)
+	if profile == "" {
+		return errors.New("不支持的 Agent 模式")
+	}
+	tx, err := store.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err = tx.Exec(`INSERT INTO conversation_profile_models (conversation_id, profile, provider_id, model) VALUES (?, ?, ?, ?)
+		ON CONFLICT(conversation_id, profile) DO UPDATE SET provider_id = excluded.provider_id, model = excluded.model`, req.ConversationID, profile, provider.ID, provider.Model); err != nil {
+		return err
+	}
+	result, err := tx.Exec(`UPDATE conversations SET provider_id = CASE WHEN agent_profile = ? THEN ? ELSE provider_id END,
+		model = CASE WHEN agent_profile = ? THEN ? ELSE model END, updated_at = ? WHERE id = ?`,
+		profile, provider.ID, profile, provider.Model, now(), req.ConversationID)
 	if err != nil {
 		return err
 	}
 	if changed, _ := result.RowsAffected(); changed != 1 {
 		return errors.New("会话不存在")
+	}
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	s.emit("conversations.changed", "updated")
 	return nil
@@ -175,7 +179,8 @@ func (s *AgentService) RevisePlan(req PlanActionRequest) (ChatResult, error) {
 		ConversationID: execution.Plan.ConversationID, Message: req.Instruction,
 		Reasoning: req.Reasoning, RequestID: req.RequestID, WorkspacePath: req.WorkspacePath,
 		PermissionSessionID: req.PermissionSessionID, Mode: "plan",
-		PlanID: req.PlanID, PlanRevision: req.Revision,
+		AgentProfile: req.AgentProfile,
+		PlanID:       req.PlanID, PlanRevision: req.Revision,
 	})
 }
 
@@ -189,7 +194,7 @@ func (s *AgentService) ExecutePlan(req PlanActionRequest) (ChatResult, error) {
 		ConversationID: execution.Plan.ConversationID,
 		Message:        fmt.Sprintf("执行已批准计划 v%d", req.Revision),
 		Reasoning:      req.Reasoning, RequestID: req.RequestID, WorkspacePath: req.WorkspacePath,
-		PermissionSessionID: req.PermissionSessionID, Mode: "execute",
+		PermissionSessionID: req.PermissionSessionID, Mode: "execute", AgentProfile: execution.Revision.AgentProfile,
 		PlanID: req.PlanID, PlanRevision: req.Revision,
 	})
 }
@@ -227,7 +232,7 @@ func loadPlanExecution(conversationID, planID int64, revision int) (*planExecuti
 	err := store.QueryRow(`
 		SELECT p.id, p.conversation_id, p.status, p.current_revision, p.approved_revision,
 			p.created_at, p.updated_at, r.id, r.plan_id, r.revision, r.content,
-			r.user_message_id, r.assistant_message_id, r.provider_id, r.model, r.created_at
+			r.user_message_id, r.assistant_message_id, r.provider_id, r.model, r.agent_profile, r.created_at
 		FROM plans p JOIN plan_revisions r ON r.plan_id = p.id AND r.revision = ?
 		WHERE p.id = ?`, revision, planID).Scan(
 		&result.Plan.ID, &result.Plan.ConversationID, &result.Plan.Status,
@@ -236,7 +241,7 @@ func loadPlanExecution(conversationID, planID int64, revision int) (*planExecuti
 		&result.Revision.ID, &result.Revision.PlanID, &result.Revision.Revision,
 		&result.Revision.Content, &result.Revision.UserMessageID,
 		&result.Revision.AssistantMessageID, &result.Revision.ProviderID,
-		&result.Revision.Model, &result.Revision.CreatedAt,
+		&result.Revision.Model, &result.Revision.AgentProfile, &result.Revision.CreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("计划不存在")
@@ -258,7 +263,11 @@ func loadPlanExecution(conversationID, planID int64, revision int) (*planExecuti
 	}
 }
 
-func savePlanRevision(conversationID, requestedPlanID int64, expectedRevision int, userMessageID, assistantMessageID int64, content string, provider Provider) (PlanRevision, error) {
+func savePlanRevision(conversationID, requestedPlanID int64, expectedRevision int, userMessageID, assistantMessageID int64, content string, provider Provider, profiles ...string) (PlanRevision, error) {
+	profile := AgentProfileWork
+	if len(profiles) > 0 && normalizeAgentProfile(profiles[0]) != "" {
+		profile = normalizeAgentProfile(profiles[0])
+	}
 	tx, err := store.Begin()
 	if err != nil {
 		return PlanRevision{}, err
@@ -298,9 +307,9 @@ func savePlanRevision(conversationID, requestedPlanID int64, expectedRevision in
 	}
 	revision := plan.CurrentRevision + 1
 	result, err := tx.Exec(`
-		INSERT INTO plan_revisions (plan_id, revision, content, user_message_id, assistant_message_id, provider_id, model, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		plan.ID, revision, content, userMessageID, assistantMessageID, provider.ID, provider.Model, now())
+		INSERT INTO plan_revisions (plan_id, revision, content, user_message_id, assistant_message_id, provider_id, model, agent_profile, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		plan.ID, revision, content, userMessageID, assistantMessageID, provider.ID, provider.Model, profile, now())
 	if err != nil {
 		return PlanRevision{}, err
 	}
@@ -317,10 +326,14 @@ func savePlanRevision(conversationID, requestedPlanID int64, expectedRevision in
 	if err := tx.Commit(); err != nil {
 		return PlanRevision{}, err
 	}
-	return PlanRevision{ID: revisionID, PlanID: plan.ID, Revision: revision, Content: content, UserMessageID: userMessageID, AssistantMessageID: assistantMessageID, ProviderID: provider.ID, Model: provider.Model, CreatedAt: now()}, nil
+	return PlanRevision{ID: revisionID, PlanID: plan.ID, Revision: revision, Content: content, UserMessageID: userMessageID, AssistantMessageID: assistantMessageID, ProviderID: provider.ID, Model: provider.Model, AgentProfile: profile, CreatedAt: now()}, nil
 }
 
-func beginPlanRun(planID int64, revision int, requestID string, provider Provider) (int64, error) {
+func beginPlanRun(planID int64, revision int, requestID string, provider Provider, profiles ...string) (int64, error) {
+	profile := AgentProfileWork
+	if len(profiles) > 0 && normalizeAgentProfile(profiles[0]) != "" {
+		profile = normalizeAgentProfile(profiles[0])
+	}
 	tx, err := store.Begin()
 	if err != nil {
 		return 0, err
@@ -338,8 +351,8 @@ func beginPlanRun(planID int64, revision int, requestID string, provider Provide
 		return 0, errors.New("计划状态已变化，请刷新后重试")
 	}
 	result, err = tx.Exec(`
-		INSERT INTO plan_runs (plan_id, revision, request_id, provider_id, model, status, started_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, planID, revision, requestID, provider.ID, provider.Model, planStatusExecuting, now())
+		INSERT INTO plan_runs (plan_id, revision, request_id, provider_id, model, agent_profile, status, started_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, planID, revision, requestID, provider.ID, provider.Model, profile, planStatusExecuting, now())
 	if err != nil {
 		return 0, err
 	}

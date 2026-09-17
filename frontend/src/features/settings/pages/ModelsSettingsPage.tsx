@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { App as AntApp, Button, Empty, Popconfirm, Spin, Switch, Tooltip, Typography } from 'antd'
+import { App as AntApp, Button, Empty, Popconfirm, Select, Spin, Switch, Tooltip, Typography } from 'antd'
 import { CheckOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import type { ProviderLite, ProviderTemplateLite } from '../../../api'
+import type { AgentProfileDefaultsLite, ModelOptionLite, ProviderLite, ProviderTemplateLite } from '../../../api'
 import ProviderFormModal from '../../../components/ProviderFormModal'
 import { settingsRepository } from '../../../shared/repositories'
 import { useProviderController } from '../providerController'
@@ -15,6 +15,16 @@ export function ModelsSettingsPage() {
   const [open, setOpen] = useState(false)
   const [template, setTemplate] = useState<ProviderTemplateLite | null>(null)
   const [editing, setEditing] = useState<ProviderLite | null>(null)
+  const [profileDefaults, setProfileDefaults] = useState<AgentProfileDefaultsLite | null>(null)
+  const [profileModelOptions, setProfileModelOptions] = useState<ModelOptionLite[]>([])
+
+  const loadProfileDefaults = async () => {
+    const [defaults, options] = await Promise.all([settingsRepository.agentProfileDefaults(), settingsRepository.modelOptions()])
+    setProfileDefaults(defaults)
+    setProfileModelOptions(options)
+  }
+
+  useEffect(() => { void loadProfileDefaults().catch(() => undefined) }, [])
 
   useEffect(() => {
     if (controller.error) message.error(`加载失败:${String(controller.error)}`)
@@ -42,6 +52,12 @@ export function ModelsSettingsPage() {
 
   const enabledOf = (providerId: number, model: string) =>
     (controller.modelsByProvider[providerId] ?? []).some((item) => item.model === model)
+
+  const profileOptions = profileModelOptions.map((option) => ({ value: `${option.providerId}::${option.model}`, label: `${option.providerName} / ${option.label || option.model}` }))
+  const setProfileDefault = async (profile: 'work' | 'coding', value: string) => {
+    const [providerId, ...model] = value.split('::')
+    await run(async () => { await settingsRepository.setAgentProfileDefault(profile, Number(providerId), model.join('::')); await loadProfileDefaults() }, `${profile === 'work' ? 'Work' : 'Coding'} 默认模型已更新`)
+  }
 
   const renderModelRow = (provider: ProviderLite, key: string, label: string, custom: boolean, multimodal: boolean) => {
     const enabled = enabledOf(provider.id, key)
@@ -89,6 +105,10 @@ export function ModelsSettingsPage() {
         <div><span className="bm-settings-section-number">01</span><Title id="settings-models-title" level={3}>模型服务商</Title></div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => void openAdd()}>添加服务商</Button>
       </header>
+      {profileDefaults && profileOptions.length > 0 && <div className="bm-settings-profile-defaults">
+        <div><Text strong>模式默认模型</Text><Text type="secondary">新会话会分别继承这两项设置</Text></div>
+        {(['work', 'coding'] as const).map((profile) => <label key={profile}><span>{profile === 'work' ? 'Work' : 'Coding'}</span><Select aria-label={`${profile} 默认模型`} value={`${profileDefaults[profile].providerId}::${profileDefaults[profile].model}`} options={profileOptions} onChange={(value) => void setProfileDefault(profile, value)} /></label>)}
+      </div>}
       {controller.loading ? <div className="bm-settings-loading"><Spin /></div> : controller.providers.length === 0 ? (
         <div className="bm-settings-empty"><Empty description="还没有配置模型服务商"><Button type="primary" onClick={() => void openAdd()}>立即配置</Button></Empty></div>
       ) : (

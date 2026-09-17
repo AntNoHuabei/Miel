@@ -83,6 +83,10 @@ export function FetchProviderModels($in: $models.ProviderInput): $CancellablePro
     return $Call.ByID(3249093647, $in);
 }
 
+export function GetAgentProfileDefaults(): $CancellablePromise<$models.AgentProfileDefaults> {
+    return $Call.ByID(1080145804);
+}
+
 /**
  * GetSetting 读取设置项;不存在返回空串与 nil。
  */
@@ -182,6 +186,10 @@ export function RemoveWorkspace(path: string): $CancellablePromise<void> {
  */
 export function SaveProvider($in: $models.ProviderInput): $CancellablePromise<$models.Provider> {
     return $Call.ByID(155800656, $in);
+}
+
+export function SetAgentProfileDefault(req: $models.SetAgentProfileDefaultRequest): $CancellablePromise<void> {
+    return $Call.ByID(3721091435, req);
 }
 
 /**

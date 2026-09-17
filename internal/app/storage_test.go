@@ -7,6 +7,45 @@ import (
 	"time"
 )
 
+func TestMigrateBackfillsAgentProfiles(t *testing.T) {
+	dsn := fmt.Sprintf("file:agent-profiles-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`
+		CREATE TABLE providers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL DEFAULT '', api_key TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', multimodal INTEGER NOT NULL DEFAULT 0, is_default INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+		CREATE TABLE provider_models (provider_id INTEGER NOT NULL, model TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', custom INTEGER NOT NULL DEFAULT 0, multimodal INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY(provider_id, model));
+		CREATE TABLE conversations (id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', provider_id INTEGER NOT NULL DEFAULT 0, model TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+		INSERT INTO providers (id, name, kind, model, is_default, created_at) VALUES (1, 'default', 'custom', 'model-a', 1, 1);
+		INSERT INTO provider_models (provider_id, model, custom, created_at) VALUES (1, 'model-a', 1, 1);
+		INSERT INTO conversations (id, title, provider_id, model, created_at, updated_at) VALUES (9, 'legacy', 1, 'model-a', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range []string{AgentProfileWork, AgentProfileCoding} {
+		var providerID int64
+		var model string
+		if err := db.QueryRow(`SELECT provider_id, model FROM conversation_profile_models WHERE conversation_id = 9 AND profile = ?`, profile).Scan(&providerID, &model); err != nil {
+			t.Fatal(err)
+		}
+		if providerID != 1 || model != "model-a" {
+			t.Fatalf("%s profile = %d/%s", profile, providerID, model)
+		}
+	}
+	var active string
+	if err := db.QueryRow(`SELECT agent_profile FROM conversations WHERE id = 9`).Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != AgentProfileWork {
+		t.Fatalf("active profile = %q", active)
+	}
+}
+
 func TestMigrateRecoversInterruptedPlanRuns(t *testing.T) {
 	dsn := fmt.Sprintf("file:plan-recovery-%d?mode=memory&cache=shared", time.Now().UnixNano())
 	db, err := sql.Open("sqlite", dsn)

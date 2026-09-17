@@ -10,21 +10,30 @@ vi.mock('../../../theme/ThemeContext', () => ({
 import { ConversationSidebar } from './ConversationSidebar'
 
 describe('ConversationSidebar', () => {
+  function renderSidebar(overrides: Partial<React.ComponentProps<typeof ConversationSidebar>> = {}) {
+    const props: React.ComponentProps<typeof ConversationSidebar> = {
+      activeView: 'chat',
+      agentProfile: 'work',
+      profileReady: true,
+      sending: false,
+      conversations: [{ id: 7, title: '已有会话' }],
+      currentConversationId: 0,
+      currentWorkspace: { name: 'BlankMind', path: 'D:/code/BlankMind', isCurrent: true },
+      reminderCount: 2,
+      onDeleteCurrent: vi.fn(),
+      onNavigate: vi.fn(),
+      onChangeAgentProfile: vi.fn(),
+      onNewChat: vi.fn(),
+      onOpenConversation: vi.fn(),
+      ...overrides,
+    }
+    render(<ConversationSidebar {...props} />)
+    return props
+  }
+
   it('preserves workspace expansion and conversation navigation', async () => {
     const openConversation = vi.fn()
-    render(
-      <ConversationSidebar
-        activeView="chat"
-        conversations={[{ id: 7, title: '已有会话' }]}
-        currentConversationId={0}
-        currentWorkspace={{ name: 'BlankMind', path: 'D:/code/BlankMind', isCurrent: true }}
-        reminderCount={2}
-        onDeleteCurrent={vi.fn()}
-        onNavigate={vi.fn()}
-        onNewChat={vi.fn()}
-        onOpenConversation={openConversation}
-      />,
-    )
+    renderSidebar({ onOpenConversation: openConversation })
 
     await userEvent.click(screen.getByRole('button', { name: /已有会话/ }))
     expect(openConversation).toHaveBeenCalledWith(7)
@@ -33,5 +42,15 @@ describe('ConversationSidebar', () => {
     await userEvent.click(workspace)
     expect(workspace).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('已有会话')).not.toBeInTheDocument()
+  })
+
+  it('switches from Work to Coding through the upper-left profile menu', async () => {
+    const changeProfile = vi.fn()
+    renderSidebar({ onChangeAgentProfile: changeProfile })
+
+    await userEvent.click(screen.getByRole('button', { name: /Work/ }))
+    await userEvent.click(await screen.findByText('Coding'))
+
+    expect(changeProfile).toHaveBeenCalledWith('coding')
   })
 })

@@ -365,7 +365,7 @@ func parseSafeURL(raw string) (*url.URL, error) {
 
 func riskForTool(name string) string {
 	switch name {
-	case "write_file", "execute_command":
+	case "write_file", "execute_command", "apply_patch", "start_command", "write_command":
 		return "high"
 	case "fetch_url":
 		return "medium"

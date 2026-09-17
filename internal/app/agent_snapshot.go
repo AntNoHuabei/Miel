@@ -170,13 +170,14 @@ type snapshotMessageMeta struct {
 	MessageType   string
 	PlanID        int64
 	PlanRevision  int
+	AgentProfile  string
 	CreatedAt     int64
 }
 
 func loadSnapshotMessageMeta(conversationID int64) (map[string]snapshotMessageMeta, error) {
 	rows, err := store.Query(`
 		SELECT m.id, COALESCE(mm.agui_message_id, ''), m.message_type,
-			m.plan_id, m.plan_revision, m.created_at
+			m.plan_id, m.plan_revision, m.agent_profile, m.created_at
 		FROM messages m LEFT JOIN message_metrics mm ON mm.message_id = m.id
 		WHERE m.conversation_id = ?`, conversationID)
 	if err != nil {
@@ -185,7 +186,7 @@ func loadSnapshotMessageMeta(conversationID int64) (map[string]snapshotMessageMe
 	messageMeta := make(map[string]snapshotMessageMeta)
 	for rows.Next() {
 		var item snapshotMessageMeta
-		if err := rows.Scan(&item.MessageID, &item.AGUIMessageID, &item.MessageType, &item.PlanID, &item.PlanRevision, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.MessageID, &item.AGUIMessageID, &item.MessageType, &item.PlanID, &item.PlanRevision, &item.AgentProfile, &item.CreatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -231,18 +232,20 @@ type snapshotPlanView struct {
 	Content         string `json:"content"`
 	GeneratedModel  string `json:"generatedModel"`
 	ExecutionModel  string `json:"executionModel,omitempty"`
+	AgentProfile    string `json:"agentProfile"`
 	CreatedAt       int64  `json:"createdAt"`
 }
 
 type snapshotPlanRun struct {
-	ID          int64  `json:"id"`
-	PlanID      int64  `json:"planId"`
-	Revision    int    `json:"revision"`
-	Status      string `json:"status"`
-	Model       string `json:"model"`
-	Error       string `json:"error,omitempty"`
-	StartedAt   int64  `json:"startedAt"`
-	CompletedAt int64  `json:"completedAt,omitempty"`
+	ID           int64  `json:"id"`
+	PlanID       int64  `json:"planId"`
+	Revision     int    `json:"revision"`
+	Status       string `json:"status"`
+	Model        string `json:"model"`
+	AgentProfile string `json:"agentProfile"`
+	Error        string `json:"error,omitempty"`
+	StartedAt    int64  `json:"startedAt"`
+	CompletedAt  int64  `json:"completedAt,omitempty"`
 }
 
 func planRevisionKey(planID int64, revision int) string {
@@ -252,7 +255,7 @@ func planRevisionKey(planID int64, revision int) string {
 func loadSnapshotPlans(conversationID int64) (map[string]snapshotPlanView, map[string][]snapshotPlanRun, error) {
 	rows, err := store.Query(`
 		SELECT r.assistant_message_id, COALESCE(mm.agui_message_id, ''), r.plan_id,
-			r.revision, p.current_revision, p.status, r.content, r.model, r.created_at,
+			r.revision, p.current_revision, p.status, r.content, r.model, r.agent_profile, r.created_at,
 			COALESCE((SELECT pr.model FROM plan_runs pr
 				WHERE pr.plan_id = r.plan_id AND pr.revision = r.revision
 				ORDER BY pr.id DESC LIMIT 1), '')
@@ -270,7 +273,7 @@ func loadSnapshotPlans(conversationID int64) (map[string]snapshotPlanView, map[s
 		var item snapshotPlanView
 		if err := rows.Scan(&assistantMessageID, &aguiMessageID, &item.ID, &item.Revision,
 			&item.CurrentRevision, &item.Status, &item.Content, &item.GeneratedModel,
-			&item.CreatedAt, &item.ExecutionModel); err != nil {
+			&item.AgentProfile, &item.CreatedAt, &item.ExecutionModel); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
@@ -288,7 +291,7 @@ func loadSnapshotPlans(conversationID int64) (map[string]snapshotPlanView, map[s
 	}
 
 	runRows, err := store.Query(`
-		SELECT pr.id, pr.plan_id, pr.revision, pr.status, pr.model, pr.error,
+		SELECT pr.id, pr.plan_id, pr.revision, pr.status, pr.model, pr.agent_profile, pr.error,
 			pr.started_at, pr.completed_at
 		FROM plan_runs pr JOIN plans p ON p.id = pr.plan_id
 		WHERE p.conversation_id = ? ORDER BY pr.id`, conversationID)
@@ -299,7 +302,7 @@ func loadSnapshotPlans(conversationID int64) (map[string]snapshotPlanView, map[s
 	for runRows.Next() {
 		var item snapshotPlanRun
 		if err := runRows.Scan(&item.ID, &item.PlanID, &item.Revision, &item.Status,
-			&item.Model, &item.Error, &item.StartedAt, &item.CompletedAt); err != nil {
+			&item.Model, &item.AgentProfile, &item.Error, &item.StartedAt, &item.CompletedAt); err != nil {
 			runRows.Close()
 			return nil, nil, err
 		}
@@ -334,6 +337,7 @@ func buildConversationSnapshot(snapshot map[string]any, conversationID int64) (m
 		delete(message, "messageType")
 		item := map[string]any{"kind": "message", "sequence": index + 1, "message": message}
 		if hasMeta {
+			message["agentProfile"] = meta.AgentProfile
 			switch meta.MessageType {
 			case "plan_request":
 				item = map[string]any{"kind": "plan_request", "sequence": index + 1, "request": map[string]any{

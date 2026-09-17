@@ -140,6 +140,8 @@ func (e permissionToolEnv) inspectGit(ctx context.Context, input gitInspectInput
 		args = []string{"status", "--short", "--branch"}
 	case "diff":
 		args = []string{"diff", "--no-ext-diff", "--"}
+	case "staged_diff":
+		args = []string{"diff", "--cached", "--no-ext-diff", "--"}
 	case "log":
 		limit := input.Limit
 		if limit <= 0 || limit > 50 {
@@ -156,7 +158,7 @@ func (e permissionToolEnv) inspectGit(ctx context.Context, input gitInspectInput
 		}
 		args = []string{"show", "--no-ext-diff", "--stat", "--oneline", ref}
 	default:
-		return permissionToolResult{OK: false, Code: "invalid_action", Message: "action 只能是 status、diff、log 或 show"}, nil
+		return permissionToolResult{OK: false, Code: "invalid_action", Message: "action 只能是 status、diff、staged_diff、log 或 show"}, nil
 	}
 	if result, ok := e.authorize(ctx, "git_inspect", action, workdir, workdir, outside); !ok {
 		return result, nil

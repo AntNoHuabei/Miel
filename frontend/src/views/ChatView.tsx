@@ -49,6 +49,7 @@ export default function ChatView() {
     store: mainConversationStore,
     attachments: attachments.attachments,
     supportsImages: controls.supportsImages,
+    enabled: controls.modelAvailable,
     requestPrefix: 'chat',
     unsupportedImagesMessage: '当前模型不支持图片输入，请切换到支持图片的模型',
     consumeAttachments: attachments.consumeAttachments,
@@ -59,6 +60,7 @@ export default function ChatView() {
       workspacePath: controls.currentWorkspace?.path ?? '',
       permissionSessionId: permissions.sessionId,
       mode,
+      agentProfile: controls.agentProfile,
     }),
     onConversationCompleted: reloadConversations,
   })
@@ -75,6 +77,7 @@ export default function ChatView() {
   useEffect(() => {
     if (newChatRequest > 0) {
       runtime.reset()
+      controls.resetProfile()
       setMode('chat')
     }
     // The shell version makes repeated new-chat requests imperative.
@@ -109,6 +112,7 @@ export default function ChatView() {
   }
   const newChat = () => {
     runtime.reset()
+    controls.resetProfile()
     setMode('chat')
   }
   const showWorkspaceControl = runtime.conversationId === 0 && runtime.timeline.length === 0
@@ -119,18 +123,27 @@ export default function ChatView() {
       .sort((left, right) => (right.kind === 'plan' ? right.plan.revision : 0) - (left.kind === 'plan' ? left.plan.revision : 0))[0]
     if (latest?.kind === 'plan') openPlan(latest.plan)
   }
+  const executePlan = async (plan: Parameters<typeof runtime.runPlanAction>[1]) => {
+    const profile = plan.agentProfile ?? 'work'
+    if (controls.agentProfile !== profile && !await controls.switchProfile(profile)) return
+    await runtime.runPlanAction('execute', plan)
+  }
 
   return (
     <>
     <div className={`bm-chat bm-chat-shell ${sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-collapsed'}`}>
       <ConversationSidebar
         activeView={activeView}
+        agentProfile={controls.agentProfile}
+        profileReady={controls.profileReady}
+        sending={runtime.sending}
         conversations={conversations}
         currentConversationId={runtime.conversationId}
         currentWorkspace={controls.currentWorkspace}
         reminderCount={reminderCount}
         onDeleteCurrent={deleteCurrent}
         onNavigate={navigate}
+        onChangeAgentProfile={controls.switchProfile}
         onNewChat={newChat}
         onOpenConversation={openConversation}
       />
@@ -153,7 +166,7 @@ export default function ChatView() {
             onScroll={runtime.onMessagesScroll}
             quickPrompts={QUICK_PROMPTS}
             onResolveApproval={permissions.resolveApproval}
-            onExecutePlan={(plan) => runtime.runPlanAction('execute', plan)}
+            onExecutePlan={executePlan}
             onRevisePlan={(plan, instruction) => runtime.runPlanAction('revise', plan, instruction)}
             onAbandonPlan={runtime.abandonPlan}
             onOpenPlan={openPlan}
@@ -175,6 +188,8 @@ export default function ChatView() {
             selectedModel={controls.selectedModel}
             modelOptions={controls.modelOptions}
             activeModelLabel={controls.activeModelLabel}
+            modelAvailable={controls.modelAvailable}
+            profileReady={controls.profileReady}
             reasoningPillLabel={controls.reasoningPillLabel}
             reasoningStatus={controls.reasoningStatus}
             reasoningSteps={controls.reasoningSteps}
@@ -198,7 +213,7 @@ export default function ChatView() {
         </Flex>
       </Flex>
     </div>
-    <PlanPreviewPanel sending={runtime.sending} onExecute={(plan) => runtime.runPlanAction('execute', plan)} onRevise={reviseFromPreview} onAbandon={runtime.abandonPlan} />
+    <PlanPreviewPanel sending={runtime.sending} onExecute={executePlan} onRevise={reviseFromPreview} onAbandon={runtime.abandonPlan} />
     </>
   )
 }

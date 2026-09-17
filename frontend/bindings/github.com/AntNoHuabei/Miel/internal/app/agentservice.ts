@@ -75,3 +75,7 @@ export function RevisePlan(req: $models.PlanActionRequest): $CancellablePromise<
 export function SetConversationModel(req: $models.SetConversationModelRequest): $CancellablePromise<void> {
     return $Call.ByID(2043989792, req);
 }
+
+export function SetConversationProfile(req: $models.SetConversationProfileRequest): $CancellablePromise<void> {
+    return $Call.ByID(1685795916, req);
+}

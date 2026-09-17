@@ -229,7 +229,7 @@ export function PlanMessage({
   return (
     <section className={`bm-plan-message is-${plan.status}`} aria-label={`计划 v${plan.revision}`} role="button" tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest('button, textarea, input, a')) open() }} onKeyDown={(event) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) { event.preventDefault(); open() } }}>
       <div className="bm-plan-message-header">
-        <div><strong>Plan v{plan.revision}</strong><span className="bm-plan-status">{PLAN_STATUS[plan.status] ?? plan.status}</span></div>
+        <div><strong>Plan v{plan.revision}</strong><span className="bm-plan-status">{plan.agentProfile === 'coding' ? 'Coding' : 'Work'}</span><span className="bm-plan-status">{PLAN_STATUS[plan.status] ?? plan.status}</span></div>
         <div className="bm-plan-header-tools"><Text type="secondary">{plan.generatedModel}{plan.executionModel ? ` · 执行 ${plan.executionModel}` : ''}</Text><Tooltip title="在右侧查看完整计划"><Button type="text" aria-label="查看完整计划" icon={<ExpandOutlined />} onClick={open} /></Tooltip></div>
       </div>
       <strong className="bm-plan-title">{planTitle(plan.content)}</strong>

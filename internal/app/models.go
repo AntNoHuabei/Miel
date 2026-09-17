@@ -167,12 +167,14 @@ type Workspace struct {
 
 // Conversation 会话元信息。
 type Conversation struct {
-	ID         int64  `json:"id"`
-	Title      string `json:"title"`
-	ProviderID int64  `json:"providerId"`
-	Model      string `json:"model"`
-	CreatedAt  int64  `json:"createdAt"`
-	UpdatedAt  int64  `json:"updatedAt"`
+	ID            int64                   `json:"id"`
+	Title         string                  `json:"title"`
+	ProviderID    int64                   `json:"providerId"`
+	Model         string                  `json:"model"`
+	AgentProfile  string                  `json:"agentProfile"`
+	ProfileModels map[string]ProfileModel `json:"profileModels"`
+	CreatedAt     int64                   `json:"createdAt"`
+	UpdatedAt     int64                   `json:"updatedAt"`
 }
 
 // ChatMessage 会话消息。
@@ -184,6 +186,7 @@ type ChatMessage struct {
 	MessageType    string              `json:"messageType"`
 	PlanID         int64               `json:"planId"`
 	PlanRevision   int                 `json:"planRevision"`
+	AgentProfile   string              `json:"agentProfile"`
 	CreatedAt      int64               `json:"createdAt"`
 	Attachments    []MessageAttachment `json:"attachments,omitempty"`
 }

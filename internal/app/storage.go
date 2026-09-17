@@ -117,8 +117,23 @@ CREATE TABLE IF NOT EXISTS conversations (
 	title      TEXT NOT NULL DEFAULT '',
 	provider_id INTEGER NOT NULL DEFAULT 0,
 	model      TEXT NOT NULL DEFAULT '',
+	agent_profile TEXT NOT NULL DEFAULT 'work',
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_profile_defaults (
+	profile     TEXT PRIMARY KEY,
+	provider_id INTEGER NOT NULL,
+	model       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_profile_models (
+	conversation_id INTEGER NOT NULL,
+	profile         TEXT NOT NULL,
+	provider_id     INTEGER NOT NULL,
+	model           TEXT NOT NULL,
+	PRIMARY KEY (conversation_id, profile)
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -129,6 +144,7 @@ CREATE TABLE IF NOT EXISTS messages (
 	message_type    TEXT NOT NULL DEFAULT 'chat',
 	plan_id         INTEGER NOT NULL DEFAULT 0,
 	plan_revision   INTEGER NOT NULL DEFAULT 0,
+	agent_profile   TEXT NOT NULL DEFAULT 'work',
 	created_at      INTEGER NOT NULL
 );
 
@@ -155,6 +171,7 @@ CREATE TABLE IF NOT EXISTS plan_revisions (
 	assistant_message_id INTEGER NOT NULL,
 	provider_id          INTEGER NOT NULL,
 	model                TEXT NOT NULL,
+	agent_profile        TEXT NOT NULL DEFAULT 'work',
 	created_at           INTEGER NOT NULL,
 	UNIQUE(plan_id, revision)
 );
@@ -166,6 +183,7 @@ CREATE TABLE IF NOT EXISTS plan_runs (
 	request_id    TEXT NOT NULL DEFAULT '',
 	provider_id   INTEGER NOT NULL,
 	model         TEXT NOT NULL,
+	agent_profile TEXT NOT NULL DEFAULT 'work',
 	status        TEXT NOT NULL,
 	error         TEXT NOT NULL DEFAULT '',
 	started_at    INTEGER NOT NULL,
@@ -264,6 +282,9 @@ func migrate(db *sql.DB) error {
 	if err := ensureColumn(db, "conversations", "model", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return fmt.Errorf("migrate conversation model: %w", err)
 	}
+	if err := ensureColumn(db, "conversations", "agent_profile", "TEXT NOT NULL DEFAULT 'work'"); err != nil {
+		return fmt.Errorf("migrate conversation profile: %w", err)
+	}
 	if err := ensureColumn(db, "messages", "message_type", "TEXT NOT NULL DEFAULT 'chat'"); err != nil {
 		return fmt.Errorf("migrate message type: %w", err)
 	}
@@ -272,6 +293,15 @@ func migrate(db *sql.DB) error {
 	}
 	if err := ensureColumn(db, "messages", "plan_revision", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("migrate message plan revision: %w", err)
+	}
+	if err := ensureColumn(db, "messages", "agent_profile", "TEXT NOT NULL DEFAULT 'work'"); err != nil {
+		return fmt.Errorf("migrate message profile: %w", err)
+	}
+	if err := ensureColumn(db, "plan_revisions", "agent_profile", "TEXT NOT NULL DEFAULT 'work'"); err != nil {
+		return fmt.Errorf("migrate plan revision profile: %w", err)
+	}
+	if err := ensureColumn(db, "plan_runs", "agent_profile", "TEXT NOT NULL DEFAULT 'work'"); err != nil {
+		return fmt.Errorf("migrate plan run profile: %w", err)
 	}
 	if _, err := db.Exec(`
 		UPDATE messages
@@ -343,6 +373,26 @@ func migrate(db *sql.DB) error {
 		WHERE model <> ''`); err != nil {
 		return fmt.Errorf("backfill provider_models: %w", err)
 	}
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO agent_profile_defaults (profile, provider_id, model)
+		SELECT profile, p.id, p.model
+		FROM (SELECT 'work' AS profile UNION ALL SELECT 'coding') profiles
+		JOIN providers p ON p.is_default = 1
+		WHERE p.model <> ''`); err != nil {
+		return fmt.Errorf("backfill agent profile defaults: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO conversation_profile_models (conversation_id, profile, provider_id, model)
+		SELECT id, 'work', provider_id, model FROM conversations
+		WHERE provider_id > 0 AND model <> ''`); err != nil {
+		return fmt.Errorf("backfill work conversation models: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT OR IGNORE INTO conversation_profile_models (conversation_id, profile, provider_id, model)
+		SELECT c.id, 'coding', d.provider_id, d.model
+		FROM conversations c JOIN agent_profile_defaults d ON d.profile = 'coding'`); err != nil {
+		return fmt.Errorf("backfill coding conversation models: %w", err)
+	}
 	// 旧库只有服务商当前模型的能力标识，将它回填到对应模型行。
 	if _, err := tx.Exec(`
 		UPDATE provider_models
@@ -375,6 +425,15 @@ func migrate(db *sql.DB) error {
 		SELECT id, 'deepseek-flash', 'DeepSeek V4.1 Flash', 0, 1, created_at
 		FROM providers WHERE lower(trim(kind)) = 'deepseek'`); err != nil {
 		return fmt.Errorf("add deepseek flash model: %w", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE agent_profile_defaults SET model = 'deepseek-flash'
+		WHERE provider_id IN (SELECT id FROM providers WHERE lower(trim(kind)) = 'deepseek');
+		UPDATE conversation_profile_models SET model = 'deepseek-flash'
+		WHERE provider_id IN (SELECT id FROM providers WHERE lower(trim(kind)) = 'deepseek');
+		UPDATE conversations SET model = 'deepseek-flash'
+		WHERE provider_id IN (SELECT id FROM providers WHERE lower(trim(kind)) = 'deepseek')`); err != nil {
+		return fmt.Errorf("normalize deepseek profile models: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit provider migration: %w", err)

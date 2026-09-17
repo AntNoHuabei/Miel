@@ -10,5 +10,6 @@ export const chatRepository = {
   executePlan: async (request: Parameters<typeof Services.AgentService.ExecutePlan>[0]) => Services.AgentService.ExecutePlan(request),
   abandonPlan: (request: Parameters<typeof Services.AgentService.AbandonPlan>[0]) => Services.AgentService.AbandonPlan(request),
   setConversationModel: (request: Parameters<typeof Services.AgentService.SetConversationModel>[0]) => Services.AgentService.SetConversationModel(request),
+  setConversationProfile: (request: Parameters<typeof Services.AgentService.SetConversationProfile>[0]) => Services.AgentService.SetConversationProfile(request),
   deleteConversation: (id: number) => Services.AgentService.DeleteConversation(id),
 }

@@ -56,6 +56,60 @@ func TestConversationModelsAreIndependent(t *testing.T) {
 	}
 }
 
+func TestConversationProfileModelsSwitchIndependently(t *testing.T) {
+	service := setupPlanTestStore(t)
+	if err := service.SetConversationModel(SetConversationModelRequest{ConversationID: 10, Profile: AgentProfileCoding, ProviderID: 2, Model: "model-b"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetConversationProfile(SetConversationProfileRequest{ConversationID: 10, Profile: AgentProfileCoding}); err != nil {
+		t.Fatal(err)
+	}
+	coding, err := providerForConversation(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if coding.ID != 2 || coding.Model != "model-b" {
+		t.Fatalf("coding model = %#v", coding)
+	}
+	if err := service.SetConversationProfile(SetConversationProfileRequest{ConversationID: 10, Profile: AgentProfileWork}); err != nil {
+		t.Fatal(err)
+	}
+	work, err := providerForConversation(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if work.ID != 1 || work.Model != "model-a" {
+		t.Fatalf("work model changed = %#v", work)
+	}
+	items, err := service.ListConversations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first Conversation
+	for _, item := range items {
+		if item.ID == 10 {
+			first = item
+		}
+	}
+	if first.AgentProfile != AgentProfileWork || first.ProfileModels[AgentProfileCoding].Model != "model-b" {
+		t.Fatalf("conversation profiles = %#v", first)
+	}
+}
+
+func TestAgentProfileDefaultsAreIndependent(t *testing.T) {
+	setupPlanTestStore(t)
+	if err := settingsSvc.SetAgentProfileDefault(SetAgentProfileDefaultRequest{Profile: AgentProfileCoding, ProviderID: 2, Model: "model-b"}); err != nil {
+		t.Fatal(err)
+	}
+	defaults, err := settingsSvc.GetAgentProfileDefaults()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.Work.Model != "model-a" || defaults.Coding.Model != "model-b" {
+		t.Fatalf("defaults = %#v", defaults)
+	}
+}
+
 func TestPlanLifecycleRejectsStaleRevision(t *testing.T) {
 	setupPlanTestStore(t)
 	provider, err := providerForConversation(10)

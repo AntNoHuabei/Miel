@@ -17,7 +17,7 @@ function props() {
   return {
     input: '', mode: 'chat' as const, sending: false, attachments: [attachment], supportsImages: false, permissionMode: 'ask' as const,
     showWorkspaceControl: false, workspaces: [], currentWorkspace: undefined, selectedModel: '1::model',
-    modelOptions: [{ label: 'Provider', options: [{ value: '1::model', label: 'Model' }] }], activeModelLabel: 'Model',
+    modelOptions: [{ label: 'Provider', options: [{ value: '1::model', label: 'Model' }] }], activeModelLabel: 'Model', modelAvailable: true, profileReady: true,
     reasoningPillLabel: '关闭', reasoningStatus: '关闭', reasoningSteps: ['', 'low'], reasoningIndex: 0,
     reasoningMarks: { 0: '关闭', 1: '低' }, reasoningLocked: false, showCompatibleModelNote: false,
     onAddWorkspace: vi.fn(), onChangeInput: vi.fn(), onChangeMode: vi.fn(), onChangePermissionMode: vi.fn(), onChangeReasoning: vi.fn(),
@@ -40,7 +40,15 @@ describe('ConversationComposer', () => {
   it('switches explicitly between Chat and Plan', async () => {
     const values = props()
     render(<ConversationComposer {...values} attachments={[]} supportsImages />)
-    await userEvent.click(screen.getByText('Plan'))
+    await userEvent.click(screen.getByRole('button', { name: '添加内容' }))
+    await userEvent.click(await screen.findByText('Plan'))
     expect(values.onChangeMode).toHaveBeenCalledWith('plan')
+  })
+
+  it('exits Plan through the active mode pill', async () => {
+    const values = props()
+    render(<ConversationComposer {...values} mode="plan" attachments={[]} supportsImages />)
+    await userEvent.click(screen.getByRole('button', { name: '退出 Plan 模式' }))
+    expect(values.onChangeMode).toHaveBeenCalledWith('chat')
   })
 })
