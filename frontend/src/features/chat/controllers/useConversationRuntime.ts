@@ -47,11 +47,11 @@ function requestId(prefix: string) {
 export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const { message } = AntApp.useApp()
   const conversationId = useStore(options.store, (state) => state.conversationId)
-  const messages = useStore(options.store, (state) => state.messages)
+  const timeline = useStore(options.store, (state) => state.timeline)
   const input = useStore(options.store, (state) => state.input)
   const run = useStore(options.store, (state) => state.run)
   const setConversation = useStore(options.store, (state) => state.setConversation)
-  const setMessages = useStore(options.store, (state) => state.setMessages)
+  const setTimeline = useStore(options.store, (state) => state.setTimeline)
   const setInput = useStore(options.store, (state) => state.setInput)
   const dispatchRun = useStore(options.store, (state) => state.dispatchRun)
   const [sending, setSending] = useState(false)
@@ -72,23 +72,23 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const loadMessages = useCallback(async (id: number) => {
     const loadVersion = ++messageLoadVersionRef.current
     if (!id) {
-      if (conversationRef.current === 0) setMessages([])
+      if (conversationRef.current === 0) setTimeline([])
       return
     }
     try {
-      const next = (await chatRepository.messagesSnapshot(id)).messages ?? []
-      if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setMessages(next)
+      const next = (await chatRepository.messagesSnapshot(id)).timeline ?? []
+      if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setTimeline(next)
     } catch {
-      if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setMessages([])
+      if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setTimeline([])
     }
-  }, [setMessages])
+  }, [setTimeline])
 
   useEffect(() => { if (conversationRef.current > 0) void loadMessages(conversationRef.current) }, [loadMessages])
   useEffect(() => {
     requestAnimationFrame(() => {
       if (followOutputRef.current && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     })
-  }, [messages, run.artifacts, run.phase, run.process, run.streaming, run.tools])
+  }, [timeline, run.artifacts, run.phase, run.process, run.streaming, run.tools])
 
   const onMessagesScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const viewport = event.currentTarget
@@ -142,12 +142,12 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     conversationRef.current = 0
     followOutputRef.current = true
     setConversation(0)
-    setMessages([])
+    setTimeline([])
     setInput('')
     dispatchRun({ type: 'reset' })
     sendingRef.current = false
     setSending(false)
-  }, [dispatchRun, options.beforeConversationChange, options.discardAttachments, setConversation, setInput, setMessages])
+  }, [dispatchRun, options.beforeConversationChange, options.discardAttachments, setConversation, setInput, setTimeline])
 
   const openConversation = useCallback((id: number) => {
     void options.beforeConversationChange?.()
@@ -164,10 +164,10 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     sendingRef.current = false
     setSending(false)
     setConversation(id)
-    setMessages([])
+    setTimeline([])
     dispatchRun({ type: 'reset' })
     void loadMessages(id)
-  }, [dispatchRun, loadMessages, options.beforeConversationChange, options.discardAttachments, setConversation, setMessages])
+  }, [dispatchRun, loadMessages, options.beforeConversationChange, options.discardAttachments, setConversation, setTimeline])
 
   const send = useCallback(async () => {
     const text = input.trim()
@@ -188,7 +188,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     activeRequestRef.current = id
     targetRef.current = requestConversationId
     setInput('')
-    setMessages((items) => [...items, { id: pendingId, role: 'user', content: text, attachments: sentAttachments }])
+    setTimeline((items) => [...items, { kind: 'message', sequence: items.length + 1, message: { id: pendingId, role: 'user', content: text, attachments: sentAttachments } }])
     sendingRef.current = true
     setSending(true)
     dispatchRun({ type: 'start', requestId: id, conversationId: requestConversationId })
@@ -223,7 +223,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       dispatchRun({ type: 'fail', error: String(error) })
       if (!inputSavedRef.current) {
         setInput(text)
-        setMessages((items) => items.filter((item) => item.id !== pendingId))
+        setTimeline((items) => items.filter((item) => item.kind !== 'message' || item.message.id !== pendingId))
       } else if (inputSavedConversationRef.current > 0) {
         await loadMessages(inputSavedConversationRef.current)
         if (sessionVersionRef.current !== version) return
@@ -236,7 +236,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         if (!failed) dispatchRun({ type: 'reset' })
       }
     }
-  }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setMessages])
+  }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setTimeline])
 
   const runPlanAction = useCallback(async (action: 'revise' | 'execute', plan: PlanLite, instruction = '') => {
     if (sendingRef.current || options.enabled === false || conversationRef.current <= 0) return
@@ -252,6 +252,25 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     sendingRef.current = true
     setSending(true)
     dispatchRun({ type: 'start', requestId: id, conversationId: requestConversationId })
+    if (action === 'execute') {
+      setTimeline((items) => [
+        ...items.map((item) => item.kind === 'plan' && item.plan.id === plan.id && item.plan.revision === plan.revision
+          ? { ...item, plan: { ...item.plan, status: 'executing' } }
+          : item),
+        {
+          kind: 'plan_execution' as const,
+          sequence: items.length + 1,
+          execution: {
+            id: `pending-${id}`,
+            messageId: `pending-${id}`,
+            content: `执行已批准计划 v${plan.revision}`,
+            planId: plan.id,
+            revision: plan.revision,
+            createdAt: Math.floor(Date.now() / 1000),
+          },
+        },
+      ])
+    }
     let failed = false
     try {
       const context = await options.getRequestContext()
@@ -289,7 +308,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         if (!failed) dispatchRun({ type: 'reset' })
       }
     }
-  }, [dispatchRun, loadMessages, options, setConversation])
+  }, [dispatchRun, loadMessages, options, setConversation, setTimeline])
 
   const abandonPlan = useCallback(async (plan: PlanLite) => {
     if (sendingRef.current || conversationRef.current <= 0) return
@@ -310,5 +329,5 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     }
   }, [loadMessages, message, options])
 
-  return { abandonPlan, conversationId, dispatchRun, input, loadMessages, messages, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput }
+  return { abandonPlan, conversationId, dispatchRun, input, loadMessages, timeline, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput }
 }

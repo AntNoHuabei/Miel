@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS messages (
 	role            TEXT NOT NULL,
 	content         TEXT NOT NULL DEFAULT '',
 	message_type    TEXT NOT NULL DEFAULT 'chat',
+	plan_id         INTEGER NOT NULL DEFAULT 0,
+	plan_revision   INTEGER NOT NULL DEFAULT 0,
 	created_at      INTEGER NOT NULL
 );
 
@@ -264,6 +266,28 @@ func migrate(db *sql.DB) error {
 	}
 	if err := ensureColumn(db, "messages", "message_type", "TEXT NOT NULL DEFAULT 'chat'"); err != nil {
 		return fmt.Errorf("migrate message type: %w", err)
+	}
+	if err := ensureColumn(db, "messages", "plan_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("migrate message plan id: %w", err)
+	}
+	if err := ensureColumn(db, "messages", "plan_revision", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("migrate message plan revision: %w", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE messages
+		SET plan_id = COALESCE((
+			SELECT pr.plan_id FROM plan_revisions pr
+			WHERE pr.user_message_id = messages.id OR pr.assistant_message_id = messages.id
+			ORDER BY pr.id DESC LIMIT 1
+		), plan_id),
+		plan_revision = COALESCE((
+			SELECT pr.revision FROM plan_revisions pr
+			WHERE pr.user_message_id = messages.id OR pr.assistant_message_id = messages.id
+			ORDER BY pr.id DESC LIMIT 1
+		), plan_revision)
+		WHERE message_type IN ('plan_request', 'plan_response')
+		  AND (plan_id = 0 OR plan_revision = 0)`); err != nil {
+		return fmt.Errorf("backfill message plan links: %w", err)
 	}
 	if _, err := db.Exec(`
 		UPDATE plans SET status = 'interrupted', updated_at = ?

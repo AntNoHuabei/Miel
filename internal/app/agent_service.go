@@ -369,7 +369,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 	} else if mode == "execute" {
 		messageType = "plan_execution"
 	}
-	convID, userMessageID, err = s.saveUserMessageWithMeta(convID, msg, req.AttachmentIDs, messageType, p)
+	convID, userMessageID, err = s.saveUserMessageWithMeta(convID, msg, req.AttachmentIDs, messageType, p, req.PlanID, req.PlanRevision)
 	if err != nil {
 		return ChatResult{}, err
 	}
@@ -608,7 +608,7 @@ func (s *AgentService) Chat(req ChatRequest) (result ChatResult, retErr error) {
 		if mode == "plan" || (mode == "execute" && deviationRequested) {
 			messageType = "plan_response"
 		}
-		assistantMessageID, err = s.saveMessageWithType(convID, "assistant", out, messageType, answerMessageID, metrics)
+		assistantMessageID, err = s.saveMessageWithType(convID, "assistant", out, messageType, answerMessageID, metrics, req.PlanID, req.PlanRevision)
 		if err != nil {
 			return ChatResult{}, err
 		}
@@ -871,10 +871,10 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 }
 
 func (s *AgentService) saveUserMessage(conversationID int64, content string, attachmentIDs []string) (int64, int64, error) {
-	return s.saveUserMessageWithMeta(conversationID, content, attachmentIDs, "chat", Provider{})
+	return s.saveUserMessageWithMeta(conversationID, content, attachmentIDs, "chat", Provider{}, 0, 0)
 }
 
-func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider) (int64, int64, error) {
+func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider, planID int64, planRevision int) (int64, int64, error) {
 	tx, err := store.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -901,8 +901,9 @@ func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content str
 		}
 	}
 	result, err := tx.Exec(`
-		INSERT INTO messages (conversation_id, role, content, message_type, created_at) VALUES (?, 'user', ?, ?, ?)`,
-		conversationID, content, messageType, now())
+		INSERT INTO messages (conversation_id, role, content, message_type, plan_id, plan_revision, created_at)
+		VALUES (?, 'user', ?, ?, ?, ?, ?)`,
+		conversationID, content, messageType, planID, planRevision, now())
 	if err != nil {
 		return 0, 0, err
 	}
@@ -934,18 +935,19 @@ func (s *AgentService) saveUserMessageWithMeta(conversationID int64, content str
 
 // saveMessage 追加消息并更新时间戳。
 func (s *AgentService) saveMessage(convID int64, role, content, aguiMessageID string, metrics *ChatMetrics) (int64, error) {
-	return s.saveMessageWithType(convID, role, content, "chat", aguiMessageID, metrics)
+	return s.saveMessageWithType(convID, role, content, "chat", aguiMessageID, metrics, 0, 0)
 }
 
-func (s *AgentService) saveMessageWithType(convID int64, role, content, messageType, aguiMessageID string, metrics *ChatMetrics) (int64, error) {
+func (s *AgentService) saveMessageWithType(convID int64, role, content, messageType, aguiMessageID string, metrics *ChatMetrics, planID int64, planRevision int) (int64, error) {
 	tx, err := store.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
 	res, err := tx.Exec(`
-		INSERT INTO messages (conversation_id, role, content, message_type, created_at) VALUES (?, ?, ?, ?, ?)`,
-		convID, role, content, messageType, now())
+		INSERT INTO messages (conversation_id, role, content, message_type, plan_id, plan_revision, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		convID, role, content, messageType, planID, planRevision, now())
 	if err != nil {
 		return 0, err
 	}
@@ -979,7 +981,7 @@ func (s *AgentService) saveMessageWithType(convID int64, role, content, messageT
 // loadMessages 读取会话消息(正序)。
 func (s *AgentService) loadMessages(convID int64) ([]ChatMessage, error) {
 	rows, err := store.Query(`
-		SELECT id, conversation_id, role, content, message_type, created_at FROM messages
+		SELECT id, conversation_id, role, content, message_type, plan_id, plan_revision, created_at FROM messages
 		WHERE conversation_id = ? ORDER BY id ASC`, convID)
 	if err != nil {
 		return nil, err
@@ -988,7 +990,7 @@ func (s *AgentService) loadMessages(convID int64) ([]ChatMessage, error) {
 	var items []ChatMessage
 	for rows.Next() {
 		var m ChatMessage
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.MessageType, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.MessageType, &m.PlanID, &m.PlanRevision, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, m)

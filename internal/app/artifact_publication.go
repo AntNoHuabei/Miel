@@ -293,7 +293,7 @@ func (s *ArtifactService) SaveMessage(request SaveMessageArtifactRequest) (Artif
 	if s.agent == nil {
 		return ArtifactRef{}, errors.New("对话服务未初始化")
 	}
-	snapshot, err := s.agent.MessagesSnapshot(request.ConversationID)
+	snapshot, err := s.agent.rawMessagesSnapshot(request.ConversationID)
 	if err != nil {
 		return ArtifactRef{}, err
 	}

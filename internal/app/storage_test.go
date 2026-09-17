@@ -40,6 +40,51 @@ func TestMigrateRecoversInterruptedPlanRuns(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsAndBackfillsMessagePlanLinks(t *testing.T) {
+	dsn := fmt.Sprintf("file:message-plan-links-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`
+		CREATE TABLE messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id INTEGER NOT NULL,
+			role TEXT NOT NULL, content TEXT NOT NULL DEFAULT '',
+			message_type TEXT NOT NULL DEFAULT 'chat', created_at INTEGER NOT NULL
+		)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO conversations (id, title, created_at, updated_at) VALUES (1, 'legacy', 1, 1);
+		INSERT INTO messages (id, conversation_id, role, content, message_type, created_at)
+		VALUES (1, 1, 'user', 'plan', 'plan_request', 1),
+		       (2, 1, 'assistant', '# Plan', 'plan_response', 2);
+		INSERT INTO plans (id, conversation_id, status, current_revision, created_at, updated_at)
+		VALUES (1, 1, 'pending', 1, 1, 2);
+		INSERT INTO plan_revisions (plan_id, revision, content, user_message_id, assistant_message_id, provider_id, model, created_at)
+		VALUES (1, 1, '# Plan', 1, 2, 1, 'model', 2)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, messageID := range []int{1, 2} {
+		var planID int64
+		var revision int
+		if err := db.QueryRow("SELECT plan_id, plan_revision FROM messages WHERE id = ?", messageID).Scan(&planID, &revision); err != nil {
+			t.Fatal(err)
+		}
+		if planID != 1 || revision != 1 {
+			t.Fatalf("message %d plan link = %d:%d", messageID, planID, revision)
+		}
+	}
+}
+
 func TestMigrateKeepsOnlyDeepSeekFlash(t *testing.T) {
 	dsn := fmt.Sprintf("file:storage-test-%d?mode=memory&cache=shared", time.Now().UnixNano())
 	db, err := sql.Open("sqlite", dsn)

@@ -182,6 +182,8 @@ type ChatMessage struct {
 	Role           string              `json:"role"` // user | assistant | tool
 	Content        string              `json:"content"`
 	MessageType    string              `json:"messageType"`
+	PlanID         int64               `json:"planId"`
+	PlanRevision   int                 `json:"planRevision"`
 	CreatedAt      int64               `json:"createdAt"`
 	Attachments    []MessageAttachment `json:"attachments,omitempty"`
 }

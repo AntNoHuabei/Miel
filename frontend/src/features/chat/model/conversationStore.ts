@@ -1,15 +1,15 @@
 import { createStore } from 'zustand/vanilla'
-import type { AGUIMessageLite } from '../../../api'
+import type { ConversationTimelineItemLite } from '../../../api'
 import { agentRunReducer, initialAgentRunState } from './agentRun'
 import type { AgentRunAction, AgentRunState } from './agentRun'
 
 export interface ConversationState {
   conversationId: number
-  messages: AGUIMessageLite[]
+  timeline: ConversationTimelineItemLite[]
   input: string
   run: AgentRunState
   setConversation: (id: number) => void
-  setMessages: (messages: AGUIMessageLite[] | ((current: AGUIMessageLite[]) => AGUIMessageLite[])) => void
+  setTimeline: (timeline: ConversationTimelineItemLite[] | ((current: ConversationTimelineItemLite[]) => ConversationTimelineItemLite[])) => void
   setInput: (input: string) => void
   dispatchRun: (action: AgentRunAction) => void
   reset: () => void
@@ -21,7 +21,7 @@ export function createConversationStore(storageKey: string) {
 
   return createStore<ConversationState>((set) => ({
     conversationId: initialConversationId,
-    messages: [],
+    timeline: [],
     input: '',
     run: initialAgentRunState,
     setConversation: (conversationId) => {
@@ -31,12 +31,12 @@ export function createConversationStore(storageKey: string) {
       }
       set({ conversationId })
     },
-    setMessages: (messages) => set((state) => ({ messages: typeof messages === 'function' ? messages(state.messages) : messages })),
+    setTimeline: (timeline) => set((state) => ({ timeline: typeof timeline === 'function' ? timeline(state.timeline) : timeline })),
     setInput: (input) => set({ input }),
     dispatchRun: (action) => set((state) => ({ run: agentRunReducer(state.run, action) })),
     reset: () => {
       if (typeof window !== 'undefined') window.localStorage.removeItem(storageKey)
-      set({ conversationId: 0, messages: [], input: '', run: initialAgentRunState })
+      set({ conversationId: 0, timeline: [], input: '', run: initialAgentRunState })
     },
   }))
 }

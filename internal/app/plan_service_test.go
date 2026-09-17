@@ -116,7 +116,7 @@ func TestPlanToolsAreReadOnly(t *testing.T) {
 	}
 }
 
-func TestAttachPlanSnapshotRestoresPlanCardMetadata(t *testing.T) {
+func TestConversationSnapshotSeparatesPlanFromMessages(t *testing.T) {
 	setupPlanTestStore(t)
 	if _, err := store.Exec(`
 		INSERT INTO messages (id, conversation_id, role, content, message_type, created_at)
@@ -134,16 +134,64 @@ func TestAttachPlanSnapshotRestoresPlanCardMetadata(t *testing.T) {
 		map[string]any{"id": "m201", "role": "user", "content": "plan it"},
 		map[string]any{"id": "assistant-plan", "role": "assistant", "content": "# Plan"},
 	}}
-	if err := attachPlanSnapshot(snapshot, 10); err != nil {
+	result, err := buildConversationSnapshot(snapshot, 10)
+	if err != nil {
 		t.Fatal(err)
 	}
-	messages := snapshot["messages"].([]any)
-	if messages[0].(map[string]any)["messageType"] != "plan_request" {
-		t.Fatalf("request metadata = %#v", messages[0])
+	if result["type"] != "CONVERSATION_SNAPSHOT" {
+		t.Fatalf("snapshot type = %#v", result["type"])
 	}
-	plan, ok := messages[1].(map[string]any)["plan"].(map[string]any)
-	if !ok || plan["id"] != int64(30) || plan["revision"] != 1 || plan["status"] != planStatusPending {
-		t.Fatalf("plan metadata = %#v", messages[1])
+	timeline := result["timeline"].([]any)
+	request := timeline[0].(map[string]any)
+	plan, ok := timeline[1].(map[string]any)["plan"].(snapshotPlanView)
+	if request["kind"] != "plan_request" || !ok || plan.ID != 30 || plan.Revision != 1 || plan.Status != planStatusPending {
+		t.Fatalf("timeline = %#v", timeline)
+	}
+}
+
+func TestConversationSnapshotKeepsPlanExecutionInOrder(t *testing.T) {
+	setupPlanTestStore(t)
+	if _, err := store.Exec(`
+		INSERT INTO messages (id, conversation_id, role, content, message_type, plan_id, plan_revision, created_at)
+		VALUES (211, 10, 'user', 'plan it', 'plan_request', 31, 1, 2),
+		       (212, 10, 'assistant', '# Plan', 'plan_response', 31, 1, 3),
+		       (213, 10, 'user', '执行已批准计划 v1', 'plan_execution', 31, 1, 4),
+		       (214, 10, 'assistant', 'done', 'chat', 0, 0, 5);
+		INSERT INTO message_metrics (message_id, agui_message_id, model)
+		VALUES (212, 'assistant-plan-31', 'model-a');
+		INSERT INTO plans (id, conversation_id, status, current_revision, approved_revision, created_at, updated_at)
+		VALUES (31, 10, 'completed', 1, 1, 2, 5);
+		INSERT INTO plan_revisions (plan_id, revision, content, user_message_id, assistant_message_id, provider_id, model, created_at)
+		VALUES (31, 1, '# Plan', 211, 212, 1, 'model-a', 3);
+		INSERT INTO plan_runs (id, plan_id, revision, request_id, provider_id, model, status, started_at, completed_at)
+		VALUES (41, 31, 1, 'run-1', 1, 'model-b', 'completed', 4, 5)`); err != nil {
+		t.Fatal(err)
+	}
+	raw := map[string]any{"messages": []any{
+		map[string]any{"id": "m211", "role": "user", "content": "plan it"},
+		map[string]any{"id": "assistant-plan-31", "role": "assistant", "content": "# Plan"},
+		map[string]any{"id": "m213", "role": "user", "content": "执行已批准计划 v1"},
+		map[string]any{"id": "m214", "role": "assistant", "content": "done"},
+	}}
+	snapshot, err := buildConversationSnapshot(raw, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timeline := snapshot["timeline"].([]any)
+	want := []string{"plan_request", "plan", "plan_execution", "message"}
+	for index, rawItem := range timeline {
+		item := rawItem.(map[string]any)
+		if item["kind"] != want[index] || item["sequence"] != index+1 {
+			t.Fatalf("timeline[%d] = %#v", index, item)
+		}
+	}
+	execution := timeline[2].(map[string]any)["execution"].(map[string]any)
+	run := execution["run"].(snapshotPlanRun)
+	if execution["planId"] != int64(31) || run.Model != "model-b" || run.Status != planStatusCompleted {
+		t.Fatalf("execution = %#v", execution)
+	}
+	if _, mixed := timeline[1].(map[string]any)["message"]; mixed {
+		t.Fatalf("plan leaked into message entity: %#v", timeline[1])
 	}
 }
 

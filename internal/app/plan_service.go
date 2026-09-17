@@ -308,6 +308,12 @@ func savePlanRevision(conversationID, requestedPlanID int64, expectedRevision in
 	if _, err := tx.Exec(`UPDATE plans SET status = ?, current_revision = ?, approved_revision = 0, updated_at = ? WHERE id = ?`, planStatusPending, revision, now(), plan.ID); err != nil {
 		return PlanRevision{}, err
 	}
+	if _, err := tx.Exec(`
+		UPDATE messages SET plan_id = ?, plan_revision = ?
+		WHERE id = ? OR (id = ? AND message_type = 'plan_request')`,
+		plan.ID, revision, assistantMessageID, userMessageID); err != nil {
+		return PlanRevision{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return PlanRevision{}, err
 	}

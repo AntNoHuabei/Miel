@@ -81,9 +81,17 @@ func aguiSessionKey(conversationID int64) session.Key {
 	}
 }
 
-// MessagesSnapshot 通过 AG-UI MessagesSnapshot 重放持久化 track events。
-// 返回值保持标准 MESSAGES_SNAPSHOT JSON 结构,前端可直接渲染 messages。
+// MessagesSnapshot returns the application-level ordered conversation timeline.
+// The underlying AG-UI snapshot remains internal so plan entities never masquerade as chat messages.
 func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, error) {
+	raw, err := s.rawMessagesSnapshot(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	return buildConversationSnapshot(raw, conversationID)
+}
+
+func (s *AgentService) rawMessagesSnapshot(conversationID int64) (map[string]any, error) {
 	if conversationID <= 0 {
 		return nil, errors.New("会话 ID 无效")
 	}
@@ -141,7 +149,7 @@ func (s *AgentService) MessagesSnapshot(conversationID int64) (map[string]any, e
 		return nil, err
 	}
 	attachMessageMetrics(result, metrics)
-	if err := attachPlanSnapshot(result, conversationID); err != nil {
+	if err := attachMessageTypes(result, conversationID); err != nil {
 		return nil, err
 	}
 	if err := s.attachSnapshotAttachments(result, history); err != nil {
@@ -160,22 +168,26 @@ type snapshotMessageMeta struct {
 	MessageID     int64
 	AGUIMessageID string
 	MessageType   string
+	PlanID        int64
+	PlanRevision  int
+	CreatedAt     int64
 }
 
-func attachPlanSnapshot(snapshot map[string]any, conversationID int64) error {
+func loadSnapshotMessageMeta(conversationID int64) (map[string]snapshotMessageMeta, error) {
 	rows, err := store.Query(`
-		SELECT m.id, COALESCE(mm.agui_message_id, ''), m.message_type
+		SELECT m.id, COALESCE(mm.agui_message_id, ''), m.message_type,
+			m.plan_id, m.plan_revision, m.created_at
 		FROM messages m LEFT JOIN message_metrics mm ON mm.message_id = m.id
-		WHERE m.conversation_id = ? AND m.message_type <> 'chat'`, conversationID)
+		WHERE m.conversation_id = ?`, conversationID)
 	if err != nil {
-		return fmt.Errorf("load message types: %w", err)
+		return nil, fmt.Errorf("load message metadata: %w", err)
 	}
 	messageMeta := make(map[string]snapshotMessageMeta)
 	for rows.Next() {
 		var item snapshotMessageMeta
-		if err := rows.Scan(&item.MessageID, &item.AGUIMessageID, &item.MessageType); err != nil {
+		if err := rows.Scan(&item.MessageID, &item.AGUIMessageID, &item.MessageType, &item.PlanID, &item.PlanRevision, &item.CreatedAt); err != nil {
 			rows.Close()
-			return err
+			return nil, err
 		}
 		messageMeta["m"+strconv.FormatInt(item.MessageID, 10)] = item
 		if item.AGUIMessageID != "" {
@@ -183,62 +195,16 @@ func attachPlanSnapshot(snapshot map[string]any, conversationID int64) error {
 		}
 	}
 	if err := rows.Close(); err != nil {
-		return err
+		return nil, err
 	}
+	return messageMeta, nil
+}
 
-	type planMeta struct {
-		MessageID       int64
-		AGUIMessageID   string
-		PlanID          int64
-		Revision        int
-		CurrentRevision int
-		Status          string
-		GeneratedModel  string
-		ExecutionModel  string
-	}
-	planRows, err := store.Query(`
-		SELECT r.assistant_message_id, COALESCE(mm.agui_message_id, ''), r.plan_id,
-			r.revision, p.current_revision, p.status, r.model,
-			COALESCE((SELECT pr.model FROM plan_runs pr
-				WHERE pr.plan_id = r.plan_id AND pr.revision = r.revision
-				ORDER BY pr.id DESC LIMIT 1), '')
-		FROM plan_revisions r
-		JOIN plans p ON p.id = r.plan_id
-		LEFT JOIN message_metrics mm ON mm.message_id = r.assistant_message_id
-		WHERE p.conversation_id = ? ORDER BY r.plan_id, r.revision`, conversationID)
+func attachMessageTypes(snapshot map[string]any, conversationID int64) error {
+	messageMeta, err := loadSnapshotMessageMeta(conversationID)
 	if err != nil {
-		return fmt.Errorf("load plan snapshot: %w", err)
-	}
-	plans := make(map[string]map[string]any)
-	for planRows.Next() {
-		var item planMeta
-		if err := planRows.Scan(
-			&item.MessageID, &item.AGUIMessageID, &item.PlanID, &item.Revision,
-			&item.CurrentRevision, &item.Status, &item.GeneratedModel, &item.ExecutionModel,
-		); err != nil {
-			planRows.Close()
-			return err
-		}
-		status := item.Status
-		if item.Revision < item.CurrentRevision {
-			status = "revised"
-		}
-		meta := map[string]any{
-			"id": item.PlanID, "revision": item.Revision, "currentRevision": item.CurrentRevision,
-			"status": status, "generatedModel": item.GeneratedModel,
-		}
-		if item.ExecutionModel != "" {
-			meta["executionModel"] = item.ExecutionModel
-		}
-		plans["m"+strconv.FormatInt(item.MessageID, 10)] = meta
-		if item.AGUIMessageID != "" {
-			plans[item.AGUIMessageID] = meta
-		}
-	}
-	if err := planRows.Close(); err != nil {
 		return err
 	}
-
 	messages, ok := snapshot["messages"].([]any)
 	if !ok {
 		return nil
@@ -249,14 +215,160 @@ func attachPlanSnapshot(snapshot map[string]any, conversationID int64) error {
 			continue
 		}
 		messageID, _ := message["id"].(string)
-		if item, exists := messageMeta[messageID]; exists {
+		if item, exists := messageMeta[messageID]; exists && item.MessageType != "chat" {
 			message["messageType"] = item.MessageType
-		}
-		if plan, exists := plans[messageID]; exists {
-			message["plan"] = plan
 		}
 	}
 	return nil
+}
+
+type snapshotPlanView struct {
+	ID              int64  `json:"id"`
+	MessageID       string `json:"messageId"`
+	Revision        int    `json:"revision"`
+	CurrentRevision int    `json:"currentRevision"`
+	Status          string `json:"status"`
+	Content         string `json:"content"`
+	GeneratedModel  string `json:"generatedModel"`
+	ExecutionModel  string `json:"executionModel,omitempty"`
+	CreatedAt       int64  `json:"createdAt"`
+}
+
+type snapshotPlanRun struct {
+	ID          int64  `json:"id"`
+	PlanID      int64  `json:"planId"`
+	Revision    int    `json:"revision"`
+	Status      string `json:"status"`
+	Model       string `json:"model"`
+	Error       string `json:"error,omitempty"`
+	StartedAt   int64  `json:"startedAt"`
+	CompletedAt int64  `json:"completedAt,omitempty"`
+}
+
+func planRevisionKey(planID int64, revision int) string {
+	return strconv.FormatInt(planID, 10) + ":" + strconv.Itoa(revision)
+}
+
+func loadSnapshotPlans(conversationID int64) (map[string]snapshotPlanView, map[string][]snapshotPlanRun, error) {
+	rows, err := store.Query(`
+		SELECT r.assistant_message_id, COALESCE(mm.agui_message_id, ''), r.plan_id,
+			r.revision, p.current_revision, p.status, r.content, r.model, r.created_at,
+			COALESCE((SELECT pr.model FROM plan_runs pr
+				WHERE pr.plan_id = r.plan_id AND pr.revision = r.revision
+				ORDER BY pr.id DESC LIMIT 1), '')
+		FROM plan_revisions r
+		JOIN plans p ON p.id = r.plan_id
+		LEFT JOIN message_metrics mm ON mm.message_id = r.assistant_message_id
+		WHERE p.conversation_id = ? ORDER BY r.plan_id, r.revision`, conversationID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load plan snapshot: %w", err)
+	}
+	plans := make(map[string]snapshotPlanView)
+	for rows.Next() {
+		var assistantMessageID int64
+		var aguiMessageID string
+		var item snapshotPlanView
+		if err := rows.Scan(&assistantMessageID, &aguiMessageID, &item.ID, &item.Revision,
+			&item.CurrentRevision, &item.Status, &item.Content, &item.GeneratedModel,
+			&item.CreatedAt, &item.ExecutionModel); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		if item.Revision < item.CurrentRevision {
+			item.Status = "revised"
+		}
+		item.MessageID = "m" + strconv.FormatInt(assistantMessageID, 10)
+		plans[item.MessageID] = item
+		if aguiMessageID != "" {
+			plans[aguiMessageID] = item
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, err
+	}
+
+	runRows, err := store.Query(`
+		SELECT pr.id, pr.plan_id, pr.revision, pr.status, pr.model, pr.error,
+			pr.started_at, pr.completed_at
+		FROM plan_runs pr JOIN plans p ON p.id = pr.plan_id
+		WHERE p.conversation_id = ? ORDER BY pr.id`, conversationID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load plan runs: %w", err)
+	}
+	runs := make(map[string][]snapshotPlanRun)
+	for runRows.Next() {
+		var item snapshotPlanRun
+		if err := runRows.Scan(&item.ID, &item.PlanID, &item.Revision, &item.Status,
+			&item.Model, &item.Error, &item.StartedAt, &item.CompletedAt); err != nil {
+			runRows.Close()
+			return nil, nil, err
+		}
+		key := planRevisionKey(item.PlanID, item.Revision)
+		runs[key] = append(runs[key], item)
+	}
+	if err := runRows.Close(); err != nil {
+		return nil, nil, err
+	}
+	return plans, runs, nil
+}
+
+func buildConversationSnapshot(snapshot map[string]any, conversationID int64) (map[string]any, error) {
+	messageMeta, err := loadSnapshotMessageMeta(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	plans, runs, err := loadSnapshotPlans(conversationID)
+	if err != nil {
+		return nil, err
+	}
+	messages, _ := snapshot["messages"].([]any)
+	timeline := make([]any, 0, len(messages))
+	runIndexes := make(map[string]int)
+	for index, raw := range messages {
+		message, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		messageID, _ := message["id"].(string)
+		meta, hasMeta := messageMeta[messageID]
+		delete(message, "messageType")
+		item := map[string]any{"kind": "message", "sequence": index + 1, "message": message}
+		if hasMeta {
+			switch meta.MessageType {
+			case "plan_request":
+				item = map[string]any{"kind": "plan_request", "sequence": index + 1, "request": map[string]any{
+					"id": messageID, "messageId": messageID, "content": message["content"],
+					"planId": meta.PlanID, "revision": meta.PlanRevision, "createdAt": meta.CreatedAt,
+				}}
+			case "plan_response":
+				if plan, exists := plans[messageID]; exists {
+					item = map[string]any{"kind": "plan", "sequence": index + 1, "plan": plan}
+				}
+			case "plan_execution":
+				key := planRevisionKey(meta.PlanID, meta.PlanRevision)
+				availableRuns := runs[key]
+				var run snapshotPlanRun
+				if len(availableRuns) > 0 {
+					runIndex := runIndexes[key]
+					if runIndex >= len(availableRuns) {
+						runIndex = len(availableRuns) - 1
+					}
+					run = availableRuns[runIndex]
+					runIndexes[key]++
+				}
+				execution := map[string]any{
+					"id": messageID, "messageId": messageID, "content": message["content"],
+					"planId": meta.PlanID, "revision": meta.PlanRevision, "createdAt": meta.CreatedAt,
+				}
+				if run.ID > 0 {
+					execution["run"] = run
+				}
+				item = map[string]any{"kind": "plan_execution", "sequence": index + 1, "execution": execution}
+			}
+		}
+		timeline = append(timeline, item)
+	}
+	return map[string]any{"type": "CONVERSATION_SNAPSHOT", "timeline": timeline}, nil
 }
 
 func mergePersistedRunErrors(snapshot map[string]any, runErrors []ChatRunError) {

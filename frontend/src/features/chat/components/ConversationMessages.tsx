@@ -5,6 +5,7 @@ import {
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
+  ExpandOutlined,
   LoadingOutlined,
   PlayCircleOutlined,
   ToolOutlined,
@@ -136,7 +137,7 @@ function AssistantMarkdown({ content, conversationId, messageId }: { content: st
   }}>{content}</ReactMarkdown>
 }
 
-const PLAN_STATUS: Record<string, string> = {
+export const PLAN_STATUS: Record<string, string> = {
   pending: '待确认',
   executing: '执行中',
   completed: '已完成',
@@ -146,15 +147,31 @@ const PLAN_STATUS: Record<string, string> = {
   revised: '已修订',
 }
 
-function PlanMessage({
-  content,
+export function planTitle(content: string) {
+  const heading = content.split(/\r?\n/).map((line) => line.trim()).find((line) => /^#{1,6}\s+/.test(line))
+  return heading?.replace(/^#{1,6}\s+/, '').trim() || '执行计划'
+}
+
+export function planSummary(content: string) {
+  return content.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^#{1,6}\s+/.test(line))
+    .map((line) => line.replace(/^[-*+]\s+/, '').replace(/[`*_>#]/g, ''))
+    .join(' ')
+    .slice(0, 280)
+}
+
+export function isPlanActionable(plan: PlanLite) {
+  return plan.status === 'pending' && plan.revision === plan.currentRevision
+}
+
+export function PlanActions({
   plan,
   sending,
   onExecute,
   onRevise,
   onAbandon,
 }: {
-  content: string
   plan: PlanLite
   sending: boolean
   onExecute?: (plan: PlanLite) => void | Promise<void>
@@ -163,7 +180,7 @@ function PlanMessage({
 }) {
   const [revising, setRevising] = useState(false)
   const [instruction, setInstruction] = useState('')
-  const actionable = ['pending', 'failed', 'interrupted'].includes(plan.status) && plan.revision === plan.currentRevision
+  const actionable = isPlanActionable(plan)
   const submitRevision = async () => {
     const value = instruction.trim()
     if (!value || !onRevise) return
@@ -171,13 +188,7 @@ function PlanMessage({
     setInstruction('')
     setRevising(false)
   }
-  return (
-    <section className={`bm-plan-message is-${plan.status}`} aria-label={`计划 v${plan.revision}`}>
-      <div className="bm-plan-message-header">
-        <div><strong>Plan v{plan.revision}</strong><span className="bm-plan-status">{PLAN_STATUS[plan.status] ?? plan.status}</span></div>
-        <Text type="secondary">{plan.generatedModel}{plan.executionModel ? ` · 执行 ${plan.executionModel}` : ''}</Text>
-      </div>
-      <div className="bm-md">{renderMarkdown(content)}</div>
+  return <>
       {revising && actionable && (
         <div className="bm-plan-revise">
           <Input.TextArea value={instruction} autoSize={{ minRows: 2, maxRows: 5 }} autoFocus placeholder="说明要调整的目标、范围或约束" onChange={(event) => setInstruction(event.target.value)} />
@@ -189,24 +200,49 @@ function PlanMessage({
       )}
       {actionable && !revising && (
         <div className="bm-plan-actions">
-          <Button type="primary" icon={<PlayCircleOutlined />} disabled={sending || !onExecute} onClick={() => void onExecute?.(plan)}>{plan.status === 'pending' ? '确认执行' : '重新执行'}</Button>
+          <Button type="primary" icon={<PlayCircleOutlined />} disabled={sending || !onExecute} onClick={() => void onExecute?.(plan)}>确认执行</Button>
           <Button icon={<EditOutlined />} disabled={sending || !onRevise} onClick={() => setRevising(true)}>Revise</Button>
           <Popconfirm title="废弃这个计划？" description="历史版本仍会保留在会话中。" okText="废弃" cancelText="取消" onConfirm={() => onAbandon?.(plan)}>
             <Button danger icon={<DeleteOutlined />} disabled={sending || !onAbandon}>废弃</Button>
           </Popconfirm>
         </div>
       )}
+    </>
+}
+
+export function PlanMessage({
+  plan,
+  sending,
+  onOpen,
+  onExecute,
+  onRevise,
+  onAbandon,
+}: {
+  plan: PlanLite
+  sending: boolean
+  onOpen?: (plan: PlanLite) => void
+  onExecute?: (plan: PlanLite) => void | Promise<void>
+  onRevise?: (plan: PlanLite, instruction: string) => void | Promise<void>
+  onAbandon?: (plan: PlanLite) => void | Promise<void>
+}) {
+  const open = () => onOpen?.(plan)
+  return (
+    <section className={`bm-plan-message is-${plan.status}`} aria-label={`计划 v${plan.revision}`} role="button" tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest('button, textarea, input, a')) open() }} onKeyDown={(event) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) { event.preventDefault(); open() } }}>
+      <div className="bm-plan-message-header">
+        <div><strong>Plan v{plan.revision}</strong><span className="bm-plan-status">{PLAN_STATUS[plan.status] ?? plan.status}</span></div>
+        <div className="bm-plan-header-tools"><Text type="secondary">{plan.generatedModel}{plan.executionModel ? ` · 执行 ${plan.executionModel}` : ''}</Text><Tooltip title="在右侧查看完整计划"><Button type="text" aria-label="查看完整计划" icon={<ExpandOutlined />} onClick={open} /></Tooltip></div>
+      </div>
+      <strong className="bm-plan-title">{planTitle(plan.content)}</strong>
+      <div className="bm-plan-summary">{planSummary(plan.content)}</div>
+      <PlanActions plan={plan} sending={sending} onExecute={onExecute} onRevise={onRevise} onAbandon={onAbandon} />
     </section>
   )
 }
 
-export function SnapshotMessage({ message, toolName, conversationId = 0, sending = false, onExecutePlan, onRevisePlan, onAbandonPlan }: { message: AGUIMessageLite; toolName?: string; conversationId?: number; sending?: boolean; onExecutePlan?: (plan: PlanLite) => void | Promise<void>; onRevisePlan?: (plan: PlanLite, instruction: string) => void | Promise<void>; onAbandonPlan?: (plan: PlanLite) => void | Promise<void> }) {
+export function SnapshotMessage({ message, toolName, conversationId = 0 }: { message: AGUIMessageLite; toolName?: string; conversationId?: number }) {
   const content = messageContentText(message.content)
   if (message.role === 'error') {
     return <ChatRunErrorMessage error={normalizeAgentRunError(message.runError ?? message.error ?? content)} />
-  }
-  if (message.role === 'user' && message.messageType === 'plan_execution') {
-    return <div className="bm-plan-execution-event"><PlayCircleOutlined /><span>{content}</span></div>
   }
   if (message.role === 'user') {
     return <Flex justify="flex-end" style={{ margin: '4px 0' }}><div className="bm-chat-user-message"><ChatAttachmentStrip attachments={message.attachments ?? []} />{content && <div className="bm-chat-user-message-text">{content}</div>}</div></Flex>
@@ -224,7 +260,6 @@ export function SnapshotMessage({ message, toolName, conversationId = 0, sending
   }
   if (message.role === 'artifact') return <ArtifactItems artifacts={message.artifacts} />
   if (message.role !== 'assistant') return null
-  if (message.plan) return <PlanMessage content={content} plan={message.plan} sending={sending} onExecute={onExecutePlan} onRevise={onRevisePlan} onAbandon={onAbandonPlan} />
   return (
     <>
       {(message.toolCalls ?? []).map((call) => <div className="bm-agent-process" key={call.id}><details className="bm-agent-detail"><summary><ToolOutlined /><span>{getToolLabel(call.function.name)}</span><Text type="secondary" className="bm-tool-status">已调用</Text></summary><div className="bm-tool-detail"><code>{call.function.name}</code>{call.function.arguments && <pre>{call.function.arguments}</pre>}</div></details></div>)}

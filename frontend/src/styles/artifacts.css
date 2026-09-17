@@ -28,10 +28,10 @@
 .bm-artifact-item-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; line-height: 1.35; }
 .bm-artifact-item-copy > span { color: var(--bm-text-secondary, #69727d); font-size: 10px; letter-spacing: 0; }
 
-.bm-artifact-preview-panel {
+.bm-preview-panel {
   position: relative;
   display: flex;
-  width: var(--bm-artifact-preview-width, 520px);
+  width: var(--bm-preview-width, 520px);
   min-width: 340px;
   max-width: min(720px, calc(100vw - 560px));
   height: 100%;
@@ -41,7 +41,7 @@
   background: var(--bm-content-bg, #f5f6f8);
 }
 
-.bm-artifact-preview-resizer {
+.bm-preview-resizer {
   position: absolute;
   z-index: 3;
   top: 0;
@@ -54,7 +54,7 @@
   touch-action: none;
 }
 
-.bm-artifact-preview-resizer::after {
+.bm-preview-resizer::after {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -65,24 +65,24 @@
   transition: width 120ms ease, left 120ms ease, background 120ms ease;
 }
 
-.bm-artifact-preview-resizer:hover::after,
-.bm-artifact-preview-resizer:focus-visible::after,
-.bm-artifact-preview-panel.is-resizing .bm-artifact-preview-resizer::after {
+.bm-preview-resizer:hover::after,
+.bm-preview-resizer:focus-visible::after,
+.bm-preview-panel.is-resizing .bm-preview-resizer::after {
   left: 3px;
   width: 3px;
   background: var(--bm-signal, #002fa7);
 }
 
-body.bm-artifact-preview-resizing {
+body.bm-preview-resizing {
   cursor: col-resize;
   user-select: none;
 }
 
-.bm-artifact-preview-panel.is-resizing .bm-artifact-preview-body {
+.bm-preview-panel.is-resizing .bm-preview-body {
   pointer-events: none;
 }
 
-.bm-artifact-preview-header {
+.bm-preview-header {
   display: flex;
   min-height: 56px;
   align-items: center;
@@ -92,13 +92,14 @@ body.bm-artifact-preview-resizing {
   background: var(--bm-header-bg, #fff);
 }
 
-.bm-artifact-preview-header > div { display: flex; min-width: 0; flex-direction: column; }
-.bm-artifact-preview-header > div > span { color: var(--bm-text-secondary, #69727d); font-size: 10px; letter-spacing: 0; }
-.bm-artifact-preview-toolbar { display: flex; min-height: 40px; align-items: center; gap: 4px; padding: 4px 10px; border-bottom: 1px solid var(--bm-divider, #dfe3e8); }
-.bm-artifact-preview-toolbar > span { flex: 1; }
-.bm-artifact-preview-body { display: flex; min-width: 0; min-height: 0; flex: 1; align-items: flex-start; justify-content: center; overflow: auto; padding: 14px; }
-.bm-artifact-preview-body > .ant-spin,
-.bm-artifact-preview-body > .ant-empty { align-self: center; }
+.bm-preview-header > div { display: flex; min-width: 0; flex-direction: column; }
+.bm-preview-header > div > span { color: var(--bm-text-secondary, #69727d); font-size: 10px; letter-spacing: 0; }
+.bm-preview-toolbar { display: flex; min-height: 40px; align-items: center; gap: 4px; padding: 4px 10px; border-bottom: 1px solid var(--bm-divider, #dfe3e8); }
+.bm-preview-toolbar > span { flex: 1; }
+.bm-preview-body { display: flex; min-width: 0; min-height: 0; flex: 1; align-items: flex-start; justify-content: center; overflow: auto; padding: 14px; }
+.bm-preview-body > .ant-spin,
+.bm-preview-body > .ant-empty { align-self: center; }
+.bm-preview-footer { flex: 0 0 auto; padding: 10px 14px; border-top: 1px solid var(--bm-divider, #dfe3e8); background: var(--bm-header-bg, #fff); }
 .bm-artifact-truncated { position: sticky; top: 0; z-index: 1; padding: 4px 7px; border: 1px solid var(--bm-divider); border-radius: 4px; background: var(--bm-header-bg); }
 .bm-artifact-media-image { display: block; max-width: 100%; height: auto; object-fit: contain; }
 .bm-artifact-audio { width: 100%; align-self: center; }
@@ -132,8 +133,8 @@ body.bm-artifact-preview-resizing {
 .bm-chat-save-artifact.ant-btn { width: 30px; height: 30px; }
 
 @media (max-width: 900px) {
-  .bm-artifact-preview-panel { position: absolute; z-index: 20; inset: 0; width: 100%; min-width: 0; max-width: none; border-left: 0; }
-  .bm-artifact-preview-resizer { display: none; }
+  .bm-preview-panel { position: absolute; z-index: 20; inset: 0; width: 100%; min-width: 0; max-width: none; border-left: 0; }
+  .bm-preview-resizer { display: none; }
   .bm-artifacts-controls { grid-template-columns: minmax(0, 1fr) 120px; }
 }
 

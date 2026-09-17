@@ -39,18 +39,20 @@ func TestMessagesSnapshotMigratesLegacyHistoryOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		decoded := decodeMessagesSnapshot(t, snapshot)
-		if decoded.Type != "MESSAGES_SNAPSHOT" {
-			t.Fatalf("snapshot type = %q", decoded.Type)
+		if snapshot["type"] != "CONVERSATION_SNAPSHOT" {
+			t.Fatalf("snapshot type = %#v", snapshot["type"])
 		}
-		if len(decoded.Messages) != 2 {
-			t.Fatalf("snapshot messages = %#v, want 2", decoded.Messages)
+		timeline, ok := snapshot["timeline"].([]any)
+		if !ok || len(timeline) != 2 {
+			t.Fatalf("snapshot timeline = %#v, want 2", snapshot["timeline"])
 		}
-		if decoded.Messages[0].Role != aguitypes.RoleUser || decoded.Messages[0].Content != "hello" {
-			t.Fatalf("first message = %#v", decoded.Messages[0])
+		first := timeline[0].(map[string]any)["message"].(map[string]any)
+		second := timeline[1].(map[string]any)["message"].(map[string]any)
+		if first["role"] != "user" || first["content"] != "hello" {
+			t.Fatalf("first message = %#v", first)
 		}
-		if decoded.Messages[1].Role != aguitypes.RoleAssistant || decoded.Messages[1].Content != "world" {
-			t.Fatalf("second message = %#v", decoded.Messages[1])
+		if second["role"] != "assistant" || second["content"] != "world" {
+			t.Fatalf("second message = %#v", second)
 		}
 	}
 }
@@ -87,7 +89,7 @@ func TestMessagesSnapshotPersistsInSQLiteSession(t *testing.T) {
 	}
 
 	first := openService()
-	if _, err := first.MessagesSnapshot(43); err != nil {
+	if _, err := first.rawMessagesSnapshot(43); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.sessions.Close(); err != nil {
@@ -96,7 +98,7 @@ func TestMessagesSnapshotPersistsInSQLiteSession(t *testing.T) {
 
 	second := openService()
 	t.Cleanup(func() { _ = second.sessions.Close() })
-	snapshot, err := second.MessagesSnapshot(43)
+	snapshot, err := second.rawMessagesSnapshot(43)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +132,7 @@ func TestMessagesSnapshotAttachesPersistedAssistantMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := service.MessagesSnapshot(44)
+	snapshot, err := service.rawMessagesSnapshot(44)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +184,7 @@ func TestMessagesSnapshotKeepsImageMessageOrderAndRedactsOriginal(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	snapshot, err := service.MessagesSnapshot(conversationID)
+	snapshot, err := service.rawMessagesSnapshot(conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +237,7 @@ func TestMessagesSnapshotRestoresPersistedRunErrorInTurnOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	snapshot, err := service.MessagesSnapshot(45)
+	snapshot, err := service.rawMessagesSnapshot(45)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +270,7 @@ func TestMessagesSnapshotRestoresPersistedRunErrorInTurnOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored, err := secondService.MessagesSnapshot(45)
+	restored, err := secondService.rawMessagesSnapshot(45)
 	if err != nil {
 		t.Fatal(err)
 	}

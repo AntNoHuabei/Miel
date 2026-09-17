@@ -10,7 +10,7 @@ describe('ConversationViewport', () => {
     render(
       <ConversationViewport
         conversationId={7}
-        messages={[{ id: 'plan-1', role: 'assistant', content: '# Delivery plan', plan: { id: 3, revision: 2, currentRevision: 2, status: 'pending', generatedModel: 'model-a' } }]}
+        timeline={[{ kind: 'plan', sequence: 1, plan: { id: 3, messageId: 'plan-1', revision: 2, currentRevision: 2, status: 'pending', content: '# Delivery plan', generatedModel: 'model-a', createdAt: 1 } }]}
         streaming=""
         sending={false}
         phase="idle"
@@ -44,7 +44,7 @@ describe('ConversationViewport', () => {
     const { container } = render(
       <ConversationViewport
         conversationId={7}
-        messages={[{ id: 'user-1', role: 'user', content: 'request' }]}
+        timeline={[{ kind: 'message', sequence: 1, message: { id: 'user-1', role: 'user', content: 'request' } }]}
         streaming="beforeafter"
         sending
         phase="responding"
@@ -69,11 +69,69 @@ describe('ConversationViewport', () => {
     expect(screen.queryAllByText('beforeafter')).toHaveLength(0)
   })
 
+  it('keeps the plan in place and appends execution progress below it', () => {
+    const { container } = render(
+      <ConversationViewport
+        conversationId={7}
+        timeline={[
+          { kind: 'plan', sequence: 1, plan: { id: 3, messageId: 'plan-1', revision: 1, currentRevision: 1, status: 'executing', content: '# Delivery plan\n\nImplement it.', generatedModel: 'model-a', executionModel: 'model-b', createdAt: 1 } },
+          { kind: 'plan_execution', sequence: 2, execution: { id: 'execute-1', messageId: 'execute-1', content: '执行已批准计划 v1', planId: 3, revision: 1, createdAt: 2 } },
+        ]}
+        streaming=""
+        sending
+        phase="tool"
+        process={[{ type: 'tool', id: 't1' }]}
+        tools={[{ id: 't1', name: 'list_todos', args: '{}', result: '', status: 'running' }]}
+        artifacts={[]}
+        error={null}
+        pendingApproval={null}
+        resolvingApproval={false}
+        scrollRef={{ current: null }}
+        quickPrompts={[]}
+        onQuickPrompt={vi.fn()}
+        onResolveApproval={vi.fn()}
+      />,
+    )
+    expect(container.querySelector('.bm-chat-message-track')).toHaveTextContent(/Plan v1.*执行已批准计划 v1.*正在使用工具.*读取待办/)
+    expect(screen.queryByRole('button', { name: '重新执行' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Revise/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '废弃' })).not.toBeInTheDocument()
+  })
+
+  it('does not expose actions for an interrupted plan', () => {
+    render(
+      <ConversationViewport
+        conversationId={7}
+        timeline={[{ kind: 'plan', sequence: 1, plan: { id: 3, messageId: 'plan-1', revision: 1, currentRevision: 1, status: 'interrupted', content: '# Interrupted plan', generatedModel: 'model-a', executionModel: 'model-b', createdAt: 1 } }]}
+        streaming=""
+        sending={false}
+        phase="idle"
+        process={[]}
+        tools={[]}
+        artifacts={[]}
+        error={null}
+        pendingApproval={null}
+        resolvingApproval={false}
+        scrollRef={{ current: null }}
+        quickPrompts={[]}
+        onQuickPrompt={vi.fn()}
+        onResolveApproval={vi.fn()}
+        onExecutePlan={vi.fn()}
+        onRevisePlan={vi.fn()}
+        onAbandonPlan={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('已中断')).toBeVisible()
+    expect(screen.queryByRole('button', { name: /执行/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Revise/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '废弃' })).not.toBeInTheDocument()
+  })
+
   it('renders separate reasoning blocks in tool execution order and only opens active reasoning', async () => {
     const { container } = render(
       <ConversationViewport
         conversationId={7}
-        messages={[{ id: 'user-1', role: 'user', content: 'request' }]}
+        timeline={[{ kind: 'message', sequence: 1, message: { id: 'user-1', role: 'user', content: 'request' } }]}
         streaming=""
         sending
         phase="thinking"
@@ -109,7 +167,7 @@ describe('ConversationViewport', () => {
     render(
       <ConversationViewport
         conversationId={7}
-        messages={[{ id: 'message-1', role: 'assistant', content: '已有回复' }]}
+        timeline={[{ kind: 'message', sequence: 1, message: { id: 'message-1', role: 'assistant', content: '已有回复' } }]}
         streaming=""
         sending={false}
         phase="idle"
@@ -145,7 +203,7 @@ describe('ConversationViewport', () => {
     render(
       <ConversationViewport
         conversationId={0}
-        messages={[]}
+        timeline={[]}
         streaming=""
         sending={false}
         phase="error"
@@ -173,11 +231,11 @@ describe('ConversationViewport', () => {
     render(
       <ConversationViewport
         conversationId={7}
-        messages={[{
+        timeline={[{ kind: 'message', sequence: 1, message: {
           id: 'error-123',
           role: 'error',
           runError: { code: '403', message: 'raw provider access denied response' },
-        }]}
+        } }]}
         streaming=""
         sending={false}
         phase="idle"

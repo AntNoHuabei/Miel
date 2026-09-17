@@ -150,6 +150,7 @@
 
 .bm-shell-viewport { display: flex; }
 .bm-shell-primary { flex: 1; }
+.bm-shell-chat-layer { display: flex; }
 
 .bm-shell-feature-layer {
   position: absolute;

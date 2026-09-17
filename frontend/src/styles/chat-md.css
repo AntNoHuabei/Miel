@@ -454,6 +454,12 @@
   border-left: 3px solid var(--bm-chat-signal);
   border-radius: var(--bm-chat-radius);
   background: var(--bm-chat-surface);
+  cursor: pointer;
+}
+
+.bm-plan-message:focus-visible {
+  outline: 2px solid var(--bm-chat-signal);
+  outline-offset: 2px;
 }
 
 .bm-plan-message.is-completed,
@@ -489,6 +495,37 @@
   white-space: nowrap;
 }
 
+.bm-plan-header-tools {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.bm-plan-header-tools > .ant-typography {
+  max-width: 260px;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-plan-title {
+  display: block;
+  margin: 2px 0 7px;
+  font-size: 15px;
+}
+
+.bm-plan-summary {
+  position: relative;
+  display: -webkit-box;
+  max-height: 4.8em;
+  overflow: hidden;
+  color: var(--bm-chat-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .bm-plan-status {
   color: var(--bm-chat-muted);
   font-size: 12px;
@@ -508,6 +545,11 @@
   gap: 8px;
   margin-top: 14px;
 }
+
+.bm-plan-preview-body { justify-content: flex-start; background: var(--bm-header-bg, #fff); }
+.bm-plan-preview-markdown { width: 100%; }
+.bm-preview-footer .bm-plan-actions,
+.bm-preview-footer .bm-plan-revise { margin-top: 0; }
 
 .bm-plan-execution-event {
   gap: 7px;
@@ -1008,7 +1050,9 @@
    visually continuous when the sidebar is collapsed. */
 .bm-chat-shell {
   display: flex;
+  flex: 1;
   width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   overflow: hidden;

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   Flex,
@@ -24,9 +24,14 @@ import { ClipboardTodoPanel } from '../features/capture/components/ClipboardTodo
 import { ChatAttachmentStrip, useChatAttachments } from '../components/ChatAttachments'
 import { ArtifactItems } from '../features/artifacts/components/ArtifactItems'
 import { ArtifactPreviewPanel } from '../features/artifacts/components/ArtifactPreviewPanel'
+import type { AGUIMessageLite, ConversationTimelineItemLite } from '../shared/types/chat'
 import '../styles/chat-md.css'
 
 const REASONING_KEY = 'chat.reasoning.v1'
+
+function runtimeTimelineMessages(timeline: ConversationTimelineItemLite[]): AGUIMessageLite[] {
+  return timeline.flatMap((item) => item.kind === 'message' ? [item.message] : item.kind === 'plan_request' ? [{ id: item.request.messageId, role: 'user', content: item.request.content }] : [])
+}
 
 type Mode = 'chat' | 'clipboard'
 
@@ -97,6 +102,7 @@ export default function QuickAssistantWindow({
     discardAttachments,
     getRequestContext,
   })
+  const timelineMessages = useMemo(() => runtimeTimelineMessages(runtime.timeline), [runtime.timeline])
   const phase = runtime.run.phase === 'thinking'
     ? '正在思考'
     : runtime.run.phase === 'tool'
@@ -171,18 +177,18 @@ export default function QuickAssistantWindow({
       ) : (
         <>
           <div className="bm-quick-messages" ref={runtime.scrollRef}>
-            {runtime.messages.length === 0 && !runtime.run.streaming && !runtime.run.error ? (
+            {runtime.timeline.length === 0 && !runtime.run.streaming && !runtime.run.error ? (
               <div className="bm-quick-empty">
                 <Typography.Title level={2}>有什么需要处理？</Typography.Title>
                 <Typography.Text type="secondary">对话会保存到 Miel 的会话列表。</Typography.Text>
               </div>
             ) : (
-              runtime.messages.map((item, index) => <Fragment key={item.id || index}><SnapshotMessage message={item} conversationId={runtime.conversationId} /></Fragment>)
+              timelineMessages.map((item, index) => <SnapshotMessage key={item.id || index} message={item} conversationId={runtime.conversationId} />)
             )}
             {phase && <div className="bm-quick-phase"><Spin size="small" /><span>{phase}</span></div>}
             {runtime.run.streaming && <div className="bm-chat-assistant-message"><Typography.Text type="secondary">Miel</Typography.Text><div className="bm-md">{runtime.run.streaming}</div></div>}
             <ArtifactItems artifacts={runtime.run.artifacts} />
-            {runtime.run.error && !isPersistedTailError(runtime.messages, runtime.run.error) && <ChatRunErrorMessage error={runtime.run.error} />}
+            {runtime.run.error && !isPersistedTailError(timelineMessages, runtime.run.error) && <ChatRunErrorMessage error={runtime.run.error} />}
           </div>
           <div className="bm-quick-composer">
             <ChatAttachmentStrip attachments={attachments} onRemove={removeAttachment} />

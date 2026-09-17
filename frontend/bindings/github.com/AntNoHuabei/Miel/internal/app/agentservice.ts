@@ -55,8 +55,8 @@ export function ListConversations(): $CancellablePromise<$models.Conversation[] 
 }
 
 /**
- * MessagesSnapshot 通过 AG-UI MessagesSnapshot 重放持久化 track events。
- * 返回值保持标准 MESSAGES_SNAPSHOT JSON 结构,前端可直接渲染 messages。
+ * MessagesSnapshot returns the application-level ordered conversation timeline.
+ * The underlying AG-UI snapshot remains internal so plan entities never masquerade as chat messages.
  */
 export function MessagesSnapshot(conversationID: number): $CancellablePromise<{ [_ in string]?: any } | null> {
     return $Call.ByID(3734322460, conversationID);

@@ -1,10 +1,10 @@
-import type { AGUIMessagesSnapshotLite } from '../types/chat'
+import type { ConversationSnapshotLite } from '../types/chat'
 import { Services } from './bindings'
 import { normalizeList } from './helpers'
 
 export const chatRepository = {
   listConversations: async () => normalizeList(await Services.AgentService.ListConversations()),
-  messagesSnapshot: async (id: number) => (await Services.AgentService.MessagesSnapshot(id)) as AGUIMessagesSnapshotLite,
+  messagesSnapshot: async (id: number) => (await Services.AgentService.MessagesSnapshot(id)) as ConversationSnapshotLite,
   chat: async (request: Parameters<typeof Services.AgentService.Chat>[0]) => Services.AgentService.Chat(request),
   revisePlan: async (request: Parameters<typeof Services.AgentService.RevisePlan>[0]) => Services.AgentService.RevisePlan(request),
   executePlan: async (request: Parameters<typeof Services.AgentService.ExecutePlan>[0]) => Services.AgentService.ExecutePlan(request),

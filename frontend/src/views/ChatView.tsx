@@ -13,6 +13,7 @@ import { useConversationRuntime } from '../features/chat/controllers/useConversa
 import { mainConversationStore } from '../features/chat/model/conversationStore'
 import { useShellStore } from '../features/shell/shellStore'
 import { useArtifactPreviewStore } from '../features/artifacts/artifactStore'
+import { PlanPreviewPanel } from '../features/chat/components/PlanPreviewPanel'
 import '../styles/chat-md.css'
 
 const QUICK_PROMPTS = [
@@ -34,6 +35,8 @@ export default function ChatView() {
   const navigate = useShellStore((state) => state.navigate)
   const [conversations, setConversations] = useState<Array<{ id: number; title: string }>>([])
   const closeArtifactPreview = useArtifactPreviewStore((state) => state.close)
+  const selectedPlan = useArtifactPreviewStore((state) => state.selectedPlan)
+  const openPlan = useArtifactPreviewStore((state) => state.openPlan)
   const attachments = useChatAttachments()
   const permissions = useAgentPermissions()
 
@@ -62,6 +65,11 @@ export default function ChatView() {
 
   useEffect(() => { void reloadConversations() }, [reloadConversations])
   useEffect(() => { closeArtifactPreview() }, [closeArtifactPreview, runtime.conversationId])
+  useEffect(() => {
+    if (!selectedPlan) return
+    const current = runtime.timeline.find((item) => item.kind === 'plan' && item.plan.id === selectedPlan.id && item.plan.revision === selectedPlan.revision)
+    if (current?.kind === 'plan' && current.plan !== selectedPlan) openPlan(current.plan)
+  }, [openPlan, runtime.timeline, selectedPlan])
   useWailsEvent<string>('conversations.changed', useCallback(() => void reloadConversations(), [reloadConversations]))
 
   useEffect(() => {
@@ -103,9 +111,17 @@ export default function ChatView() {
     runtime.reset()
     setMode('chat')
   }
-  const showWorkspaceControl = runtime.conversationId === 0 && runtime.messages.length === 0
+  const showWorkspaceControl = runtime.conversationId === 0 && runtime.timeline.length === 0
+  const reviseFromPreview = async (plan: Parameters<typeof runtime.runPlanAction>[1], instruction: string) => {
+    await runtime.runPlanAction('revise', plan, instruction)
+    const latest = mainConversationStore.getState().timeline
+      .filter((item) => item.kind === 'plan' && item.plan.id === plan.id)
+      .sort((left, right) => (right.kind === 'plan' ? right.plan.revision : 0) - (left.kind === 'plan' ? left.plan.revision : 0))[0]
+    if (latest?.kind === 'plan') openPlan(latest.plan)
+  }
 
   return (
+    <>
     <div className={`bm-chat bm-chat-shell ${sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-collapsed'}`}>
       <ConversationSidebar
         activeView={activeView}
@@ -122,7 +138,7 @@ export default function ChatView() {
         <Flex vertical className="bm-chat-main" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <ConversationViewport
             conversationId={runtime.conversationId}
-            messages={runtime.messages}
+            timeline={runtime.timeline}
             streaming={runtime.run.streaming}
             sending={runtime.sending}
             phase={runtime.run.phase}
@@ -140,6 +156,7 @@ export default function ChatView() {
             onExecutePlan={(plan) => runtime.runPlanAction('execute', plan)}
             onRevisePlan={(plan, instruction) => runtime.runPlanAction('revise', plan, instruction)}
             onAbandonPlan={runtime.abandonPlan}
+            onOpenPlan={openPlan}
             onQuickPrompt={(prompt) => {
               runtime.setInput(prompt)
               void (document.querySelector('#bm-chat-input') as HTMLTextAreaElement | null)?.focus()
@@ -181,5 +198,7 @@ export default function ChatView() {
         </Flex>
       </Flex>
     </div>
+    <PlanPreviewPanel sending={runtime.sending} onExecute={(plan) => runtime.runPlanAction('execute', plan)} onRevise={reviseFromPreview} onAbandon={runtime.abandonPlan} />
+    </>
   )
 }

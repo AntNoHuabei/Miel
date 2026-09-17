@@ -58,29 +58,29 @@ describe('useConversationRuntime', () => {
   })
 
   it('ignores a slower message load after another conversation is opened', async () => {
-    const first = deferred<{ type: string; messages: Array<{ id: string; role: string; content: string }> }>()
+    const first = deferred<{ type: string; timeline: Array<{ kind: 'message'; sequence: number; message: { id: string; role: string; content: string } }> }>()
     mocks.messagesSnapshot.mockImplementation((id: number) => id === 1
       ? first.promise
-      : Promise.resolve({ type: 'MESSAGES_SNAPSHOT', messages: [{ id: 'second', role: 'assistant', content: 'second' }] }))
+      : Promise.resolve({ type: 'CONVERSATION_SNAPSHOT', timeline: [{ kind: 'message', sequence: 1, message: { id: 'second', role: 'assistant', content: 'second' } }] }))
     const store = createConversationStore('runtime-load-race')
     const { result } = renderHook(() => useConversationRuntime(runtimeOptions(store)))
 
     act(() => result.current.openConversation(1))
     act(() => result.current.openConversation(2))
-    await waitFor(() => expect(result.current.messages[0]?.id).toBe('second'))
+    await waitFor(() => expect(result.current.timeline[0]?.kind === 'message' && result.current.timeline[0].message.id).toBe('second'))
 
-    first.resolve({ type: 'MESSAGES_SNAPSHOT', messages: [{ id: 'first', role: 'assistant', content: 'first' }] })
+    first.resolve({ type: 'CONVERSATION_SNAPSHOT', timeline: [{ kind: 'message', sequence: 1, message: { id: 'first', role: 'assistant', content: 'first' } }] })
     await act(async () => { await first.promise })
     expect(result.current.conversationId).toBe(2)
-    expect(result.current.messages[0]?.id).toBe('second')
+    expect(result.current.timeline[0]?.kind === 'message' && result.current.timeline[0].message.id).toBe('second')
   })
 
   it('does not let a completed send reopen a conversation after navigation', async () => {
     const response = deferred<{ conversationId: number }>()
     mocks.chat.mockReturnValue(response.promise)
     mocks.messagesSnapshot.mockResolvedValue({
-      type: 'MESSAGES_SNAPSHOT',
-      messages: [{ id: 'selected', role: 'assistant', content: 'selected' }],
+      type: 'CONVERSATION_SNAPSHOT',
+      timeline: [{ kind: 'message', sequence: 1, message: { id: 'selected', role: 'assistant', content: 'selected' } }],
     })
     const store = createConversationStore('runtime-send-race')
     store.getState().setInput('hello')
@@ -91,13 +91,13 @@ describe('useConversationRuntime', () => {
     act(() => { sending = result.current.send() })
     await waitFor(() => expect(mocks.chat).toHaveBeenCalledTimes(1))
     act(() => result.current.openConversation(9))
-    await waitFor(() => expect(result.current.messages[0]?.id).toBe('selected'))
+    await waitFor(() => expect(result.current.timeline[0]?.kind === 'message' && result.current.timeline[0].message.id).toBe('selected'))
 
     response.resolve({ conversationId: 3 })
     await act(async () => { await sending })
     expect(result.current.conversationId).toBe(9)
     expect(result.current.sending).toBe(false)
-    expect(result.current.messages[0]?.id).toBe('selected')
+    expect(result.current.timeline[0]?.kind === 'message' && result.current.timeline[0].message.id).toBe('selected')
   })
 
   it('keeps chat failures inline without showing a toast', async () => {
@@ -119,7 +119,7 @@ describe('useConversationRuntime', () => {
   it('sends the selected Plan mode and executes a plan through the same runtime', async () => {
     mocks.chat.mockResolvedValue({ conversationId: 4 })
     mocks.executePlan.mockResolvedValue({ conversationId: 4 })
-    mocks.messagesSnapshot.mockResolvedValue({ type: 'MESSAGES_SNAPSHOT', messages: [] })
+    mocks.messagesSnapshot.mockResolvedValue({ type: 'CONVERSATION_SNAPSHOT', timeline: [] })
     const store = createConversationStore('runtime-plan')
     store.getState().setInput('design it')
     const options = runtimeOptions(store)
@@ -130,7 +130,7 @@ describe('useConversationRuntime', () => {
     expect(mocks.chat).toHaveBeenCalledWith(expect.objectContaining({ mode: 'plan', planId: 0, planRevision: 0 }))
 
     await act(async () => {
-      await result.current.runPlanAction('execute', { id: 9, revision: 1, currentRevision: 1, status: 'pending', generatedModel: 'model-a' })
+      await result.current.runPlanAction('execute', { id: 9, messageId: 'plan-9', revision: 1, currentRevision: 1, status: 'pending', content: '# Plan', generatedModel: 'model-a', createdAt: 1 })
     })
     expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ planId: 9, revision: 1, workspacePath: 'D:/repo' }))
   })
