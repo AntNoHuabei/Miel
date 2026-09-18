@@ -141,7 +141,6 @@ export function useChatControls(conversationId = 0) {
     const loadVersion = ++profileLoadVersionRef.current
     if (conversationId <= 0) {
       if (conversationRef.current !== targetConversationId || profileLoadVersionRef.current !== loadVersion) return
-      setAgentProfile('work')
       setProfileModels({})
       setLoadedConversationId(0)
       return
@@ -241,7 +240,6 @@ export function useChatControls(conversationId = 0) {
     }
   }, [conversationId, message])
 
-  const resetProfile = useCallback(() => setAgentProfile('work'), [])
   const changeReasoning = useCallback((value: string) => {
     setReasoning(value)
     if (!reasoningPreferenceKey) return
@@ -274,7 +272,6 @@ export function useChatControls(conversationId = 0) {
     supportsImages: modelAvailable && supportsImages,
     switchProfile,
     switchModel,
-    resetProfile,
     workspaces,
   }
 }

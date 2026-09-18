@@ -89,7 +89,6 @@ export default function ChatView() {
   useEffect(() => {
     if (newChatRequest > 0) {
       runtime.reset()
-      controls.resetProfile()
       setMode('chat')
     }
     // The shell version makes repeated new-chat requests imperative.
@@ -124,7 +123,6 @@ export default function ChatView() {
   }
   const newChat = () => {
     runtime.reset()
-    controls.resetProfile()
     setMode('chat')
   }
   const showWorkspaceControl = runtime.conversationId === 0 && runtime.timeline.length === 0
