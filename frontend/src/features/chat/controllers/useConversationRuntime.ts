@@ -11,6 +11,7 @@ import type { SkillInstallProgressLite } from '../../../api'
 import type { ConversationState } from '../model/conversationStore'
 import type { PlanLite } from '../../../shared/types/chat'
 import type { AgentProfile } from '../../../shared/types/chat'
+import type { ConversationTimelineItemLite } from '../../../shared/types/chat'
 
 interface RequestContext {
   reasoning: string
@@ -32,6 +33,7 @@ interface ConversationRuntimeOptions {
   beforeConversationChange?: () => void | Promise<void>
   getRequestContext: () => RequestContext | Promise<RequestContext>
   onConversationCompleted?: (conversationId: number) => void | Promise<void>
+  onPlanGenerated?: (plan: PlanLite) => void
 }
 
 interface AgentInputSaved {
@@ -73,17 +75,19 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
 
   useEffect(() => { conversationRef.current = conversationId }, [conversationId])
 
-  const loadMessages = useCallback(async (id: number) => {
+  const loadMessages = useCallback(async (id: number): Promise<ConversationTimelineItemLite[]> => {
     const loadVersion = ++messageLoadVersionRef.current
     if (!id) {
       if (conversationRef.current === 0) setTimeline([])
-      return
+      return []
     }
     try {
       const next = (await chatRepository.messagesSnapshot(id)).timeline ?? []
       if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setTimeline(next)
+      return next
     } catch {
       if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setTimeline([])
+      return []
     }
   }, [setTimeline])
 
@@ -205,6 +209,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     const pendingId = `pending-${Date.now()}`
     const version = sessionVersionRef.current
     const requestConversationId = conversationRef.current
+    const previousPlans = new Set(timeline.filter((item) => item.kind === 'plan').map((item) => `${item.plan.id}:${item.plan.revision}`))
     const id = requestId(options.requestPrefix)
     followOutputRef.current = true
     inputSavedRef.current = false
@@ -243,10 +248,14 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       conversationRef.current = result.conversationId
       targetRef.current = result.conversationId
       setConversation(result.conversationId)
-      await loadMessages(result.conversationId)
+      const nextTimeline = await loadMessages(result.conversationId)
       if (sessionVersionRef.current !== version) return
       dispatchRun({ type: 'complete', conversationId: result.conversationId })
       await options.onConversationCompleted?.(result.conversationId)
+      if (context.mode === 'plan') {
+        const generated = [...nextTimeline].reverse().find((item) => item.kind === 'plan' && !previousPlans.has(`${item.plan.id}:${item.plan.revision}`))
+        if (generated?.kind === 'plan') options.onPlanGenerated?.(generated.plan)
+      }
     } catch (error) {
       if (sessionVersionRef.current !== version) return
       if (stopRequestedRef.current && activeRequestRef.current === id) {
@@ -271,7 +280,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         if (!failed) dispatchRun({ type: 'reset' })
       }
     }
-  }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setTimeline])
+  }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setTimeline, timeline])
 
   const stop = useCallback(async () => { cancelActiveRequest(true) }, [cancelActiveRequest])
 

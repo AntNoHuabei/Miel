@@ -40,17 +40,9 @@ describe('PlanPreviewPanel', () => {
     expect(screen.queryByRole('button', { name: '废弃' })).not.toBeInTheDocument()
   })
 
-  it('replaces the plan with live output while it is being generated', () => {
-    useArtifactPreviewStore.getState().openPlan({ ...plan, status: 'generating' })
-    render(<App><PlanPreviewPanel sending phase="responding" process={[{ type: 'text', id: 'output-1', content: '正在写入文件', status: 'streaming' }]} tools={[]} /></App>)
-    expect(screen.getByRole('complementary', { name: '规划输出' })).toHaveTextContent('正在写入文件')
-    expect(screen.queryByText('Ship the timeline.')).not.toBeInTheDocument()
-  })
-
-  it('keeps the finished plan visible while it is being executed', () => {
+  it('keeps the saved plan visible while it is being executed', () => {
     useArtifactPreviewStore.getState().openPlan({ ...plan, status: 'executing' })
-    render(<App><PlanPreviewPanel sending phase="responding" process={[{ type: 'text', id: 'output-1', content: '执行输出', status: 'streaming' }]} tools={[]} /></App>)
+    render(<App><PlanPreviewPanel sending /></App>)
     expect(screen.getByRole('complementary', { name: '计划详情' })).toHaveTextContent('Ship the timeline.')
-    expect(screen.queryByText('执行输出')).not.toBeInTheDocument()
   })
 })

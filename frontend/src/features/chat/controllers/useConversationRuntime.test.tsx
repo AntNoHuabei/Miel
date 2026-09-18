@@ -182,6 +182,38 @@ describe('useConversationRuntime', () => {
     expect(mocks.executePlan).toHaveBeenCalledWith(expect.objectContaining({ planId: 9, revision: 1, workspacePath: 'D:/repo' }))
   })
 
+  it('opens only the newly persisted plan after a Plan request completes', async () => {
+    mocks.chat.mockResolvedValue({ conversationId: 4 })
+    mocks.messagesSnapshot.mockResolvedValue({
+      type: 'CONVERSATION_SNAPSHOT',
+      timeline: [{ kind: 'plan', sequence: 1, plan: { id: 9, messageId: 'plan-9', revision: 1, currentRevision: 1, status: 'pending', content: '# Approved plan', generatedModel: 'model-a', createdAt: 1 } }],
+    })
+    const store = createConversationStore('runtime-plan-preview')
+    store.getState().setInput('design it')
+    const onPlanGenerated = vi.fn()
+    const options = { ...runtimeOptions(store), onPlanGenerated }
+    options.getRequestContext.mockResolvedValue({ reasoning: '', workspacePath: '', permissionSessionId: '', mode: 'plan', agentProfile: 'work' })
+    const { result } = renderHook(() => useConversationRuntime(options))
+
+    await act(async () => { await result.current.send() })
+
+    expect(onPlanGenerated).toHaveBeenCalledWith(expect.objectContaining({ id: 9, content: '# Approved plan' }))
+  })
+
+  it('does not open a plan preview when a Plan request fails', async () => {
+    mocks.chat.mockRejectedValue(new Error('provider failed'))
+    const store = createConversationStore('runtime-plan-preview-failure')
+    store.getState().setInput('design it')
+    const onPlanGenerated = vi.fn()
+    const options = { ...runtimeOptions(store), onPlanGenerated }
+    options.getRequestContext.mockResolvedValue({ reasoning: '', workspacePath: '', permissionSessionId: '', mode: 'plan', agentProfile: 'work' })
+    const { result } = renderHook(() => useConversationRuntime(options))
+
+    await act(async () => { await result.current.send() })
+
+    expect(onPlanGenerated).not.toHaveBeenCalled()
+  })
+
   it('executes an approved plan before the current profile model has loaded', async () => {
     mocks.executePlan.mockResolvedValue({ conversationId: 4 })
     mocks.messagesSnapshot.mockResolvedValue({ type: 'CONVERSATION_SNAPSHOT', timeline: [] })

@@ -34,7 +34,6 @@ export default function ChatView() {
   const reminderCount = useShellStore((state) => state.unread)
   const navigate = useShellStore((state) => state.navigate)
   const [conversations, setConversations] = useState<Array<{ id: number; title: string }>>([])
-  const closeArtifactPreview = useArtifactPreviewStore((state) => state.close)
   const selectedPlan = useArtifactPreviewStore((state) => state.selectedPlan)
   const openPlan = useArtifactPreviewStore((state) => state.openPlan)
   const attachments = useChatAttachments()
@@ -63,27 +62,15 @@ export default function ChatView() {
       agentProfile: controls.agentProfile,
     }),
     onConversationCompleted: reloadConversations,
+    onPlanGenerated: openPlan,
   })
 
   useEffect(() => { void reloadConversations() }, [reloadConversations])
   useEffect(() => {
-    if (selectedPlan?.id !== 0) closeArtifactPreview()
-    // Keep the temporary planning preview open when the first input creates a conversation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [closeArtifactPreview, runtime.conversationId])
-  useEffect(() => {
     if (!selectedPlan) return
-    if (selectedPlan.id === 0) {
-      if (runtime.sending) return
-      const generatedPlans = runtime.timeline.filter((item) => item.kind === 'plan')
-      const generated = generatedPlans[generatedPlans.length - 1]
-      if (generated?.kind === 'plan') openPlan(generated.plan)
-      else closeArtifactPreview()
-      return
-    }
     const current = runtime.timeline.find((item) => item.kind === 'plan' && item.plan.id === selectedPlan.id && item.plan.revision === selectedPlan.revision)
     if (current?.kind === 'plan' && current.plan !== selectedPlan) openPlan(current.plan)
-  }, [closeArtifactPreview, openPlan, runtime.sending, runtime.timeline, selectedPlan])
+  }, [openPlan, runtime.timeline, selectedPlan])
   useWailsEvent<string>('conversations.changed', useCallback(() => void reloadConversations(), [reloadConversations]))
 
   useEffect(() => {
@@ -137,23 +124,6 @@ export default function ChatView() {
     openPlan(plan)
     await runtime.runPlanAction('execute', plan)
   }
-  const send = () => {
-    if (mode === 'plan' && !runtime.sending && controls.modelAvailable && (runtime.input.trim() || attachments.attachments.length > 0)) {
-      openPlan({
-        id: 0,
-        messageId: 'plan-generating',
-        revision: 0,
-        currentRevision: 0,
-        status: 'generating',
-        content: '',
-        generatedModel: controls.activeModelLabel,
-        agentProfile: controls.agentProfile,
-        createdAt: Math.floor(Date.now() / 1000),
-      })
-    }
-    void runtime.send()
-  }
-
   return (
     <>
     <div className={`bm-chat bm-chat-shell ${sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-collapsed'}`}>
@@ -232,23 +202,14 @@ export default function ChatView() {
             onPickImages={attachments.pickImages}
             onRemoveAttachment={attachments.removeAttachment}
             onRemoveWorkspace={controls.removeWorkspace}
-            onSend={send}
+            onSend={runtime.send}
             onStop={runtime.stop}
             onSwitchModel={controls.switchModel}
           />
         </Flex>
       </Flex>
     </div>
-    <PlanPreviewPanel
-      sending={runtime.sending}
-      phase={runtime.run.phase}
-      process={runtime.run.process}
-      tools={runtime.run.tools}
-      streaming={runtime.run.streaming}
-      onExecute={executePlan}
-      onRevise={reviseFromPreview}
-      onAbandon={runtime.abandonPlan}
-    />
+    <PlanPreviewPanel sending={runtime.sending} onExecute={executePlan} onRevise={reviseFromPreview} onAbandon={runtime.abandonPlan} />
     </>
   )
 }
