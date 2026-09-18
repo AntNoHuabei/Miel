@@ -2,7 +2,7 @@ import { normalizeAgentRunError } from './chatError'
 import type { AgentRunError } from './chatError'
 import type { ArtifactRefLite } from '../../../shared/types/artifacts'
 
-export type AgentPhase = 'idle' | 'waiting' | 'thinking' | 'tool' | 'responding' | 'done' | 'error'
+export type AgentPhase = 'idle' | 'waiting' | 'compacting' | 'thinking' | 'tool' | 'responding' | 'done' | 'error'
 
 export interface AgentToolCall {
   id: string
@@ -37,6 +37,15 @@ export interface AgentEnvelope {
   event?: AgentProtocolEvent
 }
 
+export interface AgentCompactionEvent {
+  conversationId: number
+  requestId?: string
+  phase: 'start' | 'running' | 'done' | 'error'
+  trigger?: 'automatic' | 'manual'
+  message?: string
+  usage?: { usedTokens: number; contextWindow: number; model: string; estimated: boolean; updatedAt: number }
+}
+
 export interface AgentRunState {
   requestId: string
   conversationId: number
@@ -56,6 +65,7 @@ export type AgentRunAction =
   | { type: 'start'; requestId: string; conversationId: number }
   | { type: 'chunk'; payload: AgentEnvelope }
   | { type: 'event'; payload: AgentEnvelope }
+  | { type: 'compaction'; payload: AgentCompactionEvent }
   | { type: 'input-saved'; payload: { requestId?: string; conversationId: number } }
   | { type: 'complete'; conversationId: number }
   | { type: 'fail'; error: string }
@@ -169,6 +179,17 @@ export function agentRunReducer(state: AgentRunState, action: AgentRunAction): A
       }
     case 'skill-progress':
       return { ...state, skillProgress: action.payload }
+    case 'compaction': {
+      if (!accepts(state, action.payload)) return state
+      const targetConversationId = bindConversation(state, action.payload.conversationId)
+      if (action.payload.phase === 'start' || action.payload.phase === 'running') {
+        return { ...state, targetConversationId, phase: 'compacting', process: [], tools: [], streaming: '', error: null }
+      }
+      if (action.payload.phase === 'error') {
+        return { ...state, targetConversationId, phase: 'error', error: normalizeAgentRunError(action.payload.message ?? '压缩上下文失败') }
+      }
+      return { ...state, targetConversationId, phase: 'done' }
+    }
     case 'event': {
       if (!action.payload.event || !accepts(state, action.payload)) return state
       const targetConversationId = bindConversation(state, action.payload.conversationId)

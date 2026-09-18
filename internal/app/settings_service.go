@@ -151,6 +151,7 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 		}
 		dedup = append(dedup, ProviderModelInput{
 			Model: mmName, Label: strings.TrimSpace(m.Label), Custom: m.Custom, Multimodal: multimodal,
+			ContextWindow: firstPositive(m.ContextWindow, catalogContextWindow(kind, mmName)),
 		})
 	}
 	models = dedup
@@ -246,8 +247,8 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 			cus = 1
 		}
 		if _, err := tx.Exec(`
-			INSERT INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)`, id, m.Model, m.Label, cus, boolToInt(m.Multimodal), ts); err != nil {
+			INSERT INTO provider_models (provider_id, model, label, custom, multimodal, context_window, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, id, m.Model, m.Label, cus, boolToInt(m.Multimodal), m.ContextWindow, ts); err != nil {
 			return Provider{}, err
 		}
 	}
@@ -257,8 +258,8 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 			cus = 1
 		}
 		if _, err := tx.Exec(`
-			INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
-			VALUES (?, ?, '', ?, ?, ?)`, id, cur, cus, mm, ts); err != nil {
+			INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, multimodal, context_window, created_at)
+			VALUES (?, ?, '', ?, ?, ?, ?)`, id, cur, cus, mm, catalogContextWindow(kind, cur), ts); err != nil {
 			return Provider{}, err
 		}
 	}
@@ -277,7 +278,7 @@ func (s *SettingsService) SaveProvider(in ProviderInput) (Provider, error) {
 // ProviderModels 返回服务商已启用的模型集合。
 func (s *SettingsService) ProviderModels(id int64) ([]ProviderModel, error) {
 	rows, err := s.db.Query(`
-		SELECT model, label, custom, multimodal FROM provider_models
+		SELECT model, label, custom, multimodal, context_window FROM provider_models
 		WHERE provider_id = ? ORDER BY custom ASC, model ASC`, id)
 	if err != nil {
 		return nil, err
@@ -287,7 +288,7 @@ func (s *SettingsService) ProviderModels(id int64) ([]ProviderModel, error) {
 	for rows.Next() {
 		var m ProviderModel
 		var c, mm int
-		if err := rows.Scan(&m.Model, &m.Label, &c, &mm); err != nil {
+		if err := rows.Scan(&m.Model, &m.Label, &c, &mm, &m.ContextWindow); err != nil {
 			return nil, err
 		}
 		m.Custom = c != 0
@@ -301,7 +302,7 @@ func (s *SettingsService) ProviderModels(id int64) ([]ProviderModel, error) {
 // IsDefault=true 表示该行是当前默认使用的模型。
 func (s *SettingsService) ModelOptions() ([]ModelOption, error) {
 	rows, err := s.db.Query(`
-		SELECT p.id, p.name, p.kind, p.model, pm.model, pm.label, pm.custom, pm.multimodal
+		SELECT p.id, p.name, p.kind, p.model, pm.model, pm.label, pm.custom, pm.multimodal, pm.context_window
 		FROM providers p
 		JOIN provider_models pm ON pm.provider_id = p.id
 		ORDER BY p.is_default DESC, p.id ASC, pm.custom ASC, pm.model ASC`)
@@ -315,11 +316,14 @@ func (s *SettingsService) ModelOptions() ([]ModelOption, error) {
 		var activeModel string
 		var c, mm int
 		if err := rows.Scan(&o.ProviderID, &o.ProviderName, &o.Kind, &activeModel,
-			&o.Model, &o.Label, &c, &mm); err != nil {
+			&o.Model, &o.Label, &c, &mm, &o.ContextWindow); err != nil {
 			return nil, err
 		}
 		o.Custom = c != 0
 		o.Multimodal = mm != 0
+		if o.ContextWindow <= 0 {
+			o.ContextWindow, _ = modelContextWindow(o.Kind, o.Model)
+		}
 		o.IsDefault = o.Model == activeModel
 		items = append(items, o)
 	}
@@ -423,8 +427,8 @@ func (s *SettingsService) EnableModel(providerID int64, model, label string, cus
 		cus = 1
 	}
 	if _, err := tx.Exec(`
-		INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, providerID, model, label, cus, boolToInt(multimodal), now()); err != nil {
+		INSERT OR IGNORE INTO provider_models (provider_id, model, label, custom, multimodal, context_window, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, providerID, model, label, cus, boolToInt(multimodal), catalogContextWindow(provider.Kind, model), now()); err != nil {
 		return err
 	}
 	// 若该服务商尚无当前模型,自动把新启用模型设为当前

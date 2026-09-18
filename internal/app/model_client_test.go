@@ -150,20 +150,41 @@ func TestDiscoverVolcenginePlanModelsUsesStaticCatalog(t *testing.T) {
 	}
 }
 
+func TestGLM53CatalogModelsUseOneMillionTokenContext(t *testing.T) {
+	provider, found := catalogLookup("volcengine-plan")
+	if !found {
+		t.Fatal("Agent Plan catalog entry is missing")
+	}
+	want := map[string]int{
+		"glm-5.3":       1_000_000,
+		"glm-latest":    1_000_000,
+		"glm-5.3-flash": 1_000_000,
+	}
+	for _, item := range provider.Models {
+		if contextWindow, ok := want[item.ID]; ok && item.ContextWindow != contextWindow {
+			t.Fatalf("%s context window = %d, want %d", item.ID, item.ContextWindow, contextWindow)
+		}
+		delete(want, item.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing GLM-5.3 catalog models: %#v", want)
+	}
+}
+
 func TestDiscoverProviderModelsMergesHerdsmanCapabilities(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/models":
 			_, _ = w.Write([]byte(`{"data":[
-				{"id":"plain-chat","status":"stopped"},
+				{"id":"plain-chat","status":"stopped","context_length":65536},
 				{"id":"reasoning-chat","status":"running"},
 				{"id":"speech","status":"running"}
 			]}`))
 		case "/api/v1/models":
 			_, _ = w.Write([]byte(`[
 				{"name":"plain-chat","type":"text-generation","parameters":{"reasoning_control":{"type":"none","default_enabled":false}}},
-				{"name":"reasoning-chat","type":"multimodal","parameters":{"reasoning_control":{"type":"thinking","efforts":["low","medium","xhigh"],"default_effort":"xhigh"}}},
+				{"name":"reasoning-chat","type":"multimodal","parameters":{"context_window":131072,"reasoning_control":{"type":"thinking","efforts":["low","medium","xhigh"],"default_effort":"xhigh"}}},
 				{"name":"speech","type":"tts","parameters":{}}
 			]`))
 		default:
@@ -182,10 +203,10 @@ func TestDiscoverProviderModelsMergesHerdsmanCapabilities(t *testing.T) {
 	if len(models) != 2 {
 		t.Fatalf("DiscoverProviderModels() returned %d models, want 2: %#v", len(models), models)
 	}
-	if models[0].ID != "plain-chat" || models[0].Reasoning.Type != ReasoningNone || models[0].Multimodal {
+	if models[0].ID != "plain-chat" || models[0].Reasoning.Type != ReasoningNone || models[0].Multimodal || models[0].ContextWindow != 65536 {
 		t.Fatalf("plain model = %#v", models[0])
 	}
-	if models[1].ID != "reasoning-chat" || models[1].Status != "running" || !models[1].Multimodal {
+	if models[1].ID != "reasoning-chat" || models[1].Status != "running" || !models[1].Multimodal || models[1].ContextWindow != 131072 {
 		t.Fatalf("reasoning model = %#v", models[1])
 	}
 	wantLevels := []string{"low", "medium", "xhigh"}

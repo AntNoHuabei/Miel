@@ -41,6 +41,13 @@ export function Chat(req: $models.ChatRequest): $CancellablePromise<$models.Chat
 }
 
 /**
+ * CompactConversation creates a persistent session summary without adding a chat message.
+ */
+export function CompactConversation(req: $models.ChatCancelRequest): $CancellablePromise<void> {
+    return $Call.ByID(1193082026, req);
+}
+
+/**
  * DeleteConversation 删除会话及其消息。
  */
 export function DeleteConversation(conversationID: number): $CancellablePromise<void> {

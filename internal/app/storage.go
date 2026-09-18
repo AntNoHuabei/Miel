@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS provider_models (
 	label       TEXT NOT NULL DEFAULT '',
 	custom      INTEGER NOT NULL DEFAULT 0,
 	multimodal  INTEGER NOT NULL DEFAULT 0,
+	context_window INTEGER NOT NULL DEFAULT 0,
 	created_at  INTEGER NOT NULL,
 	PRIMARY KEY (provider_id, model)
 );
@@ -243,6 +244,15 @@ CREATE TABLE IF NOT EXISTS message_metrics (
 	tokens_per_second REAL NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS conversation_context_usage (
+	conversation_id INTEGER PRIMARY KEY,
+	used_tokens     INTEGER NOT NULL DEFAULT 0,
+	context_window  INTEGER NOT NULL DEFAULT 0,
+	model           TEXT NOT NULL DEFAULT '',
+	estimated       INTEGER NOT NULL DEFAULT 0,
+	updated_at      INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS screenshots (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	path       TEXT NOT NULL DEFAULT '',
@@ -276,6 +286,9 @@ func migrate(db *sql.DB) error {
 	}
 	if err := ensureColumn(db, "provider_models", "multimodal", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("migrate provider model multimodal: %w", err)
+	}
+	if err := ensureColumn(db, "provider_models", "context_window", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("migrate provider model context window: %w", err)
 	}
 	if err := ensureColumn(db, "conversations", "provider_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("migrate conversation provider: %w", err)

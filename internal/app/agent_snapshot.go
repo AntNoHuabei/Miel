@@ -18,6 +18,7 @@ import (
 	aguirunner "trpc.group/trpc-go/trpc-agent-go/server/agui/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	sessionsqlite "trpc.group/trpc-go/trpc-agent-go/session/sqlite"
+	sessionsummary "trpc.group/trpc-go/trpc-agent-go/session/summary"
 )
 
 const (
@@ -33,7 +34,9 @@ func NewAgentService(memoryRuntime *memoryRuntime, attachments *ChatAttachmentSe
 		return nil, fmt.Errorf("open AG-UI session store: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	sessions, err := sessionsqlite.NewService(db)
+	sessions, err := sessionsqlite.NewService(db,
+		sessionsqlite.WithSummarizer(sessionsummary.NewDynamicSummarizer(dynamicSessionSummarizer)),
+	)
 	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize AG-UI session store: %w", err)
@@ -149,6 +152,11 @@ func (s *AgentService) rawMessagesSnapshot(conversationID int64) (map[string]any
 		return nil, err
 	}
 	attachMessageMetrics(result, metrics)
+	if usage, usageErr := loadConversationContextUsage(conversationID); usageErr != nil {
+		return nil, usageErr
+	} else if usage != nil {
+		result["contextUsage"] = usage
+	}
 	if err := attachMessageTypes(result, conversationID); err != nil {
 		return nil, err
 	}
@@ -372,7 +380,13 @@ func buildConversationSnapshot(snapshot map[string]any, conversationID int64) (m
 		}
 		timeline = append(timeline, item)
 	}
-	return map[string]any{"type": "CONVERSATION_SNAPSHOT", "timeline": timeline}, nil
+	result := map[string]any{"type": "CONVERSATION_SNAPSHOT", "timeline": timeline}
+	if usage, usageErr := loadConversationContextUsage(conversationID); usageErr != nil {
+		return nil, usageErr
+	} else if usage != nil {
+		result["contextUsage"] = usage
+	}
+	return result, nil
 }
 
 func mergePersistedRunErrors(snapshot map[string]any, runErrors []ChatRunError) {

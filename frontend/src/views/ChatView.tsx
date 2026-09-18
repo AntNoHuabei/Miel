@@ -186,6 +186,8 @@ export default function ChatView() {
             selectedModel={controls.selectedModel}
             modelOptions={controls.modelOptions}
             activeModelLabel={controls.activeModelLabel}
+            contextWindow={controls.contextWindow}
+            contextUsage={runtime.contextUsage}
             modelAvailable={controls.modelAvailable}
             profileReady={controls.profileReady}
             reasoningPillLabel={controls.reasoningPillLabel}
@@ -200,6 +202,7 @@ export default function ChatView() {
             onChangeMode={setMode}
             onChangePermissionMode={permissions.changeMode}
             onChangeReasoning={controls.changeReasoning}
+            onCompact={runtime.compact}
             onChooseWorkspace={controls.chooseWorkspace}
             onPaste={attachments.onPaste}
             onPickImages={attachments.pickImages}

@@ -24,10 +24,11 @@ type ReasoningSpec struct {
 
 // CatalogModel 目录中的单个模型。
 type CatalogModel struct {
-	ID         string        `json:"id"`
-	Label      string        `json:"label"`
-	Reasoning  ReasoningSpec `json:"reasoning"`
-	Multimodal bool          `json:"multimodal"` // 是否支持图片输入(视觉)
+	ID            string        `json:"id"`
+	Label         string        `json:"label"`
+	Reasoning     ReasoningSpec `json:"reasoning"`
+	Multimodal    bool          `json:"multimodal"` // 是否支持图片输入(视觉)
+	ContextWindow int           `json:"contextWindow"`
 }
 
 // CatalogProvider 目录中的服务商及其模型列表。
@@ -101,6 +102,32 @@ func modelMultimodal(kind, model string) (multimodal bool, found bool) {
 		}
 	}
 	return false, false
+}
+
+func modelContextWindow(kind, model string) (int, bool) {
+	if p, ok := catalogLookup(kind); ok {
+		model = strings.TrimSpace(model)
+		for _, m := range p.Models {
+			if strings.EqualFold(m.ID, model) {
+				return m.ContextWindow, m.ContextWindow > 0
+			}
+		}
+	}
+	return 0, false
+}
+
+func catalogContextWindow(kind, model string) int {
+	window, _ := modelContextWindow(kind, model)
+	return window
+}
+
+func firstPositive(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 // providerSupportsVision 判定某 Provider(其当前模型)是否支持图片输入:

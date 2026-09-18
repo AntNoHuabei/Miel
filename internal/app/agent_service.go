@@ -23,6 +23,7 @@ import (
 	aguirunner "trpc.group/trpc-go/trpc-agent-go/server/agui/runner"
 	aguitranslator "trpc.group/trpc-go/trpc-agent-go/server/agui/translator"
 	"trpc.group/trpc-go/trpc-agent-go/session"
+	sessionsummary "trpc.group/trpc-go/trpc-agent-go/session/summary"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 
@@ -69,6 +70,24 @@ type AgentService struct {
 type activeChatRequest struct {
 	conversationID int64
 	cancel         context.CancelFunc
+}
+
+type summaryModelContextKey struct{}
+
+func withSummaryModel(ctx context.Context, m model.Model) context.Context {
+	return context.WithValue(ctx, summaryModelContextKey{}, m)
+}
+
+func dynamicSessionSummarizer(ctx context.Context, _ *session.Session) (sessionsummary.SessionSummarizer, error) {
+	m, ok := ctx.Value(summaryModelContextKey{}).(model.Model)
+	if !ok || m == nil {
+		return nil, errors.New("当前请求没有可用的摘要模型")
+	}
+	return sessionsummary.NewSummarizer(m,
+		sessionsummary.WithContextThreshold(
+			sessionsummary.WithContextThresholdRatio(0.8),
+		),
+	), nil
 }
 
 func (s *AgentService) codingCommandManager() *codingCommandManager {
@@ -349,9 +368,41 @@ const (
 
 // ChatResult 一次对话的结果(前端可据此刷新会话)。
 type ChatResult struct {
-	ConversationID int64        `json:"conversationId"`
-	Answer         string       `json:"answer"`
-	Metrics        *ChatMetrics `json:"metrics,omitempty"`
+	ConversationID int64                     `json:"conversationId"`
+	Answer         string                    `json:"answer"`
+	Metrics        *ChatMetrics              `json:"metrics,omitempty"`
+	ContextUsage   *ConversationContextUsage `json:"contextUsage,omitempty"`
+}
+
+// CompactConversation creates a persistent session summary without adding a chat message.
+func (s *AgentService) CompactConversation(req ChatCancelRequest) error {
+	if req.ConversationID <= 0 {
+		return errors.New("压缩上下文需要已有会话")
+	}
+	if store == nil {
+		return errors.New("存储未初始化")
+	}
+	if !s.beginConversationRun(req.ConversationID) {
+		return errConversationBusy
+	}
+	defer s.finishConversationRun(req.ConversationID)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.beginChatRequest(req.RequestID, cancel)
+	defer func() { s.finishChatRequest(req.RequestID); cancel() }()
+	profile, err := conversationAgentProfile(req.ConversationID)
+	if err != nil {
+		return err
+	}
+	provider, err := providerForConversationProfile(req.ConversationID, profile)
+	if err != nil {
+		return err
+	}
+	m, err := buildChatModel(provider)
+	if err != nil {
+		return err
+	}
+	s.setChatRequestConversation(req.RequestID, req.ConversationID)
+	return s.compactConversationLocked(ctx, req.ConversationID, provider, m, req.RequestID, "manual")
 }
 
 // Chat 执行一轮 Agent 对话;流式增量通过事件推给前端。
@@ -487,6 +538,21 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 	if err != nil {
 		return ChatResult{}, err
 	}
+	if convID > 0 {
+		pendingHistory, historyErr := s.loadMessages(convID)
+		if historyErr != nil {
+			return ChatResult{}, historyErr
+		}
+		shouldCompact, compactErr := s.shouldAutoCompact(convID, p, pendingHistory)
+		if compactErr != nil {
+			return ChatResult{}, compactErr
+		}
+		if shouldCompact {
+			if err := s.compactConversationLocked(runCtx, convID, p, m, req.RequestID, "automatic"); err != nil {
+				return ChatResult{}, err
+			}
+		}
+	}
 	memoryConfig := MemoryConfig{}
 	memoryEnabled := false
 	if s.memory != nil && settingsSvc != nil {
@@ -608,6 +674,7 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 		llmagent.WithInstruction(instruction),
 		llmagent.WithGenerationConfig(gc),
 		llmagent.WithMaxToolIterations(maxAgentToolIterations),
+		llmagent.WithAddSessionSummary(true),
 	}
 	var skillRepo skill.Repository
 	// skills/<name>/SKILL.md 即插即用。纯聊天模型不注册任何 Skill 工具。
@@ -666,6 +733,7 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 
 	runLogCtx := withLogContext(runCtx, convID, req.RequestID)
 	ctx := WithPermissionContext(runLogCtx, s.permissions, req.PermissionSessionID, workspacePath)
+	ctx = withSummaryModel(ctx, m)
 	threadID := "conv-" + strconv.FormatInt(convID, 10)
 	aguiMsgs := make([]aguitypes.Message, 0, len(hist))
 	for _, h := range hist {
@@ -758,6 +826,7 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 	out := strings.TrimSpace(answer.String())
 	deviationRequested, deviationReason := deviation.snapshot()
 	var metrics *ChatMetrics
+	var metricsContextUsage *ConversationContextUsage
 	var assistantMessageID int64
 	if out != "" && (!wasStopped() || mode == "chat") {
 		built := buildChatMetrics(p.Model, traceUsage, time.Since(startedAt))
@@ -770,6 +839,21 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 		if err != nil {
 			return ChatResult{}, err
 		}
+		usedTokens := metrics.PromptTokens
+		estimated := usedTokens <= 0
+		if estimated {
+			if latest, estimateErr := s.loadMessages(convID); estimateErr == nil {
+				usedTokens = estimateConversationTokens(latest)
+			}
+		}
+		contextUsage := ConversationContextUsage{
+			UsedTokens: usedTokens, ContextWindow: s.contextWindowForProvider(p), Model: p.Model,
+			Estimated: estimated, UpdatedAt: time.Now().Unix(),
+		}
+		if err := saveConversationContextUsage(convID, contextUsage); err != nil {
+			return ChatResult{}, err
+		}
+		metricsContextUsage = &contextUsage
 	}
 	if runErr != nil && !wasStopped() {
 		if s.artifacts != nil {
@@ -789,7 +873,7 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 		}
 		s.emit("agent.done", map[string]any{"conversationId": convID, "requestId": req.RequestID, "answer": out, "metrics": metrics})
 		s.emit("conversations.changed", "updated")
-		return ChatResult{ConversationID: convID, Answer: out, Metrics: metrics}, nil
+		return ChatResult{ConversationID: convID, Answer: out, Metrics: metrics, ContextUsage: metricsContextUsage}, nil
 	}
 	if err := finalChatError(out, nil); err != nil {
 		if s.artifacts != nil {
@@ -826,7 +910,7 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 			log.Println("enqueue memory extraction:", err)
 		}
 	}
-	return ChatResult{ConversationID: convID, Answer: out, Metrics: metrics}, nil
+	return ChatResult{ConversationID: convID, Answer: out, Metrics: metrics, ContextUsage: metricsContextUsage}, nil
 }
 
 func cloneMetricsUsage(usage *model.Usage) *model.Usage {
@@ -894,6 +978,18 @@ func finalChatError(answer string, runErr error) error {
 		return nil
 	}
 	return errors.New("模型未返回有效内容")
+}
+
+func conversationAgentProfile(conversationID int64) (string, error) {
+	var profile string
+	if err := store.QueryRow("SELECT agent_profile FROM conversations WHERE id = ?", conversationID).Scan(&profile); err != nil {
+		return "", err
+	}
+	profile = normalizeAgentProfile(profile)
+	if profile == "" {
+		return "", errors.New("会话 Agent 模式无效")
+	}
+	return profile, nil
 }
 
 func instructionWithContext(workspace string) string {

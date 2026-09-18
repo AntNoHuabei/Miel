@@ -6,7 +6,7 @@ import type { StoreApi } from 'zustand/vanilla'
 import type { ChatAttachmentDraftLite } from '../../../api'
 import { chatRepository } from '../../../shared/repositories'
 import { useWailsEvent } from '../../../shared/wails/events'
-import type { AgentEnvelope } from '../model/agentRun'
+import type { AgentCompactionEvent, AgentEnvelope } from '../model/agentRun'
 import type { SkillInstallProgressLite } from '../../../api'
 import type { ConversationState } from '../model/conversationStore'
 import type { PlanLite } from '../../../shared/types/chat'
@@ -54,8 +54,10 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const timeline = useStore(options.store, (state) => state.timeline)
   const input = useStore(options.store, (state) => state.input)
   const run = useStore(options.store, (state) => state.run)
+  const contextUsage = useStore(options.store, (state) => state.contextUsage)
   const setConversation = useStore(options.store, (state) => state.setConversation)
   const setTimeline = useStore(options.store, (state) => state.setTimeline)
+  const setContextUsage = useStore(options.store, (state) => state.setContextUsage)
   const setInput = useStore(options.store, (state) => state.setInput)
   const dispatchRun = useStore(options.store, (state) => state.dispatchRun)
   const [sending, setSending] = useState(false)
@@ -78,18 +80,20 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   const loadMessages = useCallback(async (id: number): Promise<ConversationTimelineItemLite[]> => {
     const loadVersion = ++messageLoadVersionRef.current
     if (!id) {
-      if (conversationRef.current === 0) setTimeline([])
+      if (conversationRef.current === 0) { setTimeline([]); setContextUsage(null) }
       return []
     }
     try {
-      const next = (await chatRepository.messagesSnapshot(id)).timeline ?? []
+      const snapshot = await chatRepository.messagesSnapshot(id)
+      const next = snapshot.timeline ?? []
+      if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setContextUsage(snapshot.contextUsage ?? null)
       if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setTimeline(next)
       return next
     } catch {
       if (messageLoadVersionRef.current === loadVersion && conversationRef.current === id) setTimeline([])
       return []
     }
-  }, [setTimeline])
+  }, [setContextUsage, setTimeline])
 
   useEffect(() => { if (conversationRef.current > 0) void loadMessages(conversationRef.current) }, [loadMessages])
   useEffect(() => {
@@ -120,6 +124,12 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
   useWailsEvent<AgentEnvelope>('agent.agui', useCallback((payload) => {
     if (payload?.event && accepts(payload)) dispatchRun({ type: 'event', payload })
   }, [accepts, dispatchRun]))
+  useWailsEvent<AgentCompactionEvent>('agent.compaction', useCallback((payload) => {
+    if (accepts(payload)) {
+      if (payload.usage) setContextUsage(payload.usage)
+      dispatchRun({ type: 'compaction', payload })
+    }
+  }, [accepts, dispatchRun, setContextUsage]))
   useWailsEvent<SkillInstallProgressLite>('skill.dependency.progress', useCallback((payload) => {
     if (sendingRef.current) dispatchRun({ type: 'skill-progress', payload })
   }, [dispatchRun]))
@@ -171,11 +181,12 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     followOutputRef.current = true
     setConversation(0)
     setTimeline([])
+    setContextUsage(null)
     setInput('')
     dispatchRun({ type: 'reset' })
     sendingRef.current = false
     setSending(false)
-  }, [cancelActiveRequest, dispatchRun, options.beforeConversationChange, options.discardAttachments, setConversation, setInput, setTimeline])
+  }, [cancelActiveRequest, dispatchRun, options.beforeConversationChange, options.discardAttachments, setContextUsage, setConversation, setInput, setTimeline])
 
   const openConversation = useCallback((id: number) => {
     void options.beforeConversationChange?.()
@@ -196,9 +207,10 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     setSending(false)
     setConversation(id)
     setTimeline([])
+    setContextUsage(null)
     dispatchRun({ type: 'reset' })
     void loadMessages(id)
-  }, [cancelActiveRequest, dispatchRun, loadMessages, options.beforeConversationChange, options.discardAttachments, setConversation, setTimeline])
+  }, [cancelActiveRequest, dispatchRun, loadMessages, options.beforeConversationChange, options.discardAttachments, setContextUsage, setConversation, setTimeline])
 
   const send = useCallback(async () => {
     const text = input.trim()
@@ -250,6 +262,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
       conversationRef.current = result.conversationId
       targetRef.current = result.conversationId
       setConversation(result.conversationId)
+      if (result.contextUsage) setContextUsage(result.contextUsage)
       const nextTimeline = await loadMessages(result.conversationId)
       if (sessionVersionRef.current !== version) return
       dispatchRun({ type: 'complete', conversationId: result.conversationId })
@@ -282,9 +295,46 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
         if (!failed) dispatchRun({ type: 'reset' })
       }
     }
-  }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setTimeline, timeline])
+  }, [dispatchRun, input, loadMessages, message, options, setContextUsage, setConversation, setInput, setTimeline, timeline])
 
   const stop = useCallback(async () => { await cancelActiveRequest(true) }, [cancelActiveRequest])
+
+  const compact = useCallback(async () => {
+    if (sendingRef.current || conversationRef.current <= 0 || options.enabled === false) return
+    const version = sessionVersionRef.current
+    const requestConversationId = conversationRef.current
+    const id = requestId('compact')
+    activeRequestRef.current = id
+    activeCallRef.current = null
+    stopRequestedRef.current = false
+    targetRef.current = requestConversationId
+    sendingRef.current = true
+    setSending(true)
+    dispatchRun({ type: 'start', requestId: id, conversationId: requestConversationId })
+    let failed = false
+    try {
+      const call = chatRepository.compactConversation({ conversationId: requestConversationId, requestId: id })
+      activeCallRef.current = call as unknown as typeof activeCallRef.current
+      await call
+      if (sessionVersionRef.current !== version) return
+      await loadMessages(requestConversationId)
+      if (sessionVersionRef.current !== version) return
+      dispatchRun({ type: 'complete', conversationId: requestConversationId })
+    } catch (error) {
+      if (sessionVersionRef.current !== version) return
+      if (stopRequestedRef.current) return
+      failed = true
+      dispatchRun({ type: 'fail', error: String(error) })
+      message.error(`压缩上下文失败：${String(error)}`)
+    } finally {
+      if (sessionVersionRef.current === version) {
+        if (activeRequestRef.current === id) activeCallRef.current = null
+        sendingRef.current = false
+        setSending(false)
+        if (!failed) dispatchRun({ type: 'reset' })
+      }
+    }
+  }, [dispatchRun, loadMessages, message, options.enabled, setSending])
 
   const runPlanAction = useCallback(async (action: 'revise' | 'execute', plan: PlanLite, instruction = '') => {
     if (sendingRef.current) return
@@ -392,5 +442,5 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     }
   }, [loadMessages, message, options])
 
-  return { abandonPlan, conversationId, dispatchRun, input, loadMessages, timeline, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput, stop }
+  return { abandonPlan, compact, contextUsage, conversationId, dispatchRun, input, loadMessages, timeline, onMessagesScroll, openConversation, reset, run, runPlanAction, scrollRef, send, sending, setInput, stop }
 }

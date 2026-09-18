@@ -110,6 +110,7 @@ export function useChatControls(conversationId = 0) {
     return marks
   }, [reasoningSteps, compatibleGateway])
   const activeModel = modelOptions.find((option) => option.providerId === activeProvider?.id && option.model === activeProviderModel)
+  const contextWindow = discoveredModel?.contextWindow || catalogModel?.contextWindow || activeModel?.contextWindow || 0
   const profileReady = conversationId === 0 || loadedConversationId === conversationId
   const modelAvailable = profileReady && !!activeProvider && !!activeProviderModel && !!activeModel
   const activeModelLabel = activeModel ? chatModelLabel(activeModel, discoveredModel) : profileModel ? '需要重新选择模型' : activeProviderModel || '未配置模型'
@@ -252,6 +253,7 @@ export function useChatControls(conversationId = 0) {
   return {
     agentProfile,
     activeModelLabel,
+    contextWindow,
     addWorkspace,
     changeReasoning,
     chooseWorkspace,

@@ -8,6 +8,7 @@ export interface PlanRunViewLite { id: number; planId: number; revision: number;
 export interface PlanExecutionViewLite { id: string; messageId: string; content: unknown; planId: number; revision: number; createdAt: number; run?: PlanRunViewLite }
 export interface AGUIToolCallLite { id: string; type: string; function: { name: string; arguments: string } }
 export interface ChatMetricsLite { model: string; promptTokens: number; completionTokens: number; totalTokens: number; reasoningTokens: number; cachedTokens: number; durationMs: number; firstTokenMs: number; tokensPerSecond: number }
+export interface ConversationContextUsageLite { usedTokens: number; contextWindow: number; model: string; estimated: boolean; updatedAt: number }
 export interface ChatAttachmentDraftLite { id: string; name: string; mimeType: string; size: number; width: number; height: number; thumbnailDataUri: string }
 export interface MessageAttachmentLite extends ChatAttachmentDraftLite { messageId: number; kind: string; position: number; createdAt: number }
 export interface ChatRunErrorLite { code: string; message: string }
@@ -18,4 +19,4 @@ export type ConversationTimelineItemLite =
   | { kind: 'plan_request'; sequence: number; request: PlanRequestViewLite }
   | { kind: 'plan'; sequence: number; plan: PlanViewLite }
   | { kind: 'plan_execution'; sequence: number; execution: PlanExecutionViewLite }
-export interface ConversationSnapshotLite { type: 'CONVERSATION_SNAPSHOT' | string; timeline: ConversationTimelineItemLite[] }
+export interface ConversationSnapshotLite { type: 'CONVERSATION_SNAPSHOT' | string; timeline: ConversationTimelineItemLite[]; contextUsage?: ConversationContextUsageLite }

@@ -69,6 +69,7 @@ export interface CatalogModel {
      * 是否支持图片输入(视觉)
      */
     "multimodal": boolean;
+    "contextWindow": number;
 }
 
 /**
@@ -156,6 +157,7 @@ export interface ChatResult {
     "conversationId": number;
     "answer": string;
     "metrics"?: ChatMetrics | null;
+    "contextUsage"?: ConversationContextUsage | null;
 }
 
 export interface ClipboardTodoDraft {
@@ -192,6 +194,14 @@ export interface Conversation {
     "agentProfile": string;
     "profileModels": { [_ in string]?: ProfileModel } | null;
     "createdAt": number;
+    "updatedAt": number;
+}
+
+export interface ConversationContextUsage {
+    "usedTokens": number;
+    "contextWindow": number;
+    "model": string;
+    "estimated": boolean;
     "updatedAt": number;
 }
 
@@ -234,6 +244,7 @@ export interface DiscoveredModel {
     "reasoning": ReasoningSpec;
     "multimodal": boolean;
     "supportsTools": boolean;
+    "contextWindow": number;
 }
 
 /**
@@ -339,6 +350,7 @@ export interface ModelOption {
     "label": string;
     "custom": boolean;
     "multimodal": boolean;
+    "contextWindow": number;
 
     /**
      * 是否为当前使用模型
@@ -443,6 +455,7 @@ export interface ProviderModel {
     "label": string;
     "custom": boolean;
     "multimodal": boolean;
+    "contextWindow": number;
 }
 
 /**
@@ -453,6 +466,7 @@ export interface ProviderModelInput {
     "label": string;
     "custom": boolean;
     "multimodal": boolean;
+    "contextWindow": number;
 }
 
 /**

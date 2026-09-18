@@ -56,6 +56,7 @@ export type {
     ConfirmClipboardTodosReq,
     ConfirmExtractedReq,
     Conversation,
+    ConversationContextUsage,
     DirectoryPaths,
     DiscoveredModel,
     Event,

@@ -163,6 +163,10 @@ type providerModelAPIItem struct {
 	Model            string         `json:"model"`
 	Status           string         `json:"status"`
 	Type             string         `json:"type"`
+	ContextLength    int            `json:"context_length"`
+	ContextWindow    int            `json:"context_window"`
+	MaxContextLength int            `json:"max_context_length"`
+	MaxInputTokens   int            `json:"max_input_tokens"`
 	Multimodal       bool           `json:"multimodal"`
 	ReasoningControl map[string]any `json:"reasoning_control"`
 	SupportedParams  []string       `json:"supported_parameters"`
@@ -171,6 +175,9 @@ type providerModelAPIItem struct {
 	} `json:"architecture"`
 	Parameters struct {
 		ReasoningControl map[string]any `json:"reasoning_control"`
+		ContextLength    int            `json:"context_length"`
+		ContextWindow    int            `json:"context_window"`
+		MaxContextLength int            `json:"max_context_length"`
 	} `json:"parameters"`
 }
 
@@ -269,6 +276,23 @@ func providerReasoningLevels(value any) []string {
 	return levels
 }
 
+func providerContextWindow(item providerModelAPIItem) int {
+	for _, value := range []int{
+		item.ContextWindow,
+		item.ContextLength,
+		item.MaxContextLength,
+		item.MaxInputTokens,
+		item.Parameters.ContextWindow,
+		item.Parameters.ContextLength,
+		item.Parameters.MaxContextLength,
+	} {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
 func discoveredModelFromAPIItem(item providerModelAPIItem) DiscoveredModel {
 	control := item.ReasoningControl
 	if control == nil {
@@ -284,6 +308,7 @@ func discoveredModelFromAPIItem(item providerModelAPIItem) DiscoveredModel {
 		Reasoning:     reasoning,
 		Multimodal:    item.Multimodal || strings.EqualFold(strings.TrimSpace(item.Type), "multimodal") || stringSliceContainsFold(item.Architecture.InputModalities, "image"),
 		SupportsTools: stringSliceContainsFold(item.SupportedParams, "tools"),
+		ContextWindow: providerContextWindow(item),
 	}
 }
 
@@ -309,6 +334,7 @@ func catalogDiscoveredModels(kind string) ([]DiscoveredModel, bool) {
 			Reasoning:     item.Reasoning,
 			Multimodal:    item.Multimodal,
 			SupportsTools: true,
+			ContextWindow: item.ContextWindow,
 		})
 	}
 	return models, true
@@ -379,7 +405,9 @@ func (s *SettingsService) DiscoverProviderModels(in ProviderInput) ([]Discovered
 						}
 						chatModels[id] = true
 						model := discoveredModelFromAPIItem(item)
-						model.Status = byID[id].Status
+						existing := byID[id]
+						model.Status = existing.Status
+						model.ContextWindow = firstPositive(model.ContextWindow, existing.ContextWindow)
 						byID[id] = model
 					}
 					for id := range byID {
@@ -409,7 +437,7 @@ func providerCapabilityCacheKey(p Provider) string {
 }
 
 func (s *SettingsService) cacheProviderCapabilities(p Provider, models []DiscoveredModel) {
-	if s == nil || !strings.EqualFold(strings.TrimSpace(p.Kind), "openrouter") {
+	if s == nil {
 		return
 	}
 	byID := make(map[string]DiscoveredModel, len(models))
@@ -424,6 +452,14 @@ func (s *SettingsService) cacheProviderCapabilities(p Provider, models []Discove
 	s.capabilityCache[providerCapabilityCacheKey(p)] = providerCapabilityCacheEntry{
 		expiresAt: time.Now().Add(providerCapabilityCacheTTL),
 		models:    byID,
+	}
+	if s.db != nil {
+		for _, item := range models {
+			if item.ContextWindow <= 0 {
+				continue
+			}
+			_, _ = s.db.Exec(`UPDATE provider_models SET context_window = ? WHERE provider_id = ? AND lower(model) = lower(?)`, item.ContextWindow, p.ID, item.ID)
+		}
 	}
 }
 

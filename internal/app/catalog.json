@@ -17,7 +17,8 @@
             ],
             "note": "effort 档位:low/high/max"
           },
-          "multimodal": true
+          "multimodal": true,
+          "contextWindow": 1000000
         }
       ]
     },
@@ -32,7 +33,8 @@
           "reasoning": {
             "type": "none"
           },
-          "multimodal": true
+          "multimodal": true,
+          "contextWindow": 128000
         },
         {
           "id": "gpt-4o",
@@ -40,7 +42,8 @@
           "reasoning": {
             "type": "none"
           },
-          "multimodal": true
+          "multimodal": true,
+          "contextWindow": 128000
         },
         {
           "id": "o1",
@@ -53,7 +56,8 @@
               "high"
             ]
           },
-          "multimodal": true
+          "multimodal": true,
+          "contextWindow": 200000
         },
         {
           "id": "o3-mini",
@@ -66,7 +70,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 200000
         },
         {
           "id": "o4-mini",
@@ -79,7 +84,8 @@
               "high"
             ]
           },
-          "multimodal": true
+          "multimodal": true,
+          "contextWindow": 200000
         }
       ]
     },
@@ -95,7 +101,8 @@
             "type": "toggle",
             "note": "enable_thinking=true/false 逐请求开关"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "qwen-max",
@@ -104,7 +111,8 @@
             "type": "toggle",
             "note": "enable_thinking=true/false 逐请求开关"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 32768
         },
         {
           "id": "qwen3-8b",
@@ -112,7 +120,8 @@
           "reasoning": {
             "type": "toggle"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 131072
         },
         {
           "id": "qwen3-32b",
@@ -120,7 +129,8 @@
           "reasoning": {
             "type": "toggle"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 131072
         },
         {
           "id": "qwen3-235b-a22b",
@@ -128,7 +138,8 @@
           "reasoning": {
             "type": "toggle"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 131072
         }
       ]
     },
@@ -144,7 +155,8 @@
             "type": "none",
             "note": "K2 默认长思考,无独立开关参数"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         },
         {
           "id": "kimi-k2-thinking",
@@ -153,7 +165,8 @@
             "type": "always",
             "note": "专为深度思考的版本"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         }
       ]
     },
@@ -169,7 +182,8 @@
             "type": "toggle",
             "note": "thinking.type=enabled/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         },
         {
           "id": "hunyuan-turbo-latest",
@@ -178,7 +192,8 @@
             "type": "toggle",
             "note": "thinking.type=enabled/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         }
       ]
     },
@@ -194,7 +209,8 @@
             "type": "toggle",
             "note": "thinking.type=enabled/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         },
         {
           "id": "glm-4.6",
@@ -203,7 +219,8 @@
             "type": "toggle",
             "note": "thinking.type=enabled/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         },
         {
           "id": "glm-4.5-air",
@@ -212,7 +229,8 @@
             "type": "toggle",
             "note": "thinking.type=enabled/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 128000
         }
       ]
     },
@@ -228,7 +246,8 @@
             "type": "toggle",
             "note": "thinking.type=adaptive/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 204800
         },
         {
           "id": "minimax-01",
@@ -237,7 +256,8 @@
             "type": "toggle",
             "note": "thinking.type=adaptive/disabled"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         }
       ]
     },
@@ -257,7 +277,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 200000
         },
         {
           "id": "doubao-seed-evolving",
@@ -270,7 +291,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 200000
         },
         {
           "id": "doubao-seed-2.0-mini",
@@ -283,7 +305,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "doubao-seed-2.1-turbo",
@@ -296,7 +319,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "doubao-seed-2.0-lite",
@@ -309,7 +333,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 32768
         },
         {
           "id": "minimax-m3",
@@ -322,7 +347,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "glm-5.3",
@@ -336,7 +362,8 @@
             ],
             "note": "默认开启思考且不可关闭，可调节思考长度"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "glm-latest",
@@ -350,7 +377,8 @@
             ],
             "note": "GLM-5.3 别名；默认开启思考且不可关闭，可调节思考长度"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "glm-5.3-flash",
@@ -363,7 +391,8 @@
               "high"
             ]
           },
-          "multimodal": true
+          "multimodal": true,
+          "contextWindow": 1000000
         },
         {
           "id": "deepseek-v4-flash",
@@ -376,7 +405,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "deepseek-v4-pro",
@@ -389,7 +419,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         },
         {
           "id": "kimi-k2.7-code",
@@ -403,7 +434,8 @@
             ],
             "note": "支持思考长度档位，不支持推理摘要"
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 256000
         },
         {
           "id": "kimi-k3",
@@ -416,7 +448,8 @@
               "high"
             ]
           },
-          "multimodal": false
+          "multimodal": false,
+          "contextWindow": 1000000
         }
       ],
       "_hint": "火山方舟 Agent Plan 使用套餐专属 OpenAI 兼容入口 /api/plan/v3"

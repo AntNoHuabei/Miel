@@ -7,6 +7,7 @@ export const chatRepository = {
   messagesSnapshot: async (id: number) => (await Services.AgentService.MessagesSnapshot(id)) as ConversationSnapshotLite,
   chat: (request: Parameters<typeof Services.AgentService.Chat>[0]) => Services.AgentService.Chat(request),
   cancelChat: (request: Parameters<typeof Services.AgentService.CancelChat>[0]) => Services.AgentService.CancelChat(request),
+  compactConversation: (request: Parameters<typeof Services.AgentService.CompactConversation>[0]) => Services.AgentService.CompactConversation(request),
   revisePlan: (request: Parameters<typeof Services.AgentService.RevisePlan>[0]) => Services.AgentService.RevisePlan(request),
   executePlan: (request: Parameters<typeof Services.AgentService.ExecutePlan>[0]) => Services.AgentService.ExecutePlan(request),
   abandonPlan: (request: Parameters<typeof Services.AgentService.AbandonPlan>[0]) => Services.AgentService.AbandonPlan(request),

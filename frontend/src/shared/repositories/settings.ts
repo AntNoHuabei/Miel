@@ -21,6 +21,7 @@ export const normalizeProviderInput = (input: ProviderInputLite): Parameters<typ
     label: model.label ?? '',
     custom: model.custom ?? false,
     multimodal: model.multimodal ?? false,
+    contextWindow: model.contextWindow ?? 0,
   })),
 })
 

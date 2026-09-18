@@ -98,18 +98,20 @@ type ProviderInput struct {
 
 // ProviderModel 服务商启用的单个模型(内置或自定义)。
 type ProviderModel struct {
-	Model      string `json:"model"`
-	Label      string `json:"label"`
-	Custom     bool   `json:"custom"`
-	Multimodal bool   `json:"multimodal"`
+	Model         string `json:"model"`
+	Label         string `json:"label"`
+	Custom        bool   `json:"custom"`
+	Multimodal    bool   `json:"multimodal"`
+	ContextWindow int    `json:"contextWindow"`
 }
 
 // ProviderModelInput 前端提交的启用模型条目。
 type ProviderModelInput struct {
-	Model      string `json:"model"`
-	Label      string `json:"label"`
-	Custom     bool   `json:"custom"`
-	Multimodal bool   `json:"multimodal"`
+	Model         string `json:"model"`
+	Label         string `json:"label"`
+	Custom        bool   `json:"custom"`
+	Multimodal    bool   `json:"multimodal"`
+	ContextWindow int    `json:"contextWindow"`
 }
 
 // DiscoveredModel 是从 OpenAI 兼容服务动态发现的模型及能力。
@@ -119,18 +121,20 @@ type DiscoveredModel struct {
 	Reasoning     ReasoningSpec `json:"reasoning"`
 	Multimodal    bool          `json:"multimodal"`
 	SupportsTools bool          `json:"supportsTools"`
+	ContextWindow int           `json:"contextWindow"`
 }
 
 // ModelOption 模型切换下拉的扁平选项(provider × 启用模型)。
 type ModelOption struct {
-	ProviderID   int64  `json:"providerId"`
-	ProviderName string `json:"providerName"`
-	Kind         string `json:"kind"`
-	Model        string `json:"model"`
-	Label        string `json:"label"`
-	Custom       bool   `json:"custom"`
-	Multimodal   bool   `json:"multimodal"`
-	IsDefault    bool   `json:"isDefault"` // 是否为当前使用模型
+	ProviderID    int64  `json:"providerId"`
+	ProviderName  string `json:"providerName"`
+	Kind          string `json:"kind"`
+	Model         string `json:"model"`
+	Label         string `json:"label"`
+	Custom        bool   `json:"custom"`
+	Multimodal    bool   `json:"multimodal"`
+	ContextWindow int    `json:"contextWindow"`
+	IsDefault     bool   `json:"isDefault"` // 是否为当前使用模型
 }
 
 // ProviderTemplate 内置厂商模板(设置向导里供选择)。
@@ -231,6 +235,14 @@ type ChatMetrics struct {
 	DurationMs       int64   `json:"durationMs"`
 	FirstTokenMs     int64   `json:"firstTokenMs"`
 	TokensPerSecond  float64 `json:"tokensPerSecond"`
+}
+
+type ConversationContextUsage struct {
+	UsedTokens    int    `json:"usedTokens"`
+	ContextWindow int    `json:"contextWindow"`
+	Model         string `json:"model"`
+	Estimated     bool   `json:"estimated"`
+	UpdatedAt     int64  `json:"updatedAt"`
 }
 
 // Screenshot 截图记录。

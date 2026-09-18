@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { ClipboardEvent as ReactClipboardEvent } from 'react'
-import { Button, Dropdown, Flex, Input, Popover, Select, Slider, Space, Tooltip, Typography } from 'antd'
+import { Button, Dropdown, Flex, Input, Popover, Progress, Select, Slider, Space, Tooltip, Typography } from 'antd'
 import {
   CameraOutlined,
   BulbOutlined,
   CheckOutlined,
   CloseOutlined,
   CloseCircleFilled,
+  CompressOutlined,
   FolderAddOutlined,
   FolderOpenOutlined,
   PictureOutlined,
@@ -16,6 +17,7 @@ import {
   SendOutlined,
 } from '@ant-design/icons'
 import type { ChatAttachmentDraftLite, WorkspaceLite } from '../../../api'
+import type { ConversationContextUsageLite } from '../../../shared/types/chat'
 import type { PermissionMode } from '../../../components/permissions'
 import { ChatAttachmentStrip } from '../../../components/ChatAttachments'
 import { PermissionModeSelector } from '../../../components/permissions'
@@ -40,6 +42,8 @@ interface ConversationComposerProps {
   selectedModel?: string
   modelOptions: ModelOptionGroup[]
   activeModelLabel: string
+  contextWindow?: number
+  contextUsage?: ConversationContextUsageLite | null
   modelAvailable: boolean
   profileReady: boolean
   reasoningPillLabel: string
@@ -54,6 +58,7 @@ interface ConversationComposerProps {
   onChangeMode: (mode: 'chat' | 'plan') => void
   onChangePermissionMode: (mode: PermissionMode) => void | Promise<void>
   onChangeReasoning: (value: string) => void
+  onCompact?: () => void | Promise<void>
   onChooseWorkspace: (path: string) => void | Promise<void>
   onPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void
   onPickImages: () => void | Promise<void>
@@ -67,12 +72,44 @@ interface ConversationComposerProps {
 export function ConversationComposer(props: ConversationComposerProps) {
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
+  const [slashCommand, setSlashCommand] = useState<{ start: number; end: number; query: string } | null>(null)
+  const [slashIndex, setSlashIndex] = useState(0)
   const filteredWorkspaces = useMemo(() => {
     const query = workspaceQuery.trim().toLowerCase()
     if (!query) return props.workspaces
     return props.workspaces.filter((workspace) => workspace.name.toLowerCase().includes(query) || workspace.path.toLowerCase().includes(query))
   }, [props.workspaces, workspaceQuery])
   const sendDisabled = !props.modelAvailable || (!props.input.trim() && props.attachments.length === 0) || (props.attachments.length > 0 && !props.supportsImages)
+  const contextWindow = props.contextWindow ?? 0
+  const contextUsage = props.contextUsage ?? null
+  const commands = [
+    { key: 'plan', label: 'Plan', description: '切换到计划模式', icon: <BulbOutlined />, disabled: props.mode === 'plan' || props.sending },
+    { key: 'compact', label: 'Compact', description: '整理当前会话上下文', icon: <CompressOutlined />, disabled: props.sending || contextUsage === null && !contextWindow },
+  ]
+
+  const updateSlashCommand = (value: string, cursor: number) => {
+    const before = value.slice(0, cursor)
+    const match = before.match(/(?:^|\s)\/([a-zA-Z]*)$/)
+    if (!match) {
+      setSlashCommand(null)
+      return
+    }
+    const token = match[0]
+    const start = cursor - token.length + (token.startsWith(' ') ? 1 : 0)
+    setSlashCommand({ start, end: cursor, query: match[1].toLowerCase() })
+    setSlashIndex(0)
+  }
+
+  const chooseSlashCommand = (key: string) => {
+    if (!slashCommand) return
+    const next = props.input.slice(0, slashCommand.start) + props.input.slice(slashCommand.end)
+    props.onChangeInput(next)
+    setSlashCommand(null)
+    if (key === 'plan') props.onChangeMode('plan')
+    if (key === 'compact') void props.onCompact?.()
+  }
+
+  const visibleCommands = commands.filter((command) => !slashCommand?.query || command.key.startsWith(slashCommand.query))
 
   const chooseWorkspace = async (path: string) => {
     await props.onChooseWorkspace(path)
@@ -86,16 +123,24 @@ export function ConversationComposer(props: ConversationComposerProps) {
         <div className="bm-chat-composer-shell" style={{ border: '1px solid var(--bm-border)', background: 'var(--bm-header-bg)' }}>
           <ChatAttachmentStrip attachments={props.attachments} onRemove={props.onRemoveAttachment} />
           {props.attachments.length > 0 && !props.supportsImages && <div className="bm-chat-attachment-warning">当前模型不支持图片输入</div>}
+          {slashCommand && visibleCommands.length > 0 && <div className="bm-chat-command-menu" role="listbox" aria-label="输入命令">
+            {visibleCommands.map((command, index) => <button className={`bm-chat-command-item ${index === slashIndex ? 'is-active' : ''}`} disabled={command.disabled} key={command.key} type="button" role="option" aria-selected={index === slashIndex} onMouseDown={(event) => { event.preventDefault(); chooseSlashCommand(command.key) }}>
+              <span className="bm-chat-command-icon">{command.icon}</span><span><strong>{command.label}</strong><small>{command.description}</small></span>
+            </button>)}
+          </div>}
           <Input.TextArea
             id="bm-chat-input"
             value={props.input}
-            onChange={(event) => props.onChangeInput(event.target.value)}
+            onChange={(event) => { props.onChangeInput(event.target.value); updateSlashCommand(event.target.value, event.target.selectionStart ?? event.target.value.length) }}
             onPaste={props.onPaste}
-            onPressEnter={(event) => {
-              if (!event.shiftKey) {
-                event.preventDefault()
-                void props.onSend()
+            onKeyDown={(event) => {
+              if (slashCommand && visibleCommands.length > 0) {
+                if (event.key === 'ArrowDown') { event.preventDefault(); setSlashIndex((index) => (index + 1) % visibleCommands.length); return }
+                if (event.key === 'ArrowUp') { event.preventDefault(); setSlashIndex((index) => (index - 1 + visibleCommands.length) % visibleCommands.length); return }
+                if (event.key === 'Escape') { event.preventDefault(); setSlashCommand(null); return }
+                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!visibleCommands[slashIndex].disabled) chooseSlashCommand(visibleCommands[slashIndex].key); return }
               }
+              if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void props.onSend() }
             }}
             placeholder="给 Miel 发消息…(Enter 发送 / Shift+Enter 换行)"
             autoSize={{ minRows: 2, maxRows: 8 }}
@@ -157,7 +202,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 <Slider className="bm-chat-reasoning-slider" min={0} max={Math.max(props.reasoningSteps.length - 1, 0)} step={1} value={props.reasoningIndex} disabled={props.reasoningLocked} onChange={(value) => props.onChangeReasoning(props.reasoningSteps[value as number] ?? '')} marks={props.reasoningMarks} tooltip={{ open: false }} />
                 {props.showCompatibleModelNote && <Text type="secondary" className="bm-chat-model-panel-note">OpenAI 兼容模型会透传 reasoning_effort。</Text>}
               </div>}>
-                <Button type="text" className="bm-chat-model-trigger" disabled={props.sending || !props.profileReady}><span className="bm-chat-model-trigger-name">{props.activeModelLabel}</span>{props.reasoningPillLabel && <span className="bm-chat-model-trigger-reasoning">{props.reasoningPillLabel}</span>}<RightOutlined className="bm-chat-model-trigger-chevron" /></Button>
+                <Button type="text" className="bm-chat-model-trigger" disabled={props.sending || !props.profileReady}><Tooltip title={contextUsage ? `上下文 ${contextUsage.usedTokens.toLocaleString()} / ${(contextWindow || contextUsage.contextWindow).toLocaleString()}${contextUsage.estimated || contextUsage.contextWindow !== contextWindow ? '（估算）' : ''}` : '暂无上下文用量'}><span className="bm-chat-context-meter">{contextWindow > 0 && contextUsage && <Progress type="circle" percent={Math.min(100, Math.round((contextUsage.usedTokens / contextWindow) * 100))} size={16} showInfo={false} strokeWidth={14} />}</span></Tooltip><span className="bm-chat-model-trigger-name">{props.activeModelLabel}</span>{props.reasoningPillLabel && <span className="bm-chat-model-trigger-reasoning">{props.reasoningPillLabel}</span>}<RightOutlined className="bm-chat-model-trigger-chevron" /></Button>
               </Popover>
               <Tooltip title={props.sending ? '停止生成' : !props.modelAvailable ? '请为当前模式选择模型' : props.attachments.length > 0 && !props.supportsImages ? '当前模型不支持图片输入' : '发送'}>
                 <Button
