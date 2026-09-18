@@ -1,6 +1,6 @@
 export type AgentProfile = 'work' | 'coding'
 export interface ProfileModelLite { providerId: number; model: string }
-export interface ConversationLite { id: number; title: string; providerId: number; model: string; agentProfile: AgentProfile; profileModels: Record<AgentProfile, ProfileModelLite>; createdAt: number; updatedAt: number }
+export interface ConversationLite { id: number; title: string; workspacePath: string; providerId: number; model: string; agentProfile: AgentProfile; profileModels: Record<AgentProfile, ProfileModelLite>; createdAt: number; updatedAt: number }
 export interface PlanViewLite { id: number; messageId: string; revision: number; currentRevision: number; status: string; content: string; generatedModel: string; executionModel?: string; agentProfile?: AgentProfile; createdAt: number }
 export type PlanLite = PlanViewLite
 export interface PlanRequestViewLite { id: string; messageId: string; content: unknown; planId: number; revision: number; createdAt: number }

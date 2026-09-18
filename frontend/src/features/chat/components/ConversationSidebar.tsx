@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button, Dropdown, Flex, Popover, Tooltip, Typography } from 'antd'
 import {
   BellOutlined,
@@ -26,6 +26,13 @@ const { Text } = Typography
 interface ConversationSummary {
   id: number
   title: string
+  workspacePath: string
+}
+
+interface WorkspaceGroup {
+  key: string
+  name: string
+  conversations: ConversationSummary[]
 }
 
 interface ConversationSidebarProps {
@@ -34,8 +41,8 @@ interface ConversationSidebarProps {
   profileReady: boolean
   sending: boolean
   conversations: ConversationSummary[]
+  workspaces: WorkspaceLite[]
   currentConversationId: number
-  currentWorkspace?: WorkspaceLite
   reminderCount: number
   onDeleteCurrent: () => void | Promise<void>
   onNavigate: (view: ViewKey) => void
@@ -50,8 +57,8 @@ export function ConversationSidebar({
   profileReady,
   sending,
   conversations,
+  workspaces,
   currentConversationId,
-  currentWorkspace,
   reminderCount,
   onDeleteCurrent,
   onNavigate,
@@ -59,8 +66,31 @@ export function ConversationSidebar({
   onNewChat,
   onOpenConversation,
 }: ConversationSidebarProps) {
-  const [workspaceOpen, setWorkspaceOpen] = useState(true)
+  const [workspaceOpen, setWorkspaceOpen] = useState<Record<string, boolean>>({})
   const [scrolled, setScrolled] = useState(false)
+  const workspaceGroups = useMemo(() => {
+    const groups = workspaces.map<WorkspaceGroup>((workspace) => ({ key: `workspace:${workspace.path}`, name: workspace.name, conversations: [] }))
+    const byPath = new Map(workspaces.map((workspace, index) => [workspace.path, groups[index]]))
+    const unassigned: ConversationSummary[] = []
+
+    for (const conversation of conversations) {
+      const path = conversation.workspacePath.trim()
+      if (!path) {
+        unassigned.push(conversation)
+        continue
+      }
+      let group = byPath.get(path)
+      if (!group) {
+        const name = path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || path
+        group = { key: `workspace:${path}`, name, conversations: [] }
+        byPath.set(path, group)
+        groups.push(group)
+      }
+      group.conversations.push(conversation)
+    }
+    if (unassigned.length > 0) groups.push({ key: 'unassigned', name: '不在工作区', conversations: unassigned })
+    return groups
+  }, [conversations, workspaces])
   const navItems = [
     { key: 'todos' as const, label: '待办', icon: <CheckSquareOutlined />, count: 0 },
     { key: 'milestones' as const, label: '里程碑', icon: <FlagOutlined />, count: 0 },
@@ -99,26 +129,32 @@ export function ConversationSidebar({
         </nav>
         <div className="bm-chat-workspace-list">
           <div className="bm-chat-sidebar-section-label">工作空间</div>
-          <Button type="text" className="bm-chat-workspace-item" aria-expanded={workspaceOpen} aria-controls="bm-chat-workspace-conversations" onClick={() => setWorkspaceOpen((open) => !open)}>
-            <RightOutlined className="bm-chat-workspace-chevron" />
-            <FolderOpenOutlined />
-            <span>{currentWorkspace?.name ?? '不在工作区'}</span>
-          </Button>
-          {workspaceOpen && (
-            <div className="bm-chat-history-list" id="bm-chat-workspace-conversations">
-              {conversations.length === 0 ? <Text type="secondary" className="bm-chat-empty-history">暂无历史会话</Text> : conversations.map((conversation) => {
-                const active = conversation.id === currentConversationId
-                return (
-                  <div key={conversation.id} className={`bm-chat-history-item ${active ? 'is-active' : ''}`}>
-                    <Button type="text" className="bm-chat-history-open" aria-current={active ? 'page' : undefined} onClick={() => onOpenConversation(conversation.id)}>
-                      <span className="bm-chat-history-item-label"><HistoryOutlined /><span>{conversation.title}</span></span>
-                    </Button>
-                    {active && <Tooltip title="删除当前会话"><Button type="text" className="bm-chat-history-delete" aria-label="删除当前会话" icon={<DeleteOutlined />} onClick={() => void onDeleteCurrent()} /></Tooltip>}
-                  </div>
-                )
-              })}
+          {workspaceGroups.map((workspace, index) => {
+            const open = workspaceOpen[workspace.key] ?? true
+            const conversationsID = `bm-chat-workspace-conversations-${index}`
+            return <div key={workspace.key} className="bm-chat-workspace-group">
+              <Button type="text" className="bm-chat-workspace-item" aria-expanded={open} aria-controls={conversationsID} onClick={() => setWorkspaceOpen((state) => ({ ...state, [workspace.key]: !open }))}>
+                <RightOutlined className="bm-chat-workspace-chevron" />
+                <FolderOpenOutlined />
+                <span>{workspace.name}</span>
+              </Button>
+              {open && (
+                <div className="bm-chat-history-list" id={conversationsID}>
+                  {workspace.conversations.length === 0 ? <Text type="secondary" className="bm-chat-empty-history">暂无历史会话</Text> : workspace.conversations.map((conversation) => {
+                    const active = conversation.id === currentConversationId
+                    return (
+                      <div key={conversation.id} className={`bm-chat-history-item ${active ? 'is-active' : ''}`}>
+                        <Button type="text" className="bm-chat-history-open" aria-current={active ? 'page' : undefined} onClick={() => onOpenConversation(conversation.id)}>
+                          <span className="bm-chat-history-item-label"><HistoryOutlined /><span>{conversation.title}</span></span>
+                        </Button>
+                        {active && <Tooltip title="删除当前会话"><Button type="text" className="bm-chat-history-delete" aria-label="删除当前会话" icon={<DeleteOutlined />} onClick={() => void onDeleteCurrent()} /></Tooltip>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          })}
         </div>
       </div>
       <div className="bm-chat-sidebar-footer">

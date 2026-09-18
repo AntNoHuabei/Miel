@@ -186,6 +186,7 @@ export interface ConfirmExtractedReq {
 export interface Conversation {
     "id": number;
     "title": string;
+    "workspacePath": string;
     "providerId": number;
     "model": string;
     "agentProfile": string;

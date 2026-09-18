@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS conversations (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	title      TEXT NOT NULL DEFAULT '',
+	workspace_path TEXT NOT NULL DEFAULT '',
 	provider_id INTEGER NOT NULL DEFAULT 0,
 	model      TEXT NOT NULL DEFAULT '',
 	agent_profile TEXT NOT NULL DEFAULT 'work',
@@ -284,6 +285,9 @@ func migrate(db *sql.DB) error {
 	}
 	if err := ensureColumn(db, "conversations", "agent_profile", "TEXT NOT NULL DEFAULT 'work'"); err != nil {
 		return fmt.Errorf("migrate conversation profile: %w", err)
+	}
+	if err := ensureColumn(db, "conversations", "workspace_path", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("migrate conversation workspace: %w", err)
 	}
 	if err := ensureColumn(db, "messages", "message_type", "TEXT NOT NULL DEFAULT 'chat'"); err != nil {
 		return fmt.Errorf("migrate message type: %w", err)

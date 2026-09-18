@@ -169,6 +169,7 @@ type Workspace struct {
 type Conversation struct {
 	ID            int64                   `json:"id"`
 	Title         string                  `json:"title"`
+	WorkspacePath string                  `json:"workspacePath"`
 	ProviderID    int64                   `json:"providerId"`
 	Model         string                  `json:"model"`
 	AgentProfile  string                  `json:"agentProfile"`

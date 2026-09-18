@@ -16,9 +16,9 @@ describe('ConversationSidebar', () => {
       agentProfile: 'work',
       profileReady: true,
       sending: false,
-      conversations: [{ id: 7, title: '已有会话' }],
+      conversations: [{ id: 7, title: '已有会话', workspacePath: 'D:/code/BlankMind' }],
+      workspaces: [{ name: 'BlankMind', path: 'D:/code/BlankMind', isCurrent: true }],
       currentConversationId: 0,
-      currentWorkspace: { name: 'BlankMind', path: 'D:/code/BlankMind', isCurrent: true },
       reminderCount: 2,
       onDeleteCurrent: vi.fn(),
       onNavigate: vi.fn(),
@@ -42,6 +42,32 @@ describe('ConversationSidebar', () => {
     await userEvent.click(workspace)
     expect(workspace).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('已有会话')).not.toBeInTheDocument()
+  })
+
+  it('groups conversations by their own workspace and collapses groups independently', async () => {
+    renderSidebar({
+      workspaces: [
+        { name: 'Alpha', path: 'D:/work/alpha', isCurrent: true },
+        { name: 'Beta', path: 'D:/work/beta', isCurrent: false },
+      ],
+      conversations: [
+        { id: 1, title: 'Alpha 会话', workspacePath: 'D:/work/alpha' },
+        { id: 2, title: 'Beta 会话', workspacePath: 'D:/work/beta' },
+        { id: 3, title: '旧会话', workspacePath: '' },
+      ],
+    })
+
+    expect(screen.getByText('Alpha 会话')).toBeInTheDocument()
+    expect(screen.getByText('Beta 会话')).toBeInTheDocument()
+    expect(screen.getByText('旧会话')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /不在工作区/ })).toBeInTheDocument()
+
+    const alphaWorkspace = screen.getByText('Alpha').closest('button')
+    expect(alphaWorkspace).not.toBeNull()
+    await userEvent.click(alphaWorkspace!)
+    expect(screen.queryByText('Alpha 会话')).not.toBeInTheDocument()
+    expect(screen.getByText('Beta 会话')).toBeInTheDocument()
+    expect(screen.getByText('旧会话')).toBeInTheDocument()
   })
 
   it('switches from Work to Coding through the upper-left profile menu', async () => {

@@ -33,14 +33,17 @@ export default function ChatView() {
   const activeView = useShellStore((state) => state.view)
   const reminderCount = useShellStore((state) => state.unread)
   const navigate = useShellStore((state) => state.navigate)
-  const [conversations, setConversations] = useState<Array<{ id: number; title: string }>>([])
+  const [conversations, setConversations] = useState<Array<{ id: number; title: string; workspacePath: string }>>([])
   const selectedPlan = useArtifactPreviewStore((state) => state.selectedPlan)
   const openPlan = useArtifactPreviewStore((state) => state.openPlan)
   const attachments = useChatAttachments()
   const permissions = useAgentPermissions()
 
   const reloadConversations = useCallback(async () => {
-    try { setConversations(await chatRepository.listConversations()) }
+    try {
+      const items = await chatRepository.listConversations()
+      setConversations(items.map((item) => ({ id: item.id, title: item.title, workspacePath: item.workspacePath ?? '' })))
+    }
     catch { /* Keep the last valid conversation list. */ }
   }, [])
 
@@ -133,8 +136,8 @@ export default function ChatView() {
         profileReady={controls.profileReady}
         sending={runtime.sending}
         conversations={conversations}
+        workspaces={controls.workspaces}
         currentConversationId={runtime.conversationId}
-        currentWorkspace={controls.currentWorkspace}
         reminderCount={reminderCount}
         onDeleteCurrent={deleteCurrent}
         onNavigate={navigate}

@@ -171,7 +171,7 @@ func TestSaveUserMessageHonorsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	service := &AgentService{}
-	if _, _, err := service.saveUserMessageWithMeta(ctx, 0, "cancelled", nil, "chat", Provider{}, AgentProfileWork, 0, 0); !errors.Is(err, context.Canceled) {
+	if _, _, err := service.saveUserMessageWithMeta(ctx, 0, "cancelled", nil, "chat", Provider{}, AgentProfileWork, "", 0, 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("saveUserMessageWithMeta() error = %v, want context.Canceled", err)
 	}
 }
@@ -189,7 +189,7 @@ func TestSaveUserMessageInitializesProfilesWithinItsTransaction(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	service := &AgentService{}
-	conversationID, _, err := service.saveUserMessageWithMeta(ctx, 0, "new conversation", nil, "chat", Provider{ID: 1, Model: "model-a"}, AgentProfileWork, 0, 0)
+	conversationID, _, err := service.saveUserMessageWithMeta(ctx, 0, "new conversation", nil, "chat", Provider{ID: 1, Model: "model-a"}, AgentProfileWork, "D:/work/alpha", 0, 0)
 	if err != nil {
 		t.Fatalf("saveUserMessageWithMeta() error = %v", err)
 	}
@@ -199,6 +199,13 @@ func TestSaveUserMessageInitializesProfilesWithinItsTransaction(t *testing.T) {
 	}
 	if profiles != 2 {
 		t.Fatalf("profile count = %d, want 2", profiles)
+	}
+	var workspacePath string
+	if err := db.QueryRow(`SELECT workspace_path FROM conversations WHERE id = ?`, conversationID).Scan(&workspacePath); err != nil {
+		t.Fatal(err)
+	}
+	if workspacePath != "D:/work/alpha" {
+		t.Fatalf("workspace path = %q", workspacePath)
 	}
 }
 

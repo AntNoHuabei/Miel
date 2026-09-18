@@ -139,10 +139,12 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
 
   const cancelActiveRequest = useCallback((reportFailure: boolean) => {
     const requestId = activeRequestRef.current
-    if (!sendingRef.current || !requestId) return
+    if (!sendingRef.current || !requestId) return Promise.resolve()
     stopRequestedRef.current = true
-    void activeCallRef.current?.cancel?.()
-    void Promise.resolve(chatRepository.cancelChat({
+    // A user stop must leave the Chat call alive until the backend releases its
+    // conversation lock. Navigation/reset can still detach immediately.
+    if (!reportFailure) void activeCallRef.current?.cancel?.()
+    return Promise.resolve(chatRepository.cancelChat({
       conversationId: targetRef.current || conversationRef.current,
       requestId,
     })).then((accepted) => {
@@ -282,7 +284,7 @@ export function useConversationRuntime(options: ConversationRuntimeOptions) {
     }
   }, [dispatchRun, input, loadMessages, message, options, setConversation, setInput, setTimeline, timeline])
 
-  const stop = useCallback(async () => { cancelActiveRequest(true) }, [cancelActiveRequest])
+  const stop = useCallback(async () => { await cancelActiveRequest(true) }, [cancelActiveRequest])
 
   const runPlanAction = useCallback(async (action: 'revise' | 'execute', plan: PlanLite, instruction = '') => {
     if (sendingRef.current) return

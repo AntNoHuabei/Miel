@@ -21,8 +21,8 @@ func setupPlanTestStore(t *testing.T) *AgentService {
 		       (2, 'Two', 'custom', 'http://two.invalid/v1', '', 'model-b', 0, 0, 2);
 		INSERT INTO provider_models (provider_id, model, label, custom, multimodal, created_at)
 		VALUES (1, 'model-a', 'A', 1, 0, 1), (2, 'model-b', 'B', 1, 0, 2);
-		INSERT INTO conversations (id, title, provider_id, model, created_at, updated_at)
-		VALUES (10, 'first', 1, 'model-a', 1, 1), (11, 'second', 1, 'model-a', 1, 1)`); err != nil {
+		INSERT INTO conversations (id, title, workspace_path, provider_id, model, created_at, updated_at)
+		VALUES (10, 'first', 'D:/work/alpha', 1, 'model-a', 1, 1), (11, 'second', '', 1, 'model-a', 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
 	return &AgentService{}
@@ -91,7 +91,7 @@ func TestConversationProfileModelsSwitchIndependently(t *testing.T) {
 			first = item
 		}
 	}
-	if first.AgentProfile != AgentProfileWork || first.ProfileModels[AgentProfileCoding].Model != "model-b" {
+	if first.WorkspacePath != "D:/work/alpha" || first.AgentProfile != AgentProfileWork || first.ProfileModels[AgentProfileCoding].Model != "model-b" {
 		t.Fatalf("conversation profiles = %#v", first)
 	}
 }

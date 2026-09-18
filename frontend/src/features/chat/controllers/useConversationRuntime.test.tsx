@@ -123,7 +123,7 @@ describe('useConversationRuntime', () => {
     await act(async () => { await result.current.stop() })
 
     expect(mocks.cancelChat).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 0, requestId: expect.any(String) }))
-    expect(response.promise.cancel).toHaveBeenCalledTimes(1)
+    expect(response.promise.cancel).not.toHaveBeenCalled()
     expect(result.current.sending).toBe(true)
     response.resolve({ conversationId: 7 })
     await act(async () => { await sending })

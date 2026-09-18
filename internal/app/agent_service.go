@@ -36,7 +36,7 @@ var (
 	todoSvc     *TodoService
 )
 
-const maxAgentToolIterations = 40
+const maxAgentToolIterations = 999
 
 var errConversationBusy = errors.New("conversation_busy: 当前会话仍在处理中，请等待本轮完成后再发送")
 
@@ -507,7 +507,7 @@ func (s *AgentService) Chat(callCtx context.Context, req ChatRequest) (result Ch
 	setupCtx, cancelSetup := context.WithTimeout(runCtx, 15*time.Second)
 	defer cancelSetup()
 	logInfo(logCtx, "chat.persist.start")
-	convID, userMessageID, err = s.saveUserMessageWithMeta(setupCtx, convID, msg, req.AttachmentIDs, messageType, p, profile, req.PlanID, req.PlanRevision)
+	convID, userMessageID, err = s.saveUserMessageWithMeta(setupCtx, convID, msg, req.AttachmentIDs, messageType, p, profile, workspacePath, req.PlanID, req.PlanRevision)
 	if err != nil {
 		return ChatResult{}, err
 	}
@@ -1042,8 +1042,8 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	res, err := tx.Exec(
-		"INSERT INTO conversations (title, provider_id, model, agent_profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		title, provider.ID, provider.Model, AgentProfileWork, now(), now())
+		"INSERT INTO conversations (title, workspace_path, provider_id, model, agent_profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		title, "", provider.ID, provider.Model, AgentProfileWork, now(), now())
 	if err != nil {
 		return Conversation{}, err
 	}
@@ -1056,14 +1056,14 @@ func (s *AgentService) newConversation(first string) (Conversation, error) {
 	}
 	s.emit("conversations.changed", "created")
 	models := map[string]ProfileModel{AgentProfileWork: {ProviderID: provider.ID, Model: provider.Model}}
-	return Conversation{ID: id, Title: title, ProviderID: provider.ID, Model: provider.Model, AgentProfile: AgentProfileWork, ProfileModels: models, CreatedAt: now(), UpdatedAt: now()}, nil
+	return Conversation{ID: id, Title: title, WorkspacePath: "", ProviderID: provider.ID, Model: provider.Model, AgentProfile: AgentProfileWork, ProfileModels: models, CreatedAt: now(), UpdatedAt: now()}, nil
 }
 
 func (s *AgentService) saveUserMessage(conversationID int64, content string, attachmentIDs []string) (int64, int64, error) {
-	return s.saveUserMessageWithMeta(context.Background(), conversationID, content, attachmentIDs, "chat", Provider{}, AgentProfileWork, 0, 0)
+	return s.saveUserMessageWithMeta(context.Background(), conversationID, content, attachmentIDs, "chat", Provider{}, AgentProfileWork, "", 0, 0)
 }
 
-func (s *AgentService) saveUserMessageWithMeta(ctx context.Context, conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider, profile string, planID int64, planRevision int) (int64, int64, error) {
+func (s *AgentService) saveUserMessageWithMeta(ctx context.Context, conversationID int64, content string, attachmentIDs []string, messageType string, provider Provider, profile, workspacePath string, planID int64, planRevision int) (int64, int64, error) {
 	tx, err := store.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, err
@@ -1079,8 +1079,8 @@ func (s *AgentService) saveUserMessageWithMeta(ctx context.Context, conversation
 			title = string(r[:24]) + "…"
 		}
 		result, err := tx.ExecContext(ctx,
-			"INSERT INTO conversations (title, provider_id, model, agent_profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-			title, provider.ID, provider.Model, profile, now(), now())
+			"INSERT INTO conversations (title, workspace_path, provider_id, model, agent_profile, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			title, workspacePath, provider.ID, provider.Model, profile, now(), now())
 		if err != nil {
 			return 0, 0, err
 		}
@@ -1267,7 +1267,7 @@ func (s *AgentService) ListConversations() ([]Conversation, error) {
 		return []Conversation{}, nil
 	}
 	rows, err := store.Query(
-		`SELECT id, title, provider_id, model, agent_profile, created_at, updated_at,
+		`SELECT id, title, workspace_path, provider_id, model, agent_profile, created_at, updated_at,
 		COALESCE((SELECT provider_id FROM conversation_profile_models WHERE conversation_id = conversations.id AND profile = 'work'), 0),
 		COALESCE((SELECT model FROM conversation_profile_models WHERE conversation_id = conversations.id AND profile = 'work'), ''),
 		COALESCE((SELECT provider_id FROM conversation_profile_models WHERE conversation_id = conversations.id AND profile = 'coding'), 0),
@@ -1281,7 +1281,7 @@ func (s *AgentService) ListConversations() ([]Conversation, error) {
 	for rows.Next() {
 		var c Conversation
 		var work, coding ProfileModel
-		if err := rows.Scan(&c.ID, &c.Title, &c.ProviderID, &c.Model, &c.AgentProfile, &c.CreatedAt, &c.UpdatedAt, &work.ProviderID, &work.Model, &coding.ProviderID, &coding.Model); err != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.WorkspacePath, &c.ProviderID, &c.Model, &c.AgentProfile, &c.CreatedAt, &c.UpdatedAt, &work.ProviderID, &work.Model, &coding.ProviderID, &coding.Model); err != nil {
 			return nil, err
 		}
 		c.ProfileModels = map[string]ProfileModel{AgentProfileWork: work, AgentProfileCoding: coding}
