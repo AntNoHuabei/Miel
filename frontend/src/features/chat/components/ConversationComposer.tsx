@@ -14,7 +14,6 @@ import {
   RightOutlined,
   SearchOutlined,
   SendOutlined,
-  StopOutlined,
 } from '@ant-design/icons'
 import type { ChatAttachmentDraftLite, WorkspaceLite } from '../../../api'
 import type { PermissionMode } from '../../../components/permissions'
@@ -163,10 +162,10 @@ export function ConversationComposer(props: ConversationComposerProps) {
               <Tooltip title={props.sending ? '停止生成' : !props.modelAvailable ? '请为当前模式选择模型' : props.attachments.length > 0 && !props.supportsImages ? '当前模型不支持图片输入' : '发送'}>
                 <Button
                   type="primary"
-                  danger={props.sending}
+                  className={props.sending ? 'bm-stop-btn' : undefined}
                   shape="circle"
                   size="large"
-                  icon={props.sending ? <StopOutlined /> : <SendOutlined />}
+                  icon={props.sending ? <span className="bm-stop-btn-glyph" aria-hidden="true" /> : <SendOutlined />}
                   disabled={props.sending ? false : sendDisabled}
                   aria-label={props.sending ? '停止生成' : '发送'}
                   onClick={() => void (props.sending ? props.onStop() : props.onSend())}

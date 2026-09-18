@@ -56,7 +56,11 @@ describe('ConversationComposer', () => {
     const values = props()
     render(<ConversationComposer {...values} attachments={[]} supportsImages sending />)
 
-    await userEvent.click(screen.getByRole('button', { name: '停止生成' }))
+    const stopButton = screen.getByRole('button', { name: '停止生成' })
+    expect(stopButton).toHaveClass('bm-stop-btn')
+    expect(stopButton).not.toHaveClass('ant-btn-dangerous')
+    expect(stopButton.querySelector('.bm-stop-btn-glyph')).not.toBeNull()
+    await userEvent.click(stopButton)
     expect(values.onStop).toHaveBeenCalledTimes(1)
   })
 })

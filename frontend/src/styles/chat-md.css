@@ -769,9 +769,9 @@
 
 .ant-btn.bm-stop-btn {
   border: 0 !important;
-  color: var(--bm-chat-surface, #fff) !important;
-  background: var(--bm-chat-text, #1f2329) !important;
-  box-shadow: 0 1px 6px color-mix(in srgb, var(--bm-chat-text, #1f2329) 30%, transparent);
+  color: var(--bm-header-bg, #fff) !important;
+  background: var(--bm-text, #1f2329) !important;
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--bm-text, #1f2329) 30%, transparent);
 }
 
 .bm-stop-btn-glyph {
@@ -785,18 +785,21 @@
 
 /* 覆盖 composer 内全局 hover 规则(0-2-1), 本规则特异性 0-3-1 更高 */
 .bm-chat-composer-shell .ant-btn.bm-stop-btn:hover,
-.bm-chat-composer-shell .ant-btn.bm-stop-btn:focus-visible {
-  color: var(--bm-chat-surface, #fff) !important;
-  background: var(--bm-chat-text, #1f2329) !important;
-  background: color-mix(in srgb, var(--bm-chat-text, #1f2329) 82%, var(--bm-chat-surface, #fff)) !important;
+.bm-chat-composer-shell .ant-btn.bm-stop-btn:focus-visible,
+.bm-quick-composer .ant-btn.bm-stop-btn:hover,
+.bm-quick-composer .ant-btn.bm-stop-btn:focus-visible {
+  color: var(--bm-header-bg, #fff) !important;
+  background: var(--bm-text, #1f2329) !important;
+  background: color-mix(in srgb, var(--bm-text, #1f2329) 82%, var(--bm-header-bg, #fff)) !important;
 }
 
-.bm-chat-composer-shell .ant-btn.bm-stop-btn:hover .bm-stop-btn-glyph {
+.bm-chat-composer-shell .ant-btn.bm-stop-btn:hover .bm-stop-btn-glyph,
+.bm-quick-composer .ant-btn.bm-stop-btn:hover .bm-stop-btn-glyph {
   transform: scale(1.12);
 }
 
 .ant-btn.bm-stop-btn:focus-visible {
-  outline: 2px solid var(--bm-chat-signal, #1677ff);
+  outline: 2px solid var(--bm-signal, #1677ff);
   outline-offset: 2px;
 }
 
